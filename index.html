@@ -52,10 +52,34 @@ html.in-app .top-pnl,body.in-app .top-pnl{display:block}
 .ws::before{content:"";width:6px;height:6px;border-radius:50%;background:#5c6570;flex:0 0 auto}
 .ws.on::before{background:var(--accent)}
 
-.tfs{display:flex;margin:0 0 4px;border-bottom:1px solid var(--line)}
-.tf{flex:1;min-height:44px;background:transparent;border:0;border-bottom:2px solid transparent;border-radius:0;color:var(--muted);font-size:13px;font-weight:650;margin-bottom:-1px}
-.tf.on{color:var(--text);border-bottom-color:var(--accent)}
-#chart{width:100%;height:172px;border-radius:8px;overflow:hidden;background:var(--surface);border:1px solid var(--line);overscroll-behavior:contain}
+.tfs{
+  display:flex;gap:0;margin:0;min-width:0;max-width:100%;
+  overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;
+  scroll-snap-type:x proximity;scroll-padding-inline:8px;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;
+  border-bottom:1px solid var(--line);background:var(--bg);
+}
+.tfs::-webkit-scrollbar{display:none;height:0}
+.tf{
+  flex:0 0 auto;min-width:48px;min-height:44px;padding:0 10px;
+  scroll-snap-align:center;background:transparent;border:0;border-bottom:2px solid transparent;
+  border-radius:0;color:var(--muted);font-size:13px;font-weight:650;margin-bottom:-1px;
+}
+.tf.on,
+html[data-tf="1m"] .tf[data-bar="1m"],
+html[data-tf="3m"] .tf[data-bar="3m"],
+html[data-tf="5m"] .tf[data-bar="5m"],
+html[data-tf="15m"] .tf[data-bar="15m"],
+html[data-tf="30m"] .tf[data-bar="30m"],
+html[data-tf="1H"] .tf[data-bar="1H"],
+html[data-tf="2H"] .tf[data-bar="2H"],
+html[data-tf="4H"] .tf[data-bar="4H"],
+html[data-tf="6H"] .tf[data-bar="6H"],
+html[data-tf="12H"] .tf[data-bar="12H"],
+html[data-tf="1D"] .tf[data-bar="1D"],
+html[data-tf="1W"] .tf[data-bar="1W"],
+html[data-tf="1M"] .tf[data-bar="1M"]{color:var(--text);border-bottom-color:var(--accent)}
+#chart{width:100%;height:172px;border-radius:8px;overflow:hidden;background:var(--surface);border:1px solid var(--line);overscroll-behavior:contain;scroll-margin-top:calc(132px + env(safe-area-inset-top))}
 #chart-msg{height:100%;min-height:120px;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;font-size:13px;color:var(--muted)}
 
 label{display:block;margin:12px 0 6px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
@@ -146,10 +170,11 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
 .offstage{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;pointer-events:none}
 
 @media (max-width:959px){
-  .top{
-    position:sticky;top:0;z-index:30;margin:0 -12px;padding-left:12px;padding-right:12px;
-    background:var(--bg);border-bottom:1px solid var(--line);
+  .chrome{
+    position:sticky;top:0;z-index:30;margin:0 -12px;padding:0 12px;
+    background:var(--bg);
   }
+  .top{position:static;margin:0;padding-left:0;padding-right:0;background:transparent}
   .action-dock{
     position:fixed;left:0;right:0;bottom:0;z-index:25;
     padding:8px 12px calc(8px + env(safe-area-inset-bottom));
@@ -178,8 +203,9 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   }
   html.in-app #app-view{display:contents}
   html.in-app #app-view.hidden{display:none!important}
+  .chrome{display:contents}
   html.in-app .top{grid-area:top}
-  html.in-app .tfs{grid-area:tfs;justify-self:start;width:min(100%,420px);border-bottom:0}
+  html.in-app .tfs{grid-area:tfs;justify-self:stretch;width:auto;min-width:0;max-width:100%}
   html.in-app #chart{grid-area:chart;height:400px}
   html.in-app #positions{grid-area:positions;min-width:0}
   html.in-app .actions{
@@ -206,10 +232,17 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
 }
 </style>
 <script>
-try { if (localStorage.getItem("painel_token")) document.documentElement.classList.add("in-app"); } catch (e) {}
+(function () {
+  try { if (localStorage.getItem("painel_token")) document.documentElement.classList.add("in-app"); } catch (e) {}
+  var tf = ["1m","3m","5m","15m","30m","1H","2H","4H","6H","12H","1D","1W","1M"];
+  var bar = "1m";
+  try { var v = localStorage.getItem("painel_tf"); if (v && tf.indexOf(v) !== -1) bar = v; } catch (e) {}
+  document.documentElement.setAttribute("data-tf", bar);
+})();
 </script>
 </head>
 <body>
+<div class="chrome">
 <header class="top">
   <div class="inst-row">
     <div class="inst">BTC-USD-SWAP · mark</div>
@@ -224,10 +257,20 @@ try { if (localStorage.getItem("painel_token")) document.documentElement.classLi
   </div>
 </header>
 <div class="tfs" id="tfs">
-  <button type="button" class="tf on" data-bar="1m">1m</button>
+  <button type="button" class="tf" data-bar="1m">1m</button>
+  <button type="button" class="tf" data-bar="3m">3m</button>
   <button type="button" class="tf" data-bar="5m">5m</button>
   <button type="button" class="tf" data-bar="15m">15m</button>
+  <button type="button" class="tf" data-bar="30m">30m</button>
   <button type="button" class="tf" data-bar="1H">1H</button>
+  <button type="button" class="tf" data-bar="2H">2H</button>
+  <button type="button" class="tf" data-bar="4H">4H</button>
+  <button type="button" class="tf" data-bar="6H">6H</button>
+  <button type="button" class="tf" data-bar="12H">12H</button>
+  <button type="button" class="tf" data-bar="1D">1D</button>
+  <button type="button" class="tf" data-bar="1W">1W</button>
+  <button type="button" class="tf" data-bar="1M">1M</button>
+</div>
 </div>
 <div id="chart"><div id="chart-msg">Carregando gráfico…</div></div>
 
@@ -334,7 +377,15 @@ const show = (el, on) => el.classList.toggle("hidden", !on);
 
 // ---------- gráfico ----------
 const TZ = new Date().getTimezoneOffset() * 60; // segundos; desloca p/ hora local
-let chart = null, series = null, bar = "1m", lastPx = null;
+const TF_KEY = "painel_tf";
+const BARS = ["1m","3m","5m","15m","30m","1H","2H","4H","6H","12H","1D","1W","1M"];
+function savedTf() {
+  const attr = document.documentElement.getAttribute("data-tf");
+  if (BARS.indexOf(attr) >= 0) return attr;
+  try { const v = localStorage.getItem(TF_KEY); if (BARS.indexOf(v) >= 0) return v; } catch (e) {}
+  return "1m";
+}
+let chart = null, series = null, bar = savedTf(), lastPx = null;
 let posLines = [], stopPreview = null;
 const toT = (ms) => Math.floor(Number(ms) / 1000) - TZ;
 const toBar = (a) => ({ time: toT(a[0]), open: +a[1], high: +a[2], low: +a[3], close: +a[4] });
@@ -412,10 +463,25 @@ function startStreams() {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") { loadCandles(); if (!wsCandle.up) wsCandle.restart(); if (!wsMark.up) wsMark.restart(); }
 });
+function markTf(behavior) {
+  document.documentElement.setAttribute("data-tf", bar);
+  const row = $("tfs");
+  let on = null;
+  row.querySelectorAll(".tf").forEach((x) => {
+    const hit = x.dataset.bar === bar;
+    x.classList.toggle("on", hit);
+    if (hit) on = x;
+  });
+  if (!on) return;
+  const left = on.offsetLeft - (row.clientWidth - on.offsetWidth) / 2;
+  row.scrollTo({ left: Math.max(0, left), behavior: behavior || "auto" });
+}
+markTf("auto");
 $("tfs").onclick = (ev) => {
-  const b = ev.target.closest(".tf"); if (!b || b.dataset.bar === bar) return;
+  const b = ev.target.closest(".tf"); if (!b || BARS.indexOf(b.dataset.bar) < 0 || b.dataset.bar === bar) return;
   const old = candleArgs(); bar = b.dataset.bar;
-  document.querySelectorAll(".tf").forEach((x) => x.classList.toggle("on", x === b));
+  try { localStorage.setItem(TF_KEY, bar); } catch (e) {}
+  markTf("smooth");
   loadCandles().then(() => wsCandle.resub(old));
 };
 
