@@ -1,6 +1,6 @@
 // Painel de ordens OKX (porta fiel de /workspace/okx/mkt.py, caminho sem --add).
 // API JSON apenas; a página HTML é servida fora do supabase.co (que reescreve text/html).
-// Rotas: POST /login, GET /session, GET /positions, POST /order, POST /adjust, POST /logout.
+// Rotas: POST /login, GET /session, GET /positions, POST /order, POST /adjust, POST /scale, POST /amend, POST /logout.
 // Auth: token assinado (Authorization: Bearer) ~90 dias.
 
 const B = "https://www.okx.com";
@@ -30,7 +30,7 @@ function safeEq(a: string, b: string): boolean {
 
 // ---------- OKX ----------
 type J = Record<string, any>;
-async function req(P: string, m: string, p: string, body?: unknown): Promise<J> {
+let req = async function req(P: string, m: string, p: string, body?: unknown): Promise<J> {
   // mesmo timestamp ISO ms + 'Z' e assinatura ts+method+path+body do mkt.py
   const ts = new Date().toISOString();
   const b = body ? JSON.stringify(body) : "";
@@ -42,7 +42,7 @@ async function req(P: string, m: string, p: string, body?: unknown): Promise<J> 
   const r = await fetch(B + p, { method: m, headers: h, body: b || undefined, signal: AbortSignal.timeout(8000) });
   const t = await r.text();
   try { return t ? JSON.parse(t) : {}; } catch { return { code: String(r.status), msg: t.slice(0, 200) }; }
-}
+};
 function okxErr(r: J, what: string): Error {
   return new Error(`${what}: code ${r.code ?? "?"} ${r.msg ?? ""}`.trim());
 }
@@ -77,19 +77,73 @@ async function markPx(): Promise<number> {
 }
 // Python '%g' (6 algarismos significativos, sem zeros à direita)
 const pyG = (x: number) => String(parseFloat(x.toPrecision(6)));
+type Side = "long" | "short";
+type Leg = { posSide: Side; pos: number; avg: number; mark: number; upl: number };
+const floor01 = (x: number) => Math.trunc(x / 0.1 + 1e-9) / 10;
+const isCf1 = (x: J) => { const c = String(x.closeFraction ?? ""); return c === "1" || parseFloat(c) === 1; };
+function ctFromRisk(eq: number, entry: number, stop: number, riskPct: number): number {
+  if (!(eq > 0) || !(entry > 0) || !(stop > 0) || !(riskPct > 0)) return 0;
+  const den = Math.abs(100 * (1 / entry - 1 / stop));
+  if (!(den > 0)) return 0;
+  return Math.trunc(eq * (riskPct / 100) / den / 0.1 + 1e-9) / 10;
+}
+function lossBtc(ct: number, entry: number, stop: number): number {
+  return ct * 100 * Math.abs(1 / entry - 1 / stop);
+}
+function stopOnSide(posSide: Side, stop: number, ref: number): boolean {
+  return posSide === "long" ? stop < ref : stop > ref;
+}
+async function legsOf(P: string): Promise<Leg[]> {
+  const r = await req(P, "GET", "/api/v5/account/positions?instId=" + INST);
+  if (!Array.isArray(r?.data)) throw okxErr(r, "posições");
+  return r.data.filter((x: J) => x.instId === INST && Math.abs(parseFloat(x.pos || "0")) > 0).map((x: J) => ({
+    posSide: (x.posSide === "short" ? "short" : "long") as Side,
+    pos: Math.abs(parseFloat(x.pos || "0")),
+    avg: parseFloat(x.avgPx || "0"),
+    mark: parseFloat(x.markPx || "0"),
+    upl: parseFloat(x.upl || "0"),
+  }));
+}
+async function pendingLimits(P: string): Promise<J[]> {
+  const r = await req(P, "GET", "/api/v5/trade/orders-pending?instType=SWAP&instId=" + INST);
+  if (!Array.isArray(r?.data)) throw okxErr(r, "ordens");
+  return r.data.filter((x: J) => x.instId === INST);
+}
+function algosFor(cs: J[], posSide: Side): J[] {
+  return cs.filter((x) => x.posSide === posSide);
+}
 
 // ---------- posições ----------
 async function fetchPositions() {
   const mark = await markPx();
   const accounts = await Promise.all(ACC.map(async ([P, name]) => {
     try {
-      const [eq, [net, avg, mk0], cs] = await Promise.all([eq_of(P), pos_of(P), conds(P)]);
-      const mk = mk0 || mark;
+      const [eq, legs, cs, limits] = await Promise.all([eq_of(P), legsOf(P), conds(P), pendingLimits(P)]);
+      const net = legs.reduce((s, l) => s + l.pos * (l.posSide === "short" ? -1 : 1), 0);
+      const mx = legs.reduce((a: Leg | null, l) => (!a || l.pos > a.pos ? l : a), null);
+      const avg = mx ? mx.avg : 0;
+      const mk = (mx && mx.mark) || mark;
       const expo = eq > 0 && mk > 0 ? Math.abs(net) * 100 / (eq * mk) * 100 : 0;
       const stops = cs.map((x) => parseFloat(x.slTriggerPx)).filter((v) => v > 0);
-      return { prefix: P, name, net, avg, mark: mk, eq, expo, side: net > 0 ? "long" : net < 0 ? "short" : "zerada", stops, error: null };
+      const legRows = legs.map((l) => ({
+        posSide: l.posSide, ct: l.pos, usd: l.pos * 100, avg: l.avg, upl: l.upl,
+        stops: algosFor(cs, l.posSide).map((x) => ({
+          algoId: x.algoId ?? null, slTriggerPx: parseFloat(x.slTriggerPx), closeFraction: x.closeFraction ?? null,
+        })).filter((s) => s.slTriggerPx > 0),
+      }));
+      const orders = [
+        ...limits.map((o) => ({
+          kind: "limit", ordId: o.ordId ?? null, price: parseFloat(o.px), sz: parseFloat(o.sz),
+          side: o.side ?? null, posSide: o.posSide ?? null, reduceOnly: o.reduceOnly === true || o.reduceOnly === "true",
+        })),
+        ...cs.map((x) => ({
+          kind: "stop", algoId: x.algoId ?? null, price: parseFloat(x.slTriggerPx),
+          posSide: x.posSide ?? null, closeFraction: x.closeFraction ?? null, slTriggerPx: parseFloat(x.slTriggerPx),
+        })).filter((s) => s.price > 0),
+      ];
+      return { prefix: P, name, net, avg, mark: mk, eq, expo, side: net > 0 ? "long" : net < 0 ? "short" : "zerada", stops, legs: legRows, orders, error: null };
     } catch (e) {
-      return { prefix: P, name, net: 0, avg: 0, mark, eq: 0, expo: 0, side: "erro", stops: [], error: "falha ao ler: " + String((e as Error).message || e).slice(0, 160) };
+      return { prefix: P, name, net: 0, avg: 0, mark, eq: 0, expo: 0, side: "erro", stops: [], legs: [], orders: [], error: "falha ao ler: " + String((e as Error).message || e).slice(0, 160) };
     }
   }));
   return { mark, accounts };
@@ -117,17 +171,19 @@ async function runOrder(side: "long" | "short", STOP: number, riskPct: number, d
   const stp = pyG(STOP);
   const R = await Promise.all(ACC.map(async ([P, n]) => {
     try {
-      const [eq, [ps]] = await Promise.all([eq_of(P), pos_of(P)]);
-      const ct = eq > 0 ? Math.trunc(eq * RISK / den / 0.1 + 1e-9) / 10 : 0;
-      const expo = eq > 0 && mark > 0 ? (Math.abs(ps) + ct) * 100 / (eq * mark) * 100 : 0;
+      const [eq, legs] = await Promise.all([eq_of(P), legsOf(P)]);
+      const gross = legs.reduce((s, l) => s + l.pos, 0);
+      const ps = legs.reduce((s, l) => s + l.pos * (l.posSide === "short" ? -1 : 1), 0);
+      const ct = ctFromRisk(eq, entry, STOP, riskPct);
+      const expo = eq > 0 && mark > 0 ? (gross + ct) * 100 / (eq * mark) * 100 : 0;
+      const adding = legs.some((l) => l.posSide === side && l.pos > 0);
       let err: string | null = null;
       if (eq <= 0) err = "saldo zerado";
-      else if (ps !== 0) err = `já tem posição ${ps}`;
       else if (expo > CAP) err = `expo ${expo.toFixed(0)}% > teto`;
       else if (ct < 0.1) err = "tamanho < 0.1 ct";
-      return { P, n, eq, ps, ct, expo, err };
+      return { P, n, eq, ps, ct, expo, err, adding };
     } catch (e) {
-      return { P, n, eq: 0, ps: 0, ct: 0, expo: 0, err: "falha ao ler conta: " + String((e as Error).message || e).slice(0, 120) };
+      return { P, n, eq: 0, ps: 0, ct: 0, expo: 0, err: "falha ao ler conta: " + String((e as Error).message || e).slice(0, 120), adding: false };
     }
   }));
   const head = ordType === "limit" ? `limite ${pyG(entry)}  mark ${mark.toFixed(1)}` : `mark ${mark.toFixed(1)}`;
@@ -144,10 +200,17 @@ async function runOrder(side: "long" | "short", STOP: number, riskPct: number, d
     try {
       const body: J = {
         instId: INST, tdMode: "cross", side: os_side, posSide: side, ordType, sz: r.ct.toFixed(1),
-        attachAlgoOrds: [{ slTriggerPx: stp, slOrdPx: "-1", slTriggerPxType: "mark" }],
       };
+      // perna nova: o stop nasce grudado na ordem, como antes. Perna que já existe: o stop cf=1 cobre a perna inteira e é movido depois.
+      if (!r.adding) body.attachAlgoOrds = [{ slTriggerPx: stp, slOrdPx: "-1", slTriggerPxType: "mark" }];
       if (ordType === "limit") body.px = pyG(entry);
       const e = await req(r.P, "POST", "/api/v5/trade/order", body);
+      const d0 = (e.data && e.data[0]) || {};
+      const placed = e.code === "0" && d0.sCode === "0";
+      if (placed && r.adding) {
+        const moved = await ensureCf1(r.P, side, STOP);
+        if (moved.err) return { code: "0", sCode: "stop", sMsg: "entrou; stop: " + moved.err };
+      }
       const d = (e.data && e.data[0]) || {};
       return { code: e.code ?? null, sCode: d.sCode ?? null, sMsg: d.sMsg ?? e.msg ?? null };
     } catch (e) {
@@ -181,8 +244,6 @@ async function runOrder(side: "long" | "short", STOP: number, riskPct: number, d
 }
 
 // ---------- ajuste (reduz posição aberta; nunca abre perna nova) ----------
-const floor01 = (x: number) => Math.trunc(x / 0.1 + 1e-9) / 10;
-const isCf1 = (x: J) => { const c = String(x.closeFraction ?? ""); return c === "1" || parseFloat(c) === 1; };
 async function pos_leg(P: string): Promise<{ side: "long" | "short" | null; pos: number; avg: number; mark: number; err: string | null }> {
   const r = await req(P, "GET", "/api/v5/account/positions?instId=" + INST);
   if (!Array.isArray(r?.data)) throw okxErr(r, "posições");
@@ -356,6 +417,364 @@ async function runAdjust(pct: number, ordType: "market" | "limit", price: number
   return out;
 }
 
+// Move ou cria o stop cf=1 SÓ da perna pedida. A perna oposta não entra no cancelamento.
+async function ensureCf1(P: string, posSide: Side, trigger: number): Promise<{ err: string | null }> {
+  const stp = pyG(trigger);
+  const cs = algosFor(await conds(P), posSide);
+  const cf1 = cs.find(isCf1) ?? null;
+  const others = cs.filter((x) => x !== cf1 && x.algoId);
+  const place = async () => {
+    const clSide = posSide === "short" ? "buy" : "sell";
+    const s = await req(P, "POST", "/api/v5/trade/order-algo", {
+      instId: INST, tdMode: "cross", side: clSide, posSide, ordType: "conditional",
+      closeFraction: "1", reduceOnly: true, slTriggerPx: stp, slOrdPx: "-1", slTriggerPxType: "mark",
+    });
+    const sd = (s.data && s.data[0]) || {};
+    const ok = s.code === "0" && (sd.sCode == null || sd.sCode === "0");
+    return ok ? null : `falha ao colocar cf=1: ${sd.sMsg || s.msg || s.code}`;
+  };
+  if (cf1?.algoId) {
+    const a = await req(P, "POST", "/api/v5/trade/amend-algos", {
+      instId: INST, algoId: cf1.algoId, newSlTriggerPx: stp, newSlTriggerPxType: "mark",
+    });
+    const ad = (a.data && a.data[0]) || {};
+    const ok = a.code === "0" && (ad.sCode == null || ad.sCode === "0");
+    if (!ok) {
+      await req(P, "POST", "/api/v5/trade/cancel-algos", [{ algoId: cf1.algoId, instId: INST }]);
+      const err = await place();
+      if (err) return { err };
+    }
+  } else {
+    const err = await place();
+    if (err) return { err };
+  }
+  if (others.length) {
+    await req(P, "POST", "/api/v5/trade/cancel-algos", others.map((x) => ({ algoId: x.algoId, instId: INST })));
+  }
+  return { err: null };
+}
+
+async function runReduce(legSide: Side, pct: number, ordType: "market" | "limit", price: number | null, dry: boolean) {
+  const t0 = Date.now();
+  const lines: string[] = [];
+  const out: J = { reduce: true, side: legSide, pct, ordType, price: ordType === "limit" ? price : null, dry, aborted: false, abort_msg: null, accounts: [], warning: false };
+  const mark = await markPx();
+  out.mark = mark;
+  if (ordType === "limit" && !(price != null && price > 0)) return { ...out, aborted: true, abort_msg: "ABORT preço inválido" };
+  const R = await Promise.all(ACC.map(async ([P, n]) => {
+    try {
+      const [eq, legs, cs] = await Promise.all([eq_of(P), legsOf(P), conds(P)]);
+      const leg = legs.find((l) => l.posSide === legSide && l.pos > 0) ?? null;
+      const mk = leg?.mark || mark;
+      if (!leg) return { P, n, eq, mk, pos: 0, avg: 0, ct: 0, st: pickStop(algosFor(cs, legSide), legSide), fillWarn: false, err: `sem perna ${legSide}`, skip: true };
+      const ct = pct >= 100 - 1e-9 ? leg.pos : Math.min(leg.pos, floor01(leg.pos * pct / 100));
+      const st = pickStop(algosFor(cs, legSide), legSide);
+      const needsStop = !(pct >= 100 - 1e-9 && ordType === "market");
+      let err: string | null = null;
+      if (ct < 0.1) err = "tamanho < 0.1 ct";
+      else if (needsStop && st.trigger == null) err = "sem stop existente; não reduzo pra não deixar desprotegido";
+      const fillWarn = ordType === "limit" && price != null && ((legSide === "long" && price <= mk) || (legSide === "short" && price >= mk));
+      return { P, n, eq, mk, pos: leg.pos, avg: leg.avg, ct, st, fillWarn, err, skip: false };
+    } catch (e) {
+      return { P, n, eq: 0, mk: mark, pos: 0, avg: 0, ct: 0, st: { cf1: null, others: [], trigger: null }, fillWarn: false, err: "falha ao ler conta: " + String((e as Error).message || e).slice(0, 120), skip: false };
+    }
+  }));
+  lines.push(`reduz ${legSide} ${pct}% ${ordType} ${ordType === "limit" ? pyG(price!) : "mercado"}  mark ${mark.toFixed(1)}`);
+  const rowOf = (r: typeof R[number], extra: J = {}) => ({
+    prefix: r.P, name: r.n, side: legSide, avg: r.avg || null,
+    pos_before: r.pos, close_ct: r.ct, close_usd: r.ct * 100, size_usd: r.ct * 100,
+    pos_after: r.skip ? r.pos : Math.max(0, Math.round((r.pos - r.ct) * 10) / 10),
+    stop: r.st.trigger, fill_warn: r.fillWarn,
+    status: r.skip ? "sem perna" : r.err ? "bloqueado" : "ok",
+    error: r.skip ? `sem perna ${legSide}` : r.err,
+    ...extra,
+  });
+  out.accounts = R.map((r) => rowOf(r));
+  for (const r of R) lines.push(` ${r.P.padEnd(6)} ${legSide} ${r.pos.toFixed(1)} fecha ${r.ct.toFixed(1)} ${r.skip ? "sem perna" : r.err ?? "ok"}`);
+  out.warning = R.some((r) => r.fillWarn);
+  if (out.warning) out.warn_msg = "Preço limite cruzaria o mark e pode preencher na hora.";
+  if (!R.some((r) => !r.skip)) { lines.push("ABORT: nenhuma conta com essa perna"); out.raw = lines.join("\n"); return { ...out, aborted: true, abort_msg: `Nenhuma conta com perna ${legSide}.` }; }
+  if (dry) { lines.push("DRY: nada enviado"); out.raw = lines.join("\n"); return out; }
+  const sendable = R.filter((r) => !r.skip && !r.err);
+  if (!sendable.length) { out.raw = lines.join("\n"); return { ...out, aborted: true, abort_msg: "ABORT: nenhuma ordem enviada" }; }
+  const osSide = legSide === "long" ? "sell" : "buy";
+  const O = await Promise.all(R.map(async (r) => {
+    if (r.skip || r.err) return { code: null as string | null, sCode: null as string | null, sMsg: null as string | null, stopErr: null as string | null };
+    try {
+      const full = pct >= 100 - 1e-9 && ordType === "market";
+      if (!full && r.st.cf1?.algoId) {
+        const leftovers = r.st.others.filter((x) => x.algoId).map((x) => ({ algoId: x.algoId, instId: INST }));
+        if (leftovers.length) await req(r.P, "POST", "/api/v5/trade/cancel-algos", leftovers);
+      } else if (!full && r.st.trigger != null && !r.st.cf1) {
+        const placed = await ensureCf1(r.P, legSide, r.st.trigger);
+        if (placed.err) return { code: null, sCode: null, sMsg: placed.err, stopErr: placed.err };
+      }
+      const body: J = { instId: INST, tdMode: "cross", side: osSide, posSide: legSide, reduceOnly: true, ordType, sz: (Math.round(r.ct * 10) / 10).toFixed(1) };
+      if (ordType === "limit") body.px = pyG(price!);
+      const e = await req(r.P, "POST", "/api/v5/trade/order", body);
+      const d = (e.data && e.data[0]) || {};
+      const ok = e.code === "0" && d.sCode === "0";
+      let stopErr: string | null = null;
+      if (ok && full) {
+        const mine = algosFor(await conds(r.P), legSide).filter((x) => x.algoId).map((x) => ({ algoId: x.algoId, instId: INST }));
+        if (mine.length) await req(r.P, "POST", "/api/v5/trade/cancel-algos", mine);
+      }
+      return { code: e.code ?? null, sCode: d.sCode ?? null, sMsg: d.sMsg ?? e.msg ?? null, stopErr };
+    } catch (e) {
+      return { code: "net", sCode: null, sMsg: String((e as Error).message || e).slice(0, 120), stopErr: null };
+    }
+  }));
+  out.accounts = R.map((r, i) => {
+    const o = O[i];
+    const row = rowOf(r, { entry: { code: o.code, sCode: o.sCode, sMsg: o.sMsg } });
+    if (r.skip || r.err) return row;
+    const ok = o.code === "0" && o.sCode === "0" && !o.stopErr;
+    row.status = ok ? "ok" : "falhou";
+    row.error = ok ? null : (o.stopErr || `ordem recusada: ${o.sMsg || o.code}`);
+    lines.push(` ${r.P.padEnd(6)} [${o.code},${o.sCode},${o.sMsg}]`);
+    return row;
+  });
+  lines.push(`tempo ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  out.raw = lines.join("\n");
+  if (out.accounts.some((a: J) => a.status === "falhou")) { out.aborted = true; out.abort_msg = "Alguma conta não reduziu. Confira a tabela."; }
+  return out;
+}
+
+function scalePrices(from: number, to: number, n: number, priceSkew: boolean): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0 : i / (n - 1);
+    const u = priceSkew ? t * t : t;
+    out.push(from + (to - from) * u);
+  }
+  return out;
+}
+
+async function cancelBatch(P: string, ids: string[]) {
+  for (let i = 0; i < ids.length; i += 20) {
+    const slice = ids.slice(i, i + 20).map((ordId) => ({ instId: INST, ordId }));
+    if (slice.length) await req(P, "POST", "/api/v5/trade/cancel-batch-orders", slice);
+  }
+}
+
+async function runScale(side: Side, stop: number, riskPct: number, from: number, to: number, n: number, priceSkew: boolean, sizeSkew: boolean, dry: boolean) {
+  const t0 = Date.now();
+  const lines: string[] = [];
+  const out: J = { side, stop, risk: riskPct, from, to, n, priceSkew, sizeSkew, dry, aborted: false, abort_msg: null, accounts: [], warning: false };
+  if (!(n >= 2 && n <= 50)) return { ...out, aborted: true, abort_msg: "A escala precisa de 2 a 50 ordens." };
+  if (!(from > 0) || !(to > 0) || from === to) return { ...out, aborted: true, abort_msg: "ABORT preço inválido" };
+  if (!(stop > 0)) return { ...out, aborted: true, abort_msg: "Stop inválido." };
+  const prices = scalePrices(from, to, n, priceSkew);
+  if (prices.some((p) => !stopOnSide(side, stop, p))) {
+    return { ...out, aborted: true, abort_msg: side === "long" ? "No long, o stop precisa ficar abaixo de todas as pernas." : "No short, o stop precisa ficar acima de todas as pernas." };
+  }
+  const mark = await markPx();
+  out.mark = mark;
+  const weights = prices.map((_, i) => sizeSkew ? i + 1 : 1);
+  const wsum = weights.reduce((s, w) => s + w, 0);
+  const osSide = side === "short" ? "sell" : "buy";
+  const R = await Promise.all(ACC.map(async ([P, name]) => {
+    try {
+      const [eq, legs] = await Promise.all([eq_of(P), legsOf(P)]);
+      const gross = legs.reduce((s, l) => s + l.pos, 0);
+      const planned = prices.map((price, i) => {
+        const share = riskPct * weights[i] / wsum;
+        const ct = ctFromRisk(eq, price, stop, share);
+        return { price, share, ct, loss: ct >= 0.1 ? lossBtc(ct, price, stop) : 0 };
+      });
+      const legsOk = planned.filter((l) => l.ct >= 0.1);
+      const loss = legsOk.reduce((s, l) => s + l.loss, 0);
+      const addCt = legsOk.reduce((s, l) => s + l.ct, 0);
+      const expo = eq > 0 && mark > 0 ? (gross + addCt) * 100 / (eq * mark) * 100 : 0;
+      let err: string | null = null;
+      if (eq <= 0) err = "saldo zerado";
+      else if (!legsOk.length) err = "tamanho < 0.1 ct";
+      else if (expo > CAP) err = `expo ${expo.toFixed(0)}% > teto`;
+      return { P, name, eq, legs: planned, legsOk, loss, addCt, expo, err };
+    } catch (e) {
+      return { P, name, eq: 0, legs: [], legsOk: [], loss: 0, addCt: 0, expo: 0, err: "falha ao ler conta: " + String((e as Error).message || e).slice(0, 120) };
+    }
+  }));
+  out.accounts = R.map((r) => ({
+    prefix: r.P, name: r.name, eq: r.eq, ct: r.addCt, size_usd: r.addCt * 100,
+    loss_btc: r.err ? null : r.loss, loss_usd: r.err ? null : r.loss * mark, expo: r.expo,
+    legs: r.legsOk.map((l) => ({ price: l.price, ct: l.ct, usd: l.ct * 100, loss_btc: l.loss })),
+    skipped: r.legs.filter((l) => l.ct < 0.1).length,
+    status: r.err ? "bloqueado" : "ok", error: r.err,
+  }));
+  lines.push(`escala ${side} ${n} pernas ${pyG(from)}→${pyG(to)} stop ${pyG(stop)} risco ${riskPct}%`);
+  for (const r of R) lines.push(` ${r.P.padEnd(6)} ct ${r.addCt.toFixed(1)} perda ${(r.loss).toFixed(7)} ${r.err ?? "ok"}`);
+  if (dry) { lines.push("DRY: nada enviado"); out.raw = lines.join("\n"); return out; }
+  if (!R.some((r) => !r.err)) { out.raw = lines.join("\n"); return { ...out, aborted: true, abort_msg: "ABORT: nenhuma ordem enviada" }; }
+  const O = await Promise.all(R.map(async (r) => {
+    if (r.err) return { ok: false, msg: r.err, placed: [] as string[] };
+    const placed: string[] = [];
+    let fail = "";
+    for (let i = 0; i < r.legsOk.length; i += 20) {
+      const chunk = r.legsOk.slice(i, i + 20).map((l) => ({
+        instId: INST, tdMode: "cross", side: osSide, posSide: side, ordType: "limit",
+        sz: l.ct.toFixed(1), px: pyG(l.price),
+      }));
+      const e = await req(r.P, "POST", "/api/v5/trade/batch-orders", chunk);
+      const data = Array.isArray(e.data) ? e.data : [];
+      let bad = e.code !== "0" && e.code !== "2";
+      data.forEach((d: J) => {
+        if (d && d.sCode === "0" && d.ordId) placed.push(String(d.ordId));
+        else { bad = true; fail = fail || d?.sMsg || e.msg || "perna recusada"; }
+      });
+      if (!data.length && e.code !== "0") { bad = true; fail = fail || e.msg || "batch recusado"; }
+      if (bad) {
+        if (placed.length) await cancelBatch(r.P, placed);
+        return { ok: false, msg: fail || "perna recusada", placed: [] as string[] };
+      }
+    }
+    const stopRes = await ensureCf1(r.P, side, stop);
+    if (stopRes.err) {
+      if (placed.length) await cancelBatch(r.P, placed);
+      return { ok: false, msg: stopRes.err, placed: [] as string[] };
+    }
+    return { ok: true, msg: null as string | null, placed };
+  }));
+  out.accounts = R.map((r, i) => {
+    const o = O[i];
+    const row = out.accounts[i];
+    if (r.err) return row;
+    row.status = o.ok ? "ok" : "falhou";
+    row.error = o.ok ? null : o.msg;
+    row.ordIds = o.placed;
+    lines.push(` ${r.P.padEnd(6)} ${o.ok ? "ok" : "rollback " + o.msg}`);
+    return row;
+  });
+  lines.push(`tempo ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  out.raw = lines.join("\n");
+  if (out.accounts.some((a: J) => a.status === "falhou")) { out.aborted = true; out.abort_msg = "Alguma conta não entrou na escala. O que tinha sido enviado nessa conta foi cancelado."; }
+  return out;
+}
+
+async function runAmend(kind: "limit" | "stop", prefix: string, id: string, newPx: number, dry: boolean) {
+  const acc = ACC.find(([P]) => P === prefix);
+  const out: J = { kind, account: prefix, id, newPx, dry, aborted: false, abort_msg: null };
+  if (!acc) return { ...out, aborted: true, abort_msg: "Conta desconhecida." };
+  if (!(newPx > 0)) return { ...out, aborted: true, abort_msg: "Preço inválido." };
+  if (kind === "stop") {
+    const [cs, legs, mark] = await Promise.all([conds(prefix), legsOf(prefix), markPx()]);
+    const algo = cs.find((x) => String(x.algoId) === id);
+    if (!algo) return { ...out, aborted: true, abort_msg: "Stop não encontrado." };
+    const posSide: Side = algo.posSide === "short" ? "short" : "long";
+    const leg = legs.find((l) => l.posSide === posSide);
+    const entry = leg && leg.avg > 0 ? leg.avg : mark;
+    const markOk = stopOnSide(posSide, newPx, mark);
+    const entryOk = stopOnSide(posSide, newPx, entry);
+    out.posSide = posSide;
+    out.mark = mark;
+    out.entry = entry;
+    if (!markOk || !entryOk) return { ...out, aborted: true, abort_msg: "Stop ficaria do lado errado da entrada ou do mark." };
+    if (dry) { out.raw = "DRY: nada enviado"; return out; }
+    const e = await req(prefix, "POST", "/api/v5/trade/amend-algos", {
+      instId: INST, algoId: id, newSlTriggerPx: pyG(newPx), newSlTriggerPxType: "mark",
+    });
+    const d = (e.data && e.data[0]) || {};
+    const ok = e.code === "0" && (d.sCode == null || d.sCode === "0");
+    out.ok = ok;
+    if (!ok) { out.aborted = true; out.abort_msg = d.sMsg || e.msg || "não alterou o stop"; }
+    return out;
+  }
+  if (dry) { out.raw = "DRY: nada enviado"; return out; }
+  const e = await req(prefix, "POST", "/api/v5/trade/amend-order", { instId: INST, ordId: id, newPx: pyG(newPx) });
+  const d = (e.data && e.data[0]) || {};
+  const ok = e.code === "0" && (d.sCode == null || d.sCode === "0");
+  out.ok = ok;
+  if (!ok) { out.aborted = true; out.abort_msg = d.sMsg || e.msg || "não alterou a ordem"; }
+  return out;
+}
+
+const CT_VAL = 100;
+function roundLot(ct: number): number {
+  return Math.round(ct * 10 + 1e-9) / 10;
+}
+function hedgeNumbers(eq: number, mark: number, longCt: number, shortCt: number, targetPct: number, mode: "short" | "net") {
+  const valor = eq * mark;
+  const longUsd = longCt * CT_VAL;
+  const shortUsd = shortCt * CT_VAL;
+  let hedgePct = mode === "short" ? targetPct : (longUsd + valor * (100 - targetPct) / 100) / (valor || 1) * 100;
+  let clamped = false;
+  if (hedgePct < 0) { hedgePct = 0; clamped = true; }
+  if (hedgePct > CAP) { hedgePct = CAP; clamped = true; }
+  const alvoCt = roundLot((hedgePct / 100) * valor / CT_VAL);
+  const delta = roundLot(alvoCt - shortCt);
+  const atual = valor > 0 ? shortUsd / valor * 100 : 0;
+  const net = valor > 0 ? 100 + (longUsd - shortUsd) / valor * 100 : 0;
+  return { valor, longUsd, shortUsd, hedgePct, alvoCt, delta, atual, net, clamped };
+}
+
+async function runHedge(targetPct: number, mode: "short" | "net", ordType: "market" | "limit", price: number | null, dry: boolean, only: string[] | null) {
+  const out: J = { target_pct: targetPct, mode, ordType, price: ordType === "limit" ? price : null, dry, aborted: false, abort_msg: null, accounts: [] };
+  if (!(targetPct >= 0 && targetPct <= CAP)) return { ...out, aborted: true, abort_msg: "Alvo fora do intervalo." };
+  if (ordType === "limit" && !(price != null && price > 0)) return { ...out, aborted: true, abort_msg: "Preço inválido." };
+  let mark = 0;
+  try { mark = await markPx(); } catch (e) { return { ...out, aborted: true, abort_msg: "Mark indisponível." }; }
+  if (!(mark > 0)) return { ...out, aborted: true, abort_msg: "Mark indisponível." };
+  out.mark = mark;
+  const wanted = only && only.length ? ACC.filter(([P]) => only.includes(P)) : ACC;
+  if (only && only.length && wanted.length !== only.length) return { ...out, aborted: true, abort_msg: "Conta desconhecida." };
+  const R = await Promise.all(wanted.map(async ([P, name]) => {
+    const eq = await eq_of(P);
+    const legs = await legsOf(P);
+    const longCt = legs.find((l) => l.posSide === "long")?.pos ?? 0;
+    const shortCt = legs.find((l) => l.posSide === "short")?.pos ?? 0;
+    const h = hedgeNumbers(eq, mark, longCt, shortCt, targetPct, mode);
+    let action: "vender" | "reduzir" | "nada" = "nada";
+    let err: string | null = null;
+    if (!(eq > 0)) err = "saldo zerado";
+    else if (Math.abs(h.delta) < 0.1) action = "nada";
+    else if (h.delta > 0) action = "vender";
+    else action = "reduzir";
+    return { P, name, eq, longCt, shortCt, ...h, action, err };
+  }));
+  out.accounts = R.map((r) => ({
+    prefix: r.P, name: r.name, eq: r.eq, valor_usd: r.valor, long_usd: r.longUsd, short_usd: r.shortUsd,
+    atual_pct: r.atual, alvo_pct: r.hedgePct, net_pct: r.net, alvo_ct: r.alvoCt, delta_ct: r.delta,
+    delta_usd: r.delta * CT_VAL, action: r.action, clamped: r.clamped, status: r.err ? "bloqueado" : r.action === "nada" ? "no alvo" : "ok", error: r.err,
+  }));
+  if (dry) { out.raw = "DRY: nada enviado"; return out; }
+  const O = await Promise.all(R.map(async (r) => {
+    if (r.err || r.action === "nada") return { ok: true, skipped: true, hedge_pct: r.atual };
+    const sz = Math.abs(r.delta);
+    const clOrdId = ("h" + Date.now().toString(36) + r.P + Math.random().toString(36).slice(2, 6)).replace(/[^0-9A-Za-z]/g, "").slice(0, 32);
+    const body: J = {
+      instId: INST, tdMode: "cross", clOrdId,
+      side: r.action === "vender" ? "sell" : "buy",
+      posSide: "short", ordType, sz: sz.toFixed(1),
+    };
+    if (r.action === "reduzir") body.reduceOnly = true;
+    if (ordType === "limit") body.px = pyG(price!);
+    const e = await req(r.P, "POST", "/api/v5/trade/order", body);
+    const d = (e.data && e.data[0]) || {};
+    const ok = e.code === "0" && d.sCode === "0";
+    if (ok && r.alvoCt === 0 && r.shortCt >= 0.1) {
+      const mine = algosFor(await conds(r.P), "short").filter((x) => x.algoId).map((x) => ({ algoId: x.algoId, instId: INST }));
+      if (mine.length) await req(r.P, "POST", "/api/v5/trade/cancel-algos", mine);
+    }
+    let hedgePct = r.atual;
+    try {
+      const legs = await legsOf(r.P);
+      const sc = legs.find((l) => l.posSide === "short")?.pos ?? 0;
+      const valor = r.eq * mark;
+      hedgePct = valor > 0 ? (sc * CT_VAL) / valor * 100 : 0;
+    } catch { /* leitura depois do envio */ }
+    return { ok, skipped: false, hedge_pct: hedgePct, sMsg: d.sMsg || e.msg || null };
+  }));
+  out.accounts = R.map((r, i) => {
+    const base = out.accounts[i];
+    const o = O[i];
+    base.hedge_pct = o.hedge_pct;
+    if (!o.skipped && !o.ok) { base.status = "falhou"; base.error = o.sMsg || "ordem recusada"; }
+    return base;
+  });
+  if (out.accounts.some((a: J) => a.status === "falhou")) { out.aborted = true; out.abort_msg = "Alguma conta não ajustou o hedge."; }
+  return out;
+}
+
 // ---------- sessão ----------
 async function issueToken(): Promise<string> {
   const exp = Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400;
@@ -388,7 +807,7 @@ function cors(req: Request): Record<string, string> {
 }
 const num = (x: unknown) => { const n = parseFloat(String(x ?? "").replace(",", ".")); return Number.isFinite(n) ? n : null; };
 
-Deno.serve(async (req) => {
+if (import.meta.main) Deno.serve(async (req) => {
   const c = cors(req);
   const json = (code: number, obj: unknown) => new Response(JSON.stringify(obj), { status: code, headers: { ...c, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: c });
@@ -437,10 +856,6 @@ Deno.serve(async (req) => {
       try { body = await req.json(); } catch { return json(400, { ok: false, error: "Pedido inválido." }); }
       const side = String(body.side ?? "").trim().toLowerCase();
       if (side !== "long" && side !== "short") return json(400, { ok: false, error: "Lado inválido: use long ou short." });
-      const stop = num(body.stop);
-      if (stop == null || stop <= 0) return json(400, { ok: false, error: "Stop inválido." });
-      const risk = num(body.risk);
-      if (risk == null || !(risk > 0 && risk <= 5)) return json(400, { ok: false, error: "Risco inválido: use um valor maior que 0 e no máximo 5%." });
       const rawType = String(body.ordType ?? "market").trim().toLowerCase();
       const ordType = rawType === "" ? "market" : rawType;
       if (ordType !== "market" && ordType !== "limit") return json(400, { ok: false, error: "Tipo inválido: use market ou limit." });
@@ -450,11 +865,88 @@ Deno.serve(async (req) => {
         if (price == null || !(price > 0)) return json(400, { ok: false, error: "Preço inválido." });
       }
       const dry = body.dry === true;
+      const reduce = body.reduce === true;
       if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
       orderBusy = true;
       try {
+        if (reduce) {
+          const pct = num(body.pct);
+          if (pct == null || !(pct >= 1 && pct <= 100)) return json(400, { ok: false, error: "Percentual inválido: use um valor de 1 a 100." });
+          const r = await runReduce(side, pct, ordType, price, dry);
+          console.log(JSON.stringify({ ev: "reduce", ip, side, pct, dry, ordType, price, aborted: r.aborted, acc: (r.accounts || []).map((a: J) => `${a.name}=${a.status}`) }));
+          return json(200, { ok: !r.aborted, ...r });
+        }
+        const stop = num(body.stop);
+        if (stop == null || stop <= 0) return json(400, { ok: false, error: "Stop inválido." });
+        const risk = num(body.risk);
+        if (risk == null || !(risk > 0 && risk <= 5)) return json(400, { ok: false, error: "Risco inválido: use um valor maior que 0 e no máximo 5%." });
         const r = await runOrder(side, stop, risk, dry, ordType, price);
         console.log(JSON.stringify({ ev: "order", ip, side, stop, risk, dry, ordType, price, aborted: r.aborted, acc: (r.accounts || []).map((a: J) => `${a.name}=${Math.round(a.size_usd ?? 0)}${a.error ? "(" + a.error + ")" : ""}`) }));
+        return json(200, { ok: !r.aborted, ...r });
+      } finally { orderBusy = false; }
+    }
+    if (path === "/scale" && req.method === "POST") {
+      let body: J = {};
+      try { body = await req.json(); } catch { return json(400, { ok: false, error: "Pedido inválido." }); }
+      const side = String(body.side ?? "").trim().toLowerCase();
+      if (side !== "long" && side !== "short") return json(400, { ok: false, error: "Lado inválido: use long ou short." });
+      const stop = num(body.stop);
+      if (stop == null || stop <= 0) return json(400, { ok: false, error: "Stop inválido." });
+      const risk = num(body.risk);
+      if (risk == null || !(risk > 0 && risk <= 5)) return json(400, { ok: false, error: "Risco inválido: use um valor maior que 0 e no máximo 5%." });
+      const from = num(body.from), to = num(body.to);
+      const n = num(body.n);
+      if (from == null || to == null || n == null) return json(400, { ok: false, error: "Preencha os dois preços e a quantidade." });
+      const dry = body.dry === true;
+      if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
+      orderBusy = true;
+      try {
+        const r = await runScale(side, stop, risk, from, to, Math.round(n), body.priceSkew === true, body.sizeSkew === true, dry);
+        console.log(JSON.stringify({ ev: "scale", ip, side, n, dry, aborted: r.aborted, acc: (r.accounts || []).map((a: J) => `${a.name}=${a.status}`) }));
+        return json(200, { ok: !r.aborted, ...r });
+      } finally { orderBusy = false; }
+    }
+    if (path === "/amend" && req.method === "POST") {
+      let body: J = {};
+      try { body = await req.json(); } catch { return json(400, { ok: false, error: "Pedido inválido." }); }
+      const kind = String(body.kind ?? "").trim().toLowerCase();
+      if (kind !== "limit" && kind !== "stop") return json(400, { ok: false, error: "Tipo inválido: use limit ou stop." });
+      const prefix = String(body.account ?? body.prefix ?? "").trim();
+      const id = String(kind === "limit" ? (body.ordId ?? "") : (body.algoId ?? "")).trim();
+      if (!id) return json(400, { ok: false, error: "Falta o id da ordem." });
+      const newPx = num(body.newPx);
+      if (newPx == null) return json(400, { ok: false, error: "Preço inválido." });
+      const dry = body.dry === true;
+      if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
+      orderBusy = true;
+      try {
+        const r = await runAmend(kind, prefix, id, newPx, dry);
+        console.log(JSON.stringify({ ev: "amend", ip, kind, prefix, dry, aborted: r.aborted }));
+        return json(200, { ok: !r.aborted, ...r });
+      } finally { orderBusy = false; }
+    }
+    if (path === "/hedge" && req.method === "POST") {
+      let body: J = {};
+      try { body = await req.json(); } catch { return json(400, { ok: false, error: "Pedido inválido." }); }
+      const target = num(body.target_pct);
+      if (target == null) return json(400, { ok: false, error: "Alvo inválido." });
+      const mode = String(body.mode ?? "short").trim().toLowerCase();
+      if (mode !== "short" && mode !== "net") return json(400, { ok: false, error: "Modo inválido: use short ou net." });
+      const rawType = String(body.ordType ?? "market").trim().toLowerCase();
+      const ordType = rawType === "" ? "market" : rawType;
+      if (ordType !== "market" && ordType !== "limit") return json(400, { ok: false, error: "Tipo inválido: use market ou limit." });
+      let price: number | null = null;
+      if (ordType === "limit") {
+        price = num(body.price);
+        if (price == null || !(price > 0)) return json(400, { ok: false, error: "Preço inválido." });
+      }
+      const only = Array.isArray(body.accounts) ? body.accounts.map((x: unknown) => String(x)) : null;
+      const dry = body.dry === true;
+      if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
+      orderBusy = true;
+      try {
+        const r = await runHedge(target, mode, ordType, price, dry, only);
+        console.log(JSON.stringify({ ev: "hedge", ip, target, mode, dry, ordType, aborted: r.aborted }));
         return json(200, { ok: !r.aborted, ...r });
       } finally { orderBusy = false; }
     }
@@ -464,3 +956,9 @@ Deno.serve(async (req) => {
     return json(502, { ok: false, error: "Falha falando com a OKX: " + String((e as Error).message || e).slice(0, 160) });
   }
 });
+
+export const __test = {
+  setReq(fn: typeof req) { req = fn; },
+  reset() { orderBusy = false; },
+  ctFromRisk, lossBtc, scalePrices, hedgeNumbers, runOrder, runReduce, runScale, runAmend, runHedge, fetchPositions, ACC,
+};
