@@ -65,6 +65,28 @@ html.in-app .top-pnl,body.in-app .top-pnl{display:block}
   scroll-snap-align:center;background:transparent;border:0;border-bottom:2px solid transparent;
   border-radius:0;color:var(--muted);font-size:13px;font-weight:650;margin-bottom:-1px;
 }
+.accts{
+  display:flex;flex-wrap:nowrap;gap:0;margin:0;min-width:0;max-width:100%;
+  overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;
+  border-bottom:1px solid var(--line);background:var(--bg);
+}
+.accts::-webkit-scrollbar{display:none;height:0}
+#accts .chip{
+  flex:0 0 auto;min-width:44px;min-height:44px;padding:0 12px;
+  border:0;border-bottom:2px solid transparent;border-radius:0;margin-bottom:-1px;
+  background:transparent;color:var(--muted);font-size:13px;font-weight:650;white-space:nowrap;
+}
+#accts .chip.on,
+html[data-acct="todas"] #accts .chip[data-acct="todas"],
+html[data-acct="pupo"] #accts .chip[data-acct="pupo"],
+html[data-acct="pai"] #accts .chip[data-acct="pai"],
+html[data-acct="mãe"] #accts .chip[data-acct="mãe"],
+html[data-acct="tcheco"] #accts .chip[data-acct="tcheco"]{color:var(--text);border-bottom-color:var(--accent)}
+.h-row{padding:7px 0;border-top:1px solid var(--line);font-size:13px;font-variant-numeric:tabular-nums}
+.h-row b{display:block;font-weight:650}
+.h-row.h-tot{border-top-color:#414a56;font-weight:700}
+.all-note{margin:8px 0 0;font-size:12px;color:var(--muted)}
 .tf.on,
 html[data-tf="1m"] .tf[data-bar="1m"],
 html[data-tf="3m"] .tf[data-bar="3m"],
@@ -226,6 +248,8 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   }
   html.in-app .tfs{background:transparent;border-bottom:0;padding:0 4px}
   html.in-app .tf{min-width:32px;min-height:26px;padding:0 6px;font-size:11px}
+  html.in-app .accts{background:transparent;border-bottom:0;padding:0 4px}
+  html.in-app #accts .chip{min-width:0;min-height:26px;padding:0 8px;font-size:11px}
   html.in-app .chart-wrap{grid-area:chart;min-width:0;min-height:0;background:#0e1114;border:1px solid #1c2228;border-top:0}
   html.in-app #chart{height:100%;min-height:0;border:0;border-radius:0;background:#0e1114}
   html.in-app #desk-order{grid-area:order;min-width:0;min-height:0}
@@ -253,7 +277,8 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   #desk-order input:focus{border-color:#0ecb81;outline:none}
   .d-size{font-size:20px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
   .d-size-rows{margin-top:4px;font-size:11px;color:#9aa6b2;font-variant-numeric:tabular-nums}
-  .d-size-rows div{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
+  #d-size-rows > div{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
+  #d-hedge-table .h-row{color:#d7dde3;border-top-color:#1c2228}
   .d-row{display:flex;gap:4px;align-items:center}
   .d-row input{flex:1;min-width:0}
   .d-row button,.d-mini{height:30px;padding:0 8px;background:#101418;color:#d7dde3;border:1px solid #2a323a;border-radius:3px;font-size:12px;font-weight:700}
@@ -303,6 +328,10 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   var bar = "1m";
   try { var v = localStorage.getItem("painel_tf"); if (v && tf.indexOf(v) !== -1) bar = v; } catch (e) {}
   document.documentElement.setAttribute("data-tf", bar);
+  var accts = ["todas", "pupo", "pai", "mãe", "tcheco"];
+  var acct = "todas";
+  try { var saved = localStorage.getItem("painel_acct"); if (saved && accts.indexOf(saved) !== -1) acct = saved; } catch (e) {}
+  document.documentElement.setAttribute("data-acct", acct);
 })();
 </script>
 </head>
@@ -337,6 +366,13 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   <button type="button" class="tf" data-bar="1W">1W</button>
   <button type="button" class="tf" data-bar="1M">1M</button>
 </div>
+<div class="accts" id="accts">
+  <button type="button" class="chip" data-acct="todas">Todas</button>
+  <button type="button" class="chip" data-acct="pupo">pupo</button>
+  <button type="button" class="chip" data-acct="pai">pai</button>
+  <button type="button" class="chip" data-acct="mãe">mãe</button>
+  <button type="button" class="chip" data-acct="tcheco">tcheco</button>
+</div>
 </div>
 <div class="chart-wrap" id="chart-wrap">
 <div id="chart"><div id="chart-msg">Carregando gráfico…</div></div>
@@ -356,6 +392,7 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
       <option value="limit">LIMITE · ORDEM</option>
       <option value="market">MERCADO</option>
       <option value="scale">LIMITE · ESCALA</option>
+      <option value="hedge">HEDGE</option>
     </select>
     <div class="d-tabs" id="d-tabs">
       <button type="button" class="d-tab on" data-tab="post">Entrar</button>
@@ -363,6 +400,13 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
       <button type="button" class="d-tab" data-tab="tpsl">Stop</button>
     </div>
     <div id="d-post">
+      <button type="button" class="d-tog" id="d-reduce-toggle" aria-pressed="false" style="width:100%;margin-top:8px">Reduzir</button>
+      <div id="d-reduce-box" class="hidden">
+        <div class="d-k">% da posição</div>
+        <input id="d-reduce-pct" type="text" inputmode="decimal" value="50" aria-label="Percentual da perna">
+        <p class="d-note" id="d-reduce-which">Reduz a perna long.</p>
+      </div>
+      <div id="d-open-box">
       <div class="d-k"><span>Risco %</span><button type="button" id="d-max">Máx. 5%</button></div>
       <input id="d-risk" type="text" inputmode="decimal" value="1" aria-label="Risco %">
       <input id="d-risk-range" class="d-range" type="range" min="0.1" max="5" step="0.1" value="1" aria-label="Risco">
@@ -395,11 +439,38 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
         <div id="d-bars" class="d-bars"></div>
         <div class="d-avg">Média <b id="d-avg">—</b></div>
       </div>
-      <div class="d-sides">
+      </div>
+      <div id="d-hedge" class="hidden">
+        <div class="d-k" id="d-hedge-k">Quanto % vendido</div>
+        <div class="d-togs" id="d-hedge-quick">
+          <button type="button" class="d-tog" data-h="0">0</button>
+          <button type="button" class="d-tog" data-h="25">25</button>
+          <button type="button" class="d-tog on" data-h="50">50</button>
+          <button type="button" class="d-tog" data-h="75">75</button>
+          <button type="button" class="d-tog" data-h="100">100</button>
+        </div>
+        <input id="d-hedge-pct" type="text" inputmode="decimal" value="50" aria-label="Alvo do hedge">
+        <div class="d-togs" style="margin-top:8px">
+          <button type="button" class="d-tog on" id="d-mode-short">% vendido</button>
+          <button type="button" class="d-tog" id="d-mode-net">% comprado</button>
+        </div>
+        <div class="d-togs" style="margin-top:8px">
+          <button type="button" class="d-tog on" id="d-hedge-mkt">Mercado</button>
+          <button type="button" class="d-tog" id="d-hedge-lmt">Limite</button>
+        </div>
+        <div id="d-hedge-px" class="hidden">
+          <div class="d-k">Preço</div>
+          <input id="d-hedge-price" type="text" inputmode="decimal" placeholder="64000" aria-label="Preço do hedge">
+        </div>
+        <div id="d-hedge-table" class="d-size-rows"></div>
+        <button type="button" id="d-hedge-go" style="width:100%;margin-top:8px;min-height:46px;border:0;border-radius:3px;background:#f6465d;color:#fff;font-weight:800">Confirmar hedge</button>
+        <p class="d-note">Não mexe na long. Os stops ficam como estão, só saem se o short zerar. A ordem vai para as 4 contas.</p>
+      </div>
+      <div class="d-sides" id="d-sides">
         <button type="button" id="d-long">LONG</button>
         <button type="button" id="d-short">SHORT</button>
       </div>
-      <p class="d-note">O tamanho sai do risco e da distância até o stop, em cada conta. A ordem vai para as 4 contas.</p>
+      <p class="d-note" id="d-size-note">O tamanho sai do risco e da distância até o stop, em cada conta. A ordem vai para as 4 contas.</p>
     </div>
     <div id="d-reduce" class="hidden">
       <div class="d-k">Quanto fechar</div>
@@ -479,19 +550,56 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
       <button type="button" class="tab" id="tab-ajustar" aria-pressed="false">Ajustar</button>
     </div>
     <div id="pane-entrada">
-      <div class="sides">
+      <div class="sides" id="m-sides">
         <button type="button" class="side long on" id="btn-long" aria-pressed="true">LONG</button>
         <button type="button" class="side short" id="btn-short" aria-pressed="false">SHORT</button>
       </div>
       <div class="otypes">
         <button type="button" class="otype on" id="btn-market" aria-pressed="true">Mercado</button>
         <button type="button" class="otype" id="btn-limit" aria-pressed="false">Limite</button>
+        <button type="button" class="otype" id="btn-scale" aria-pressed="false">Escala</button>
+        <button type="button" class="otype" id="btn-hedge" aria-pressed="false">Hedge</button>
       </div>
+      <button type="button" class="otype" id="btn-reduce" aria-pressed="false" style="width:100%;margin-top:8px">Reduzir</button>
       <div id="price-row" class="price-row hidden">
         <div><label for="price">Preço</label><input id="price" type="text" inputmode="decimal" autocomplete="off" placeholder="64000" enterkeyhint="next"></div>
         <button type="button" class="use-mark" id="use-mark">Usar mark</button>
       </div>
-      <div class="row">
+      <div id="m-reduce" class="hidden">
+        <label for="m-reduce-pct">% da posição</label>
+        <input id="m-reduce-pct" type="text" inputmode="decimal" autocomplete="off" value="50">
+        <p class="all-note" id="m-reduce-which">Reduz a perna long.</p>
+      </div>
+      <div id="m-scale" class="hidden">
+        <div class="row">
+          <div><label for="m-from">De</label><input id="m-from" type="text" inputmode="decimal" autocomplete="off" placeholder="63000"></div>
+          <div><label for="m-to">Até</label><input id="m-to" type="text" inputmode="decimal" autocomplete="off" placeholder="65000"></div>
+        </div>
+        <label for="m-orders">Ordens</label>
+        <input id="m-orders" type="text" inputmode="numeric" autocomplete="off" value="8">
+      </div>
+      <div id="m-hedge" class="hidden">
+        <div class="pcts" id="m-hedge-quick">
+          <button type="button" class="pct" data-h="0">0%</button>
+          <button type="button" class="pct" data-h="25">25%</button>
+          <button type="button" class="pct on" data-h="50">50%</button>
+          <button type="button" class="pct" data-h="75">75%</button>
+          <button type="button" class="pct" data-h="100">100%</button>
+        </div>
+        <label for="m-hedge-pct" id="m-hedge-label">Quanto % vendido</label>
+        <input id="m-hedge-pct" type="text" inputmode="decimal" autocomplete="off" value="50">
+        <div class="otypes">
+          <button type="button" class="otype on" id="m-mode-short">% vendido</button>
+          <button type="button" class="otype" id="m-mode-net">% comprado</button>
+        </div>
+        <div id="m-hedge-table"></div>
+        <div class="otypes">
+          <button type="button" class="otype on" id="m-hedge-mkt">Mercado</button>
+          <button type="button" class="otype" id="m-hedge-lmt">Limite</button>
+        </div>
+        <p class="all-note">Não mexe na long. Stops só saem se o short zerar.</p>
+      </div>
+      <div class="row" id="entry-risk">
         <div><label for="stop">Stop</label><input id="stop" type="text" inputmode="decimal" autocomplete="off" placeholder="63800" enterkeyhint="next"></div>
         <div><label for="risk">Risco %</label><input id="risk" type="text" inputmode="decimal" autocomplete="off" value="1" enterkeyhint="go"></div>
       </div>
@@ -502,6 +610,7 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
       <div class="action-dock">
         <div id="banner-err" class="err hidden"></div>
         <div id="banner-warn" class="warn hidden"></div>
+        <p class="all-note">A ordem vai para as 4 contas.</p>
         <button type="button" class="send" id="send">LONG A MERCADO</button>
       </div>
     </div>
@@ -556,7 +665,7 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
 <div id="scale-sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="scale-title">
   <div class="sheet-card">
     <h2 id="scale-title">Escala</h2>
-    <p class="d-note" id="scale-note">Nada é enviado agora. O servidor ainda não aceita uma escala.</p>
+    <p class="d-note" id="scale-note">Confirmar manda as ordens limite para as 4 contas.</p>
     <ul id="scale-list" class="amend-list"></ul>
     <div id="scale-msg" class="err hidden"></div>
     <div class="sheet-actions">
@@ -605,7 +714,10 @@ function snapPx(p) {
 }
 function isDesk() { return window.matchMedia("(min-width: 1024px)").matches; }
 let volSeries = null, lastCandles = [];
-let deskKind = "limit", deskTab = "post", deskFilter = "todas", priceEven = true, sizeEven = true, scaleOpen = false;
+let deskKind = "market", deskTab = "post", priceEven = true, sizeEven = true, scaleOpen = false;
+let reducing = false, hedgeMode = "short", hedgeOrd = "market";
+let deskFilter = "todas";
+try { const savedAcct = localStorage.getItem("painel_acct"); if (["todas","pupo","pai","mãe","tcheco"].includes(savedAcct)) deskFilter = savedAcct; } catch (e) {}
 const toT = (ms) => Math.floor(Number(ms) / 1000) - TZ;
 const toBar = (a) => ({ time: toT(a[0]), open: +a[1], high: +a[2], low: +a[3], close: +a[4], volume: +a[5] || 0 });
 function volPoint(d) {
@@ -791,26 +903,55 @@ function accountOrders(a) {
 }
 function visibleAccounts(accounts) {
   const list = accounts || [];
-  if (!isDesk() || deskFilter === "todas") return list;
+  if (deskFilter === "todas") return list;
   return list.filter((a) => a.name === deskFilter);
+}
+function fmtK(usd) {
+  const n = Math.abs(usd);
+  if (n >= 1000) return (n / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) + "k";
+  return Math.round(n).toLocaleString("pt-BR");
+}
+function clusterClose(items) {
+  const sorted = items.slice().sort((a, b) => a.price - b.price);
+  const groups = [];
+  for (const it of sorted) {
+    const g = groups[groups.length - 1];
+    if (g && Math.abs(it.price - g.anchor) / g.anchor < 0.0005) g.items.push(it);
+    else groups.push({ anchor: it.price, items: [it] });
+  }
+  return groups.map((g) => {
+    const usd = g.items.reduce((s, x) => s + (x.usd || 0), 0);
+    const price = usd > 0 ? g.items.reduce((s, x) => s + x.price * (x.usd || 0), 0) / usd : g.items.reduce((s, x) => s + x.price, 0) / g.items.length;
+    return { price, items: g.items, usd };
+  });
+}
+function entryMarks(accounts) {
+  const marks = [];
+  for (const a of visibleAccounts(accounts)) {
+    if (Array.isArray(a.legs) && a.legs.length) {
+      for (const leg of a.legs) {
+        const ct = Number(leg.ct ?? leg.pos) || 0;
+        if (!(ct > 0) || !(Number(leg.avg) > 0)) continue;
+        marks.push({ account: a.name, price: Number(leg.avg), long: leg.posSide !== "short", usd: Number(leg.usd) || ct * 100 });
+      }
+    } else if (a.net && a.avg) {
+      marks.push({ account: a.name, price: Number(a.avg), long: a.net > 0, usd: Math.abs(a.net) * 100 });
+    }
+  }
+  return marks;
 }
 function drawPositionLines(accounts) {
   if (!series) return;
   posLines.forEach(dropLine); posLines = [];
-  const groups = new Map();
-  for (const a of visibleAccounts(accounts)) {
-    if (!a.net || !a.avg) continue;
-    const key = (a.net > 0 ? "L" : "S") + ":" + Math.round(a.avg * 10);
-    let g = groups.get(key);
-    if (!g) { g = { price: a.avg, long: a.net > 0, usd: 0 }; groups.set(key, g); }
-    g.usd += Math.abs(a.net) * 100;
-  }
-  for (const g of groups.values()) {
-    const title = isDesk()
-      ? (g.long ? "CRS/M LONG " : "CRS/M SHORT ") + Math.round(g.usd).toLocaleString("pt-BR")
-      : "entrada";
+  for (const g of clusterClose(entryMarks(accounts))) {
+    const names = [...new Set(g.items.map((x) => x.account))];
+    const long = g.items.some((x) => x.long) && !g.items.some((x) => !x.long) ? true : g.items[0].long;
+    let title;
+    if (names.length > 1) title = "entrada " + names.join("+") + " " + fmtPx(g.price);
+    else if (isDesk()) title = names[0] + (long ? " CRS/M LONG" : " CRS/M SHORT");
+    else title = names[0] + (long ? " long " : " short ") + fmtK(g.usd);
     posLines.push(series.createPriceLine({
-      price: g.price, color: g.long ? "#22c55e" : "#ef4444",
+      price: g.price, color: long ? "#22c55e" : "#ef4444",
       lineWidth: isDesk() ? 2 : 1, lineStyle: 0, axisLabelVisible: true, title,
     }));
   }
@@ -819,26 +960,30 @@ function drawOrderLines(accounts) {
   if (!series || drag || confirmState) return;
   orderGroups.forEach((g) => dropLine(g.line));
   orderGroups = [];
-  const buckets = new Map();
+  const flat = [];
   for (const a of visibleAccounts(accounts)) {
     for (const o of accountOrders(a)) {
-      const price = snapPx(o.price);
-      if (!(price > 0)) continue;
-      const key = o.kind + "@" + price;
-      if (!buckets.has(key)) buckets.set(key, { key, kind: o.kind, price, orders: [] });
-      buckets.get(key).orders.push(o);
+      if (!(o.price > 0)) continue;
+      const leg = (a.legs || []).find((l) => l.posSide === o.posSide);
+      flat.push({ ...o, usd: Number(o.sz) > 0 ? Number(o.sz) * 100 : (leg ? Number(leg.usd) || Number(leg.ct) * 100 : 1) });
     }
   }
-  for (const g of buckets.values()) {
-    g.line = series.createPriceLine({
-      price: g.price,
-      color: g.kind === "stop" ? (isDesk() ? "#f6465d" : STOP_COLOR) : (isDesk() ? "#d7dde3" : LIMIT_COLOR),
-      lineWidth: 1,
-      lineStyle: g.kind === "stop" ? 2 : 0,
-      axisLabelVisible: true,
-      title: kindTitle(g.kind),
-    });
-    orderGroups.push(g);
+  for (const kind of ["stop", "limit"]) {
+    for (const g of clusterClose(flat.filter((o) => o.kind === kind))) {
+      const names = [...new Set(g.items.map((x) => x.account))];
+      const title = names.length > 1
+        ? (kind === "stop" ? "stop " : "limite ") + names.join("+") + " " + fmtPx(g.price)
+        : (kind === "stop" ? "stop " : "limite ") + names[0];
+      const line = series.createPriceLine({
+        price: g.price,
+        color: kind === "stop" ? (isDesk() ? "#f6465d" : STOP_COLOR) : (isDesk() ? "#d7dde3" : LIMIT_COLOR),
+        lineWidth: 1,
+        lineStyle: kind === "stop" ? 2 : 0,
+        axisLabelVisible: true,
+        title,
+      });
+      orderGroups.push({ key: kind, kind, price: g.price, orders: g.items, line, title });
+    }
   }
 }
 function addPreview(price, title, opt) {
@@ -886,7 +1031,7 @@ function drawDeskPreviews() {
     }
     return;
   }
-  if (stop > 0 && !entradaPreviewHold) addPreview(stop, "prévia stop", { color: "#ffb0be", lineStyle: 3 });
+  if (stop > 0 && !entradaPreviewHold && deskKind !== "hedge") addPreview(stop, "prévia stop", { color: "#ffb0be", lineStyle: 3 });
   if (deskTab !== "post" || entradaPreviewHold) return;
   if (deskKind === "scale") {
     const plan = scalePlan();
@@ -901,6 +1046,10 @@ function drawDeskPreviews() {
   if (deskKind === "limit") {
     const p = parseNum($("price").value);
     if (p > 0) addPreview(p, "LIMITE", { color: col, lineStyle: 1 });
+  }
+  if (deskKind === "hedge" && hedgeOrd === "limit") {
+    const p = parseNum(($("d-hedge-price") && $("d-hedge-price").value) || ($("price") && $("price").value));
+    if (p > 0) addPreview(p, "hedge", { color: "#f6465d", lineStyle: 1 });
   }
 }
 function redrawChartLines() {
@@ -918,7 +1067,7 @@ function styleOrderLine(group, price) {
       lineWidth: 1,
       lineStyle: group.kind === "stop" ? 2 : 0,
       axisLabelVisible: true,
-      title: kindTitle(group.kind),
+      title: group.title || kindTitle(group.kind),
     });
   } catch (e) {}
 }
@@ -1062,10 +1211,13 @@ function closeAmendSheet() {
 // chamando a OKX: limite POST /api/v5/trade/amend-order { instId, ordId, newPx };
 // stop POST /api/v5/trade/amend-algos { instId, algoId, newSlTriggerPx }.
 async function amendOrder(order) {
-  void order;
-  const msg = "Ainda não suportado pelo servidor";
-  if ($("amend-msg")) { $("amend-msg").textContent = msg; show($("amend-msg"), true); }
-  return { ok: false, error: msg };
+  const id = order.kind === "stop" ? order.algoId : order.ordId;
+  if (!order.prefix || !id) return { ok: false, error: "Ordem sem id. Atualize as posições." };
+  const body = { kind: order.kind === "stop" ? "stop" : "limit", account: order.prefix, newPx: order.newPrice };
+  if (order.kind === "stop") body.algoId = id; else body.ordId = id;
+  const { res, data } = await api("/amend", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok || data.aborted || data.ok === false) return { ok: false, error: data.abort_msg || data.error || "Não alterou a ordem." };
+  return { ok: true };
 }
 async function submitAmend() {
   if (!confirmState || confirmState.busy) return;
@@ -1085,6 +1237,7 @@ async function submitAmend() {
     show($("amend-msg"), true);
     styleOrderLine(state.group, state.origin);
     state.busy = false;
+    $("amend-ok").disabled = false;
     return;
   }
   confirmState = null;
@@ -1124,6 +1277,7 @@ function setSide(n) {
   $("send").classList.toggle("short", n === "short");
   updateSendLabel();
   drawPreviews();
+  paintKind();
 }
 $("btn-long").onclick = () => setSide("long");
 $("btn-short").onclick = () => setSide("short");
@@ -1143,6 +1297,14 @@ function setOrdType(t) {
 }
 function updateSendLabel() {
   if (sending) return;
+  if (deskKind === "hedge") { $("send").textContent = "CONFIRMAR HEDGE"; $("send").classList.add("short"); return; }
+  if (deskKind === "scale") { $("send").textContent = side === "short" ? "ESCALA SHORT" : "ESCALA LONG"; $("send").classList.toggle("short", side === "short"); return; }
+  if (reducing) {
+    const pct = parseNum(($("m-reduce-pct") && $("m-reduce-pct").value) || ($("d-reduce-pct") && $("d-reduce-pct").value)) || 50;
+    $("send").textContent = `REDUZIR ${side === "short" ? "SHORT" : "LONG"} ${pct}%`;
+    $("send").classList.toggle("short", side === "short");
+    return;
+  }
   const label = side === "short" ? "SHORT" : "LONG";
   if (ordType === "limit") {
     const p = parseNum($("price").value);
@@ -1151,8 +1313,11 @@ function updateSendLabel() {
     $("send").textContent = `${label} A MERCADO`;
   }
 }
-$("btn-market").onclick = () => setOrdType("market");
-$("btn-limit").onclick = () => setOrdType("limit");
+$("btn-market").onclick = () => setDeskKind("market");
+$("btn-limit").onclick = () => setDeskKind("limit");
+$("btn-scale").onclick = () => setDeskKind("scale");
+$("btn-hedge").onclick = () => setDeskKind("hedge");
+$("btn-reduce").onclick = () => setReducing(!reducing);
 $("use-mark").onclick = () => { fillMark(); entradaPreviewHold = false; updateSendLabel(); drawPreviews(); };
 $("price").addEventListener("input", () => { entradaPreviewHold = false; updateSendLabel(); drawPreviews(); });
 
@@ -1180,15 +1345,31 @@ function renderHeadPnl(v) {
   el.className = "pnl-head " + (v >= 0 ? "pnl-up" : "pnl-dn");
   el.textContent = (v >= 0 ? "+" : "−") + fmtUsd(Math.abs(v));
 }
+function legPnlUsd(leg) {
+  const m = lastPx;
+  const ct = Number(leg.ct ?? leg.pos) || 0;
+  if (!ct || !leg.avg || !m) return null;
+  const sign = leg.posSide === "short" ? -1 : 1;
+  return sign * ct * 100 * (1 / leg.avg - 1 / m) * m;
+}
 function renderPosTable(id, accounts) {
   let tot = 0, any = false;
-  const rows = (accounts || []).map((a) => {
-    const sideCls = a.side === "long" || a.side === "short" ? a.side : "";
-    const pos = !a.net ? "zerada" : `<span class="sd ${sideCls}">${esc(a.side)}</span> ${fmtUsd(Math.abs(a.net) * 100)}`;
+  const rows = (accounts || []).flatMap((a) => {
     const err = a.error ? `<div class="blocked">${esc(a.error)}</div>` : "";
-    const st = (a.stops || []).length ? a.stops.map(fmtPx).join(" / ") : "—";
-    const p = pnlUsd(a); if (p != null) { tot += p; any = true; }
-    return `<article class="acct${a.net ? "" : " flat"}"><div class="acct-name">${esc(a.name)}${err}</div><div class="acct-pnl">${fmtPnl(p)}</div><div class="acct-pos">${pos}</div><div class="acct-avg"><span class="k">Média</span><span class="num">${a.net ? fmtPx(a.avg) : "—"}</span></div><div class="acct-stop"><span class="k">Stop</span><span class="num">${a.net ? st : "—"}</span></div></article>`;
+    const legs = Array.isArray(a.legs) && a.legs.length ? a.legs : null;
+    if (!legs) {
+      const sideCls = a.side === "long" || a.side === "short" ? a.side : "";
+      const pos = !a.net ? "zerada" : `<span class="sd ${sideCls}">${esc(a.side)}</span> ${fmtUsd(Math.abs(a.net) * 100)}`;
+      const st = (a.stops || []).length ? a.stops.map(fmtPx).join(" / ") : "—";
+      const p = pnlUsd(a); if (p != null) { tot += p; any = true; }
+      return [`<article class="acct${a.net ? "" : " flat"}"><div class="acct-name">${esc(a.name)}${err}</div><div class="acct-pnl">${fmtPnl(p)}</div><div class="acct-pos">${pos}</div><div class="acct-avg"><span class="k">Média</span><span class="num">${a.net ? fmtPx(a.avg) : "—"}</span></div><div class="acct-stop"><span class="k">Stop</span><span class="num">${a.net ? st : "—"}</span></div></article>`];
+    }
+    return legs.map((leg, i) => {
+      const p = legPnlUsd(leg); if (p != null) { tot += p; any = true; }
+      const st = (leg.stops || []).map((s) => fmtPx(s.slTriggerPx ?? s.price ?? s)).filter((x) => x !== "—").join(" / ") || "—";
+      const ct = Number(leg.ct ?? leg.pos) || 0;
+      return `<article class="acct"><div class="acct-name">${esc(a.name)}${i === 0 ? err : ""}</div><div class="acct-pnl">${fmtPnl(p)}</div><div class="acct-pos"><span class="sd ${leg.posSide === "short" ? "short" : "long"}">${esc(leg.posSide)}</span> ${fmtUsd(ct * 100)}</div><div class="acct-avg"><span class="k">Média</span><span class="num">${fmtPx(leg.avg)}</span></div><div class="acct-stop"><span class="k">Stop</span><span class="num">${st}</span></div></article>`;
+    });
   });
   if (any) rows.push(`<article class="acct tot"><div class="acct-name">Total</div><div class="acct-pnl">${fmtPnl(tot)}</div><div class="acct-pos"></div><div class="acct-avg"></div><div class="acct-stop"></div></article>`);
   $(id).innerHTML = rows.join("") || '<div class="acct-empty muted">Sem dados</div>';
@@ -1231,6 +1412,9 @@ function renderResult(data) {
 $("send").onclick = async () => {
   if (sending) return;
   show($("banner-err"), false); show($("banner-warn"), false);
+  if (deskKind === "hedge") { openHedgeSheet(); return; }
+  if (deskKind === "scale") { openScaleSheet(); return; }
+  if (reducing) return sendReduce();
   const stop = parseNum($("stop").value), risk = parseNum($("risk").value);
   const price = parseNum($("price").value);
   if (stop == null || stop <= 0) { $("banner-err").textContent = "Preenche um stop válido."; show($("banner-err"), true); return; }
@@ -1401,9 +1585,12 @@ function sizesAt(entry) {
   return { rows, totalUsd, totalCt, any, entry, stop, risk };
 }
 function scalePlan() {
-  const from = parseNum($("d-from") && $("d-from").value);
-  const to = parseNum($("d-to") && $("d-to").value);
-  const n = Math.round(Number($("d-orders") && $("d-orders").value));
+  const fromEl = isDesk() ? $("d-from") : $("m-from");
+  const toEl = isDesk() ? $("d-to") : $("m-to");
+  const nEl = isDesk() ? $("d-orders") : $("m-orders");
+  const from = parseNum(fromEl && fromEl.value);
+  const to = parseNum(toEl && toEl.value);
+  const n = Math.round(Number(nEl && nEl.value));
   const stop = parseNum($("stop").value);
   const risk = parseNum($("risk").value);
   if (!(from > 0) || !(to > 0) || from === to || n < 2 || n > 50) return null;
@@ -1430,7 +1617,7 @@ function scalePlan() {
   const avg = totalUsd > 0
     ? legs.reduce((s, l) => s + l.price * l.usd, 0) / totalUsd
     : prices.reduce((s, p) => s + p, 0) / prices.length;
-  return { legs, avg, stop, risk, totalUsd, n };
+  return { legs, avg, stop, risk, totalUsd, n, from, to };
 }
 function fmtSize(sz) {
   if (!sz || !(sz.ct > 0)) return "—";
@@ -1488,6 +1675,7 @@ function updateDesk() {
   const btc = eqs.reduce((s, a) => s + (Number(a.eq) || 0), 0);
   const mark = lastPx || (eqs[0] && eqs[0].mark);
   $("d-equity").textContent = btc > 0 ? fmtBtc(btc) + " BTC" + (mark ? " · " + fmtUsd(btc * mark) : "") : "—";
+  if (deskKind === "hedge") paintHedgeTable();
   const stops = [];
   for (const a of visibleAccounts(lastAccounts)) for (const s of a.stops || []) stops.push(`<div><span>${esc(a.name)}</span><span>${fmtPx(s)}</span></div>`);
   if ($("d-stop-list")) $("d-stop-list").innerHTML = stops.join("") || '<div class="d-empty">Nenhum stop aberto.</div>';
@@ -1511,15 +1699,18 @@ function renderDesk() {
     return `<tr><td>BTC</td><td>${esc(a.name)}</td><td class="r">${a.eq ? fmtBtc(a.eq) : "—"}</td><td class="r">${val ? fmtUsd(val) : "—"}</td></tr>`;
   });
   $("d-bal-body").innerHTML = `<table class="d-table"><thead><tr><th>Moeda</th><th>Conta</th><th class="r">Saldo</th><th class="r">US$</th></tr></thead><tbody>${rows.join("")}<tr><td>Total</td><td></td><td class="r">${btc ? fmtBtc(btc) : "—"}</td><td class="r">${usd ? fmtUsd(usd) : "—"}</td></tr></tbody></table>`;
-  const pos = list.filter((a) => a.net);
-  $("d-pos-body").innerHTML = pos.length ? `<table class="d-table"><thead><tr><th>Símbolo</th><th>Conta</th><th class="r">Entrada</th><th class="r">Tamanho</th><th class="r">Resultado</th></tr></thead><tbody>${pos.map((a) => {
-    const p = pnlUsd(a);
-    const notion = Math.abs(a.net) * 100;
-    const roe = p == null || !notion ? null : p / notion * 100;
-    const cls = p == null ? "" : p >= 0 ? "d-up" : "d-dn";
-    const pnl = p == null ? "—" : (p >= 0 ? "+" : "−") + fmtUsd(Math.abs(p)) + (roe == null ? "" : " " + (roe >= 0 ? "+" : "−") + fmtPct(Math.abs(roe)));
-    return `<tr><td>BTC-USD-SWAP</td><td>${esc(a.name)}</td><td class="r">${fmtPx(a.avg)}</td><td class="r">${fmtUsd(notion)}</td><td class="r ${cls}">${pnl}</td></tr>`;
-  }).join("")}</tbody></table>` : '<div class="d-empty">Sem posição.</div>';
+  const posRows = [];
+  for (const a of list) {
+    const legs = Array.isArray(a.legs) && a.legs.length ? a.legs : (a.net ? [{ posSide: a.net > 0 ? "long" : "short", ct: Math.abs(a.net), avg: a.avg, usd: Math.abs(a.net) * 100 }] : []);
+    for (const leg of legs) {
+      const p = leg.posSide ? legPnlUsd(leg) : pnlUsd(a);
+      const notion = Number(leg.usd) || (Number(leg.ct) || 0) * 100;
+      const cls = p == null ? "" : p >= 0 ? "d-up" : "d-dn";
+      const pnl = p == null ? "—" : (p >= 0 ? "+" : "−") + fmtUsd(Math.abs(p));
+      posRows.push(`<tr><td>BTC-USD-SWAP</td><td>${esc(a.name)} ${esc(leg.posSide || "")}</td><td class="r">${fmtPx(leg.avg)}</td><td class="r">${fmtUsd(notion)}</td><td class="r ${cls}">${pnl}</td></tr>`);
+    }
+  }
+  $("d-pos-body").innerHTML = posRows.length ? `<table class="d-table"><thead><tr><th>Símbolo</th><th>Conta</th><th class="r">Entrada</th><th class="r">Tamanho</th><th class="r">Resultado</th></tr></thead><tbody>${posRows.join("")}</tbody></table>` : '<div class="d-empty">Sem posição.</div>';
   const orders = [];
   for (const a of list) for (const o of accountOrders(a)) orders.push(o);
   $("d-ord-body").innerHTML = orders.length ? `<table class="d-table"><thead><tr><th>Símbolo</th><th>Tipo</th><th>Conta</th><th class="r">Preço</th></tr></thead><tbody>${orders.map((o) => `<tr><td>BTC-USD-SWAP</td><td>${o.kind === "stop" ? "Stop" : "Limite"}</td><td>${esc(o.account)}</td><td class="r">${fmtPx(o.price)}</td></tr>`).join("")}</tbody></table>` : '<div class="d-empty">Nenhuma ordem aberta.</div>';
@@ -1535,7 +1726,10 @@ function fillFilters() {
 }
 function setDeskFilter(v) {
   deskFilter = v || "todas";
-  for (const id of ["d-filter", "d-filter-pos", "d-filter-ord"]) if ($(id)) $(id).value = deskFilter;
+  try { localStorage.setItem("painel_acct", deskFilter); } catch (e) {}
+  document.documentElement.setAttribute("data-acct", deskFilter);
+  document.querySelectorAll("#accts .chip").forEach((b) => b.classList.toggle("on", b.dataset.acct === deskFilter));
+  for (const id of ["d-filter", "d-filter-pos", "d-filter-ord"]) if ($(id) && $(id).options.length) $(id).value = deskFilter;
   renderDesk();
   redrawChartLines();
 }
@@ -1545,14 +1739,50 @@ function copyField(from, to) {
   $(to).value = $(from).value;
   $(to).dispatchEvent(new Event("input", { bubbles: true }));
 }
+function paintKind() {
+  for (const [id, k] of [["btn-market", "market"], ["btn-limit", "limit"], ["btn-scale", "scale"], ["btn-hedge", "hedge"]]) {
+    if (!$(id)) continue;
+    $(id).classList.toggle("on", deskKind === k);
+    $(id).setAttribute("aria-pressed", deskKind === k);
+  }
+  const hedge = deskKind === "hedge";
+  const scale = deskKind === "scale";
+  show($("m-hedge"), hedge);
+  show($("m-scale"), scale);
+  show($("m-reduce"), reducing && !hedge && !scale);
+  show($("entry-risk"), !hedge && !reducing);
+  show($("d-open-box"), !hedge && !reducing);
+  show($("d-hedge"), hedge);
+  show($("d-reduce-box"), reducing && !hedge && !scale);
+  show($("d-sides"), !hedge);
+  show($("m-sides"), !hedge);
+  show($("d-size-note"), !hedge);
+  show($("d-reduce-toggle"), !hedge && !scale);
+  if ($("btn-reduce")) show($("btn-reduce"), !hedge && !scale);
+  show($("d-price-box"), deskKind === "limit");
+  show($("d-scale"), scale);
+  show($("price-row"), deskKind === "limit" || (hedge && hedgeOrd === "limit"));
+  if ($("d-reduce-which")) $("d-reduce-which").textContent = "Reduz a perna " + side + ".";
+  if ($("m-reduce-which")) $("m-reduce-which").textContent = "Reduz a perna " + side + ".";
+  if ($("btn-reduce")) { $("btn-reduce").classList.toggle("on", reducing); $("btn-reduce").setAttribute("aria-pressed", reducing); }
+  if ($("d-reduce-toggle")) { $("d-reduce-toggle").classList.toggle("on", reducing); $("d-reduce-toggle").setAttribute("aria-pressed", reducing); }
+}
+function setReducing(on) {
+  reducing = !!on;
+  if (reducing && (deskKind === "hedge" || deskKind === "scale")) deskKind = ordType === "limit" ? "limit" : "market";
+  paintKind();
+  updateSendLabel();
+  drawPreviews();
+}
 function setDeskKind(kind) {
   deskKind = kind;
   if ($("d-kind")) $("d-kind").value = kind;
-  show($("d-price-box"), kind === "limit");
-  show($("d-scale"), kind === "scale");
+  if (kind === "hedge" || kind === "scale") reducing = false;
   if (kind === "market") setOrdType("market");
   else if (kind === "limit") setOrdType("limit");
   else { entradaPreviewHold = false; drawPreviews(); }
+  paintKind();
+  updateSendLabel();
 }
 function setDeskTab(name) {
   deskTab = name;
@@ -1564,7 +1794,117 @@ function setDeskTab(name) {
   else if (name === "post") setTab("entrada");
   drawPreviews();
 }
+function hedgePctValue() {
+  const el = isDesk() ? $("d-hedge-pct") : $("m-hedge-pct");
+  const n = parseNum(el && el.value);
+  return n == null ? 50 : n;
+}
+function hedgeRows() {
+  const target = hedgePctValue();
+  const mark = lastPx || 0;
+  return (lastAccounts || []).map((a) => {
+    const legs = a.legs || [];
+    const longCt = Number(legs.find((l) => l.posSide === "long")?.ct ?? (a.side === "long" ? Math.abs(a.net) : 0)) || 0;
+    const shortCt = Number(legs.find((l) => l.posSide === "short")?.ct ?? (a.side === "short" ? Math.abs(a.net) : 0)) || 0;
+    const eq = Number(a.eq) || 0;
+    const m = mark || Number(a.mark) || 0;
+    const valor = eq * m;
+    const longUsd = longCt * 100, shortUsd = shortCt * 100;
+    let hedgePct = hedgeMode === "short" ? target : (valor ? (longUsd + valor * (100 - target) / 100) / valor * 100 : 0);
+    if (hedgePct < 0) hedgePct = 0;
+    if (hedgePct > 1000) hedgePct = 1000;
+    const alvo = Math.round((hedgePct / 100) * valor / 100 * 10 + 1e-9) / 10;
+    const delta = Math.round((alvo - shortCt) * 10 + 1e-9) / 10;
+    const atual = valor > 0 ? shortUsd / valor * 100 : 0;
+    const net = valor > 0 ? 100 + (longUsd - shortUsd) / valor * 100 : 0;
+    const action = Math.abs(delta) < 0.1 ? "no alvo" : delta > 0 ? "vender" : "reduzir";
+    return { name: a.name, atual, alvo: hedgePct, net, delta, action, longUsd, shortUsd, valor };
+  });
+}
+function hedgeMove(r) {
+  if (Math.abs(r.delta) < 0.1) return "no alvo";
+  const verb = r.action === "reduzir" ? "recomprar" : "vender";
+  return verb + " " + fmtCt(Math.abs(r.delta)) + " ct · " + fmtUsd(Math.abs(r.delta) * 100);
+}
+function paintHedgeTable() {
+  const rows = hedgeRows();
+  const line = (r, tot) => `<div class="h-row${tot ? " h-tot" : ""}"><b>${esc(r.name)}</b><span>${fmtPct(r.atual)} → ${fmtPct(r.alvo)} · ${hedgeMove(r)}</span></div>`;
+  let html = rows.map((r) => line(r, false)).join("");
+  if (rows.length) {
+    const valor = rows.reduce((s, r) => s + (r.valor || 0), 0);
+    const shortUsd = rows.reduce((s, r) => s + (r.shortUsd || 0), 0);
+    const alvoUsd = rows.reduce((s, r) => s + ((r.alvo || 0) / 100) * (r.valor || 0), 0);
+    const delta = rows.reduce((s, r) => s + r.delta, 0);
+    const atual = valor > 0 ? shortUsd / valor * 100 : 0;
+    const alvo = valor > 0 ? alvoUsd / valor * 100 : 0;
+    html += line({ name: "Total", atual, alvo, delta, action: delta >= 0 ? "vender" : "reduzir" }, true);
+  }
+  const empty = '<div class="d-empty">Sem contas.</div>';
+  if ($("d-hedge-table")) $("d-hedge-table").innerHTML = html || empty;
+  if ($("m-hedge-table")) $("m-hedge-table").innerHTML = html || empty;
+}
+let sheetKind = "scale";
+function openHedgeSheet() {
+  const rows = hedgeRows();
+  if (!rows.length) { $("banner-err").textContent = "Sem contas para o hedge."; show($("banner-err"), true); return; }
+  sheetKind = "hedge";
+  $("scale-title").textContent = "Hedge";
+  $("scale-note").textContent = "Confirmar manda só na perna short, para as 4 contas. A long não muda.";
+  $("scale-list").innerHTML = rows.map((r) => `<li><span class="name">${esc(r.name)}</span> · agora ${fmtPct(r.atual)} → ${fmtPct(r.alvo)} · ${esc(r.action)} ${fmtCt(Math.abs(r.delta))} ct</li>`).join("");
+  $("scale-msg").textContent = "";
+  show($("scale-msg"), false);
+  $("scale-ok").disabled = false;
+  scaleOpen = true;
+  show($("scale-sheet"), true);
+}
+async function sendHedge() {
+  const price = parseNum(isDesk() ? ($("d-hedge-price") && $("d-hedge-price").value) : $("price").value);
+  if (hedgeOrd === "limit" && !(price > 0)) {
+    $("scale-msg").textContent = "Preenche um preço limite.";
+    show($("scale-msg"), true);
+    return;
+  }
+  $("scale-ok").disabled = true;
+  try {
+    const payload = { target_pct: hedgePctValue(), mode: hedgeMode, ordType: hedgeOrd };
+    if (hedgeOrd === "limit") payload.price = price;
+    const { res, data } = await api("/hedge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    if (!res.ok || data.aborted || data.ok === false) {
+      $("scale-msg").textContent = data.abort_msg || data.error || "Hedge bloqueado.";
+      show($("scale-msg"), true);
+      $("scale-ok").disabled = false;
+      return;
+    }
+    closeScaleSheet();
+    loadPositions();
+  } catch (e) {
+    $("scale-msg").textContent = "Não consegui falar com o servidor.";
+    show($("scale-msg"), true);
+    $("scale-ok").disabled = false;
+  }
+}
+async function sendReduce() {
+  const pct = parseNum(($("d-reduce-pct") && $("d-reduce-pct").value) || ($("m-reduce-pct") && $("m-reduce-pct").value));
+  const price = parseNum($("price").value);
+  if (pct == null || pct < 1 || pct > 100) { $("banner-err").textContent = "Percentual inválido: use um valor de 1 a 100."; show($("banner-err"), true); return; }
+  if (ordType === "limit" && !(price > 0)) { $("banner-err").textContent = "Preenche um preço limite válido."; show($("banner-err"), true); return; }
+  sending = true; $("send").disabled = true; $("send").textContent = "ENVIANDO…";
+  try {
+    const payload = { side, reduce: true, pct, ordType };
+    if (ordType === "limit") payload.price = price;
+    const { res, data } = await api("/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    if (res.status === 401) return;
+    if (data.error && !data.accounts) { $("banner-err").textContent = data.error; show($("banner-err"), true); return; }
+    renderResult(data);
+    if (data.aborted || data.ok === false) { $("banner-err").textContent = data.abort_msg || data.error || "Redução bloqueada."; show($("banner-err"), true); }
+    loadPositions();
+  } catch (e) { $("banner-err").textContent = "Não consegui falar com o servidor."; show($("banner-err"), true); }
+  finally { sending = false; $("send").disabled = false; updateSendLabel(); }
+}
 function openScaleSheet() {
+  sheetKind = "scale";
+  $("scale-title").textContent = "Escala";
+  $("scale-note").textContent = "Confirmar manda as ordens limite para as 4 contas.";
   const plan = scalePlan();
   if (!plan) {
     $("d-msg").textContent = "Preencha os dois preços, o stop e o risco.";
@@ -1591,14 +1931,27 @@ function closeScaleSheet() {
   scaleOpen = false;
   show($("scale-sheet"), false);
 }
-// A escala não cabe no pedido atual: /order manda um risco inteiro, um preço e um stop,
-// para as 4 contas, e recusa quem já tem posição. Não chama a rede.
 async function submitScale() {
-  const msg = "Ainda não suportado pelo servidor";
-  $("scale-msg").textContent = msg;
-  show($("scale-msg"), true);
+  if (sheetKind === "hedge") return sendHedge();
+  const plan = scalePlan();
+  if (!plan) return;
   $("scale-ok").disabled = true;
-  return { ok: false, error: msg };
+  try {
+    const payload = { side, stop: plan.stop, risk: plan.risk, from: plan.from, to: plan.to, n: plan.n, priceSkew: !priceEven, sizeSkew: !sizeEven };
+    const { res, data } = await api("/scale", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    if (!res.ok || data.aborted || data.ok === false) {
+      $("scale-msg").textContent = data.abort_msg || data.error || "Escala bloqueada. Nada enviado.";
+      show($("scale-msg"), true);
+      $("scale-ok").disabled = false;
+      return;
+    }
+    closeScaleSheet();
+    loadPositions();
+  } catch (e) {
+    $("scale-msg").textContent = "Não consegui falar com o servidor.";
+    show($("scale-msg"), true);
+    $("scale-ok").disabled = false;
+  }
 }
 function initDesk() {
   if (!$("d-kind")) return;
@@ -1629,8 +1982,45 @@ function initDesk() {
   $("d-orders").addEventListener("input", () => { $("d-orders-n").textContent = $("d-orders").value; touchScale(); });
   $("d-price-even").onclick = () => { priceEven = !priceEven; $("d-price-even").classList.toggle("on", priceEven); $("d-price-even").setAttribute("aria-pressed", priceEven); $("d-price-even").textContent = priceEven ? "Preço igual" : "Preço acumulado"; touchScale(); };
   $("d-size-even").onclick = () => { sizeEven = !sizeEven; $("d-size-even").classList.toggle("on", sizeEven); $("d-size-even").setAttribute("aria-pressed", sizeEven); $("d-size-even").textContent = sizeEven ? "Tamanho igual" : "Tamanho crescente"; touchScale(); };
-  $("d-long").onclick = () => { if (deskKind === "scale") { setSide("long"); openScaleSheet(); return; } setSide("long"); $("send").click(); };
-  $("d-short").onclick = () => { if (deskKind === "scale") { setSide("short"); openScaleSheet(); return; } setSide("short"); $("send").click(); };
+    $("d-long").onclick = () => { setSide("long"); if (deskKind === "scale") { openScaleSheet(); return; } $("send").click(); };
+  $("d-short").onclick = () => { setSide("short"); if (deskKind === "scale") { openScaleSheet(); return; } $("send").click(); };
+  $("d-reduce-toggle").onclick = () => setReducing(!reducing);
+  $("d-reduce-pct").addEventListener("input", () => { if ($("m-reduce-pct")) $("m-reduce-pct").value = $("d-reduce-pct").value; updateSendLabel(); paintKind(); });
+  $("m-reduce-pct").addEventListener("input", () => { if ($("d-reduce-pct")) $("d-reduce-pct").value = $("m-reduce-pct").value; updateSendLabel(); });
+  const setHedgeMode = (mode) => {
+    hedgeMode = mode;
+    $("d-mode-short").classList.toggle("on", mode === "short");
+    $("d-mode-net").classList.toggle("on", mode === "net");
+    $("m-mode-short").classList.toggle("on", mode === "short");
+    $("m-mode-net").classList.toggle("on", mode === "net");
+    const label = mode === "short" ? "Quanto % vendido" : "Quanto % comprado";
+    $("d-hedge-k").textContent = label;
+    $("m-hedge-label").textContent = label;
+    updateDesk();
+  };
+  $("d-mode-short").onclick = () => setHedgeMode("short");
+  $("d-mode-net").onclick = () => setHedgeMode("net");
+  $("m-mode-short").onclick = () => setHedgeMode("short");
+  $("m-mode-net").onclick = () => setHedgeMode("net");
+  const setHedgePct = (v) => {
+    $("d-hedge-pct").value = String(v);
+    $("m-hedge-pct").value = String(v);
+    document.querySelectorAll("#d-hedge-quick .d-tog, #m-hedge-quick .pct").forEach((b) => b.classList.toggle("on", b.dataset.h === String(v)));
+    updateDesk();
+    drawPreviews();
+  };
+  $("d-hedge-quick").onclick = (ev) => { const b = ev.target.closest("[data-h]"); if (b) setHedgePct(b.dataset.h); };
+  $("m-hedge-quick").onclick = (ev) => { const b = ev.target.closest("[data-h]"); if (b) setHedgePct(b.dataset.h); };
+  $("d-hedge-pct").addEventListener("input", () => { $("m-hedge-pct").value = $("d-hedge-pct").value; updateDesk(); });
+  $("m-hedge-pct").addEventListener("input", () => { $("d-hedge-pct").value = $("m-hedge-pct").value; updateDesk(); });
+  $("d-hedge-mkt").onclick = () => { hedgeOrd = "market"; $("d-hedge-mkt").classList.add("on"); $("d-hedge-lmt").classList.remove("on"); show($("d-hedge-px"), false); drawPreviews(); };
+  $("d-hedge-lmt").onclick = () => { hedgeOrd = "limit"; $("d-hedge-lmt").classList.add("on"); $("d-hedge-mkt").classList.remove("on"); show($("d-hedge-px"), true); if (lastPx) $("d-hedge-price").value = String(Math.round(lastPx * 10) / 10); drawPreviews(); };
+  $("d-hedge-price").addEventListener("input", () => drawPreviews());
+  $("d-hedge-go").onclick = () => openHedgeSheet();
+  $("m-hedge-mkt").onclick = () => { hedgeOrd = "market"; $("m-hedge-mkt").classList.add("on"); $("m-hedge-lmt").classList.remove("on"); paintKind(); drawPreviews(); };
+  $("m-hedge-lmt").onclick = () => { hedgeOrd = "limit"; $("m-hedge-lmt").classList.add("on"); $("m-hedge-mkt").classList.remove("on"); paintKind(); if (lastPx && !$("price").value) $("price").value = String(Math.round(lastPx * 10) / 10); drawPreviews(); };
+  $("accts").onclick = (ev) => { const b = ev.target.closest(".chip"); if (b) setDeskFilter(b.dataset.acct); };
+  setDeskFilter(deskFilter);
   $("d-pcts").onclick = (ev) => {
     const b = ev.target.closest("[data-pct]"); if (!b) return;
     setAdjPct(Number(b.dataset.pct));
