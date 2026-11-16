@@ -1828,7 +1828,7 @@ function hedgeMove(r) {
 }
 function paintHedgeTable() {
   const rows = hedgeRows();
-  const line = (r, tot) => `<div class="h-row${tot ? " h-tot" : ""}"><b>${esc(r.name)}</b><span>${fmtPct(r.atual)} → ${fmtPct(r.alvo)}</span><span>${hedgeMove(r)}</span></div>`;
+  const line = (r, tot) => `<div class="h-row${tot ? " h-tot" : ""}"><b>${esc(r.name)}</b><span>${fmtPct(r.atual)} → ${fmtPct(r.alvo)} · ${hedgeMove(r)}</span></div>`;
   let html = rows.map((r) => line(r, false)).join("");
   if (rows.length) {
     const valor = rows.reduce((s, r) => s + (r.valor || 0), 0);
