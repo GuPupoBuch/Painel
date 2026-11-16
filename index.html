@@ -24,6 +24,7 @@ body{padding:calc(10px + env(safe-area-inset-top)) 12px calc(20px + env(safe-are
 .inst{font-size:11px;font-weight:600;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
 .px{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.01em;line-height:1.1}
 .px.up{color:var(--green)}.px.down{color:var(--red)}
+.pnl-up{color:#22c55e;font-weight:700}.pnl-dn{color:#ef4444;font-weight:700}.tot td{border-top:1px solid #2a3038;font-weight:700}
 .ws{font-size:10px;color:var(--muted)}.ws.on::before{content:"● ";color:var(--green)}.ws.off::before{content:"● ";color:var(--err)}
 .tfs{display:flex;gap:4px;margin:6px 0 4px}
 .tf{flex:1;background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:5px 0;font-size:12px;font-weight:700}
@@ -122,7 +123,7 @@ button{cursor:pointer;font-family:inherit}
   </div>
   <div class="footer">
     <div class="pos-head"><h2>Posições</h2><button type="button" class="refresh" id="refresh">Atualizar</button></div>
-    <table><thead><tr><th>Conta</th><th>Posição</th><th>Média</th><th>Stop</th><th>Expo</th></tr></thead>
+    <table><thead><tr><th>Conta</th><th>Posição</th><th>Média</th><th>Stop</th><th>Resultado</th></tr></thead>
       <tbody id="pos-body"><tr><td colspan="5" class="muted">Carregando…</td></tr></tbody></table>
   </div>
   </div>
@@ -130,7 +131,7 @@ button{cursor:pointer;font-family:inherit}
   <div id="pane-ajustar" class="hidden">
     <div class="footer" style="margin-top:10px">
       <div class="pos-head"><h2>Posição atual</h2><button type="button" class="refresh" id="adj-refresh">Atualizar</button></div>
-      <table><thead><tr><th>Conta</th><th>Posição</th><th>Média</th><th>Stop</th><th>Expo</th></tr></thead>
+      <table><thead><tr><th>Conta</th><th>Posição</th><th>Média</th><th>Stop</th><th>Resultado</th></tr></thead>
         <tbody id="adj-pos-body"><tr><td colspan="5" class="muted">Carregando…</td></tr></tbody></table>
     </div>
     <div class="pcts" id="pcts">
@@ -241,6 +242,7 @@ function setPx(p) {
   el.textContent = Number(p).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   if (lastPx != null && p !== lastPx) el.className = "px " + (p > lastPx ? "up" : "down");
   lastPx = p;
+  if (lastAccounts && !pnlTimer) pnlTimer = setTimeout(() => { pnlTimer = null; renderAllPos(); }, 500);
 }
 function startStreams() {
   wsCandle = socket("wss://ws.okx.com/ws/v5/business", candleArgs, (m) => {
@@ -342,15 +344,26 @@ $("login-form").onsubmit = async (ev) => {
   finally { $("login-btn").disabled = false; }
 };
 
-function renderPosTable(id, accounts, withUsd) {
-  $(id).innerHTML = (accounts || []).map((a) => {
-    const usd = withUsd && a.net ? ` · ${fmtUsd(Math.abs(a.net) * 100)}` : "";
+let lastAccounts = null, pnlTimer = null;
+function pnlUsd(a) {
+  const m = lastPx || a.mark;
+  if (!a.net || !a.avg || !m) return null;
+  return a.net * 100 * (m / a.avg - 1); // inverso: PnL_BTC = ct*100*(1/avg-1/mark); em USD × mark
+}
+const fmtPnl = (v) => v == null ? "—" : `<span class="${v >= 0 ? "pnl-up" : "pnl-dn"}">${v >= 0 ? "+" : "−"}${fmtUsd(Math.abs(v))}</span>`;
+function renderPosTable(id, accounts) {
+  let tot = 0, any = false;
+  const rows = (accounts || []).map((a) => {
     const pos = !a.net ? "zerada" : `${a.side} ${fmtUsd(Math.abs(a.net) * 100)}`;
     const err = a.error ? `<div class="blocked">${esc(a.error)}</div>` : "";
     const st = (a.stops || []).length ? a.stops.map(fmtPx).join(" / ") : "—";
-    return `<tr><td class="name">${esc(a.name)}</td><td>${esc(pos)}${err}</td><td>${fmtPx(a.avg)}</td><td>${a.net ? st : "—"}</td><td>${a.net ? fmtPct(a.expo) : "—"}</td></tr>`;
-  }).join("") || '<tr><td colspan="5" class="muted">Sem dados</td></tr>';
+    const p = pnlUsd(a); if (p != null) { tot += p; any = true; }
+    return `<tr><td class="name">${esc(a.name)}</td><td>${esc(pos)}${err}</td><td>${fmtPx(a.avg)}</td><td>${a.net ? st : "—"}</td><td>${fmtPnl(p)}</td></tr>`;
+  });
+  if (any) rows.push(`<tr class="tot"><td class="name">Total</td><td></td><td></td><td></td><td>${fmtPnl(tot)}</td></tr>`);
+  $(id).innerHTML = rows.join("") || '<tr><td colspan="5" class="muted">Sem dados</td></tr>';
 }
+function renderAllPos() { if (!lastAccounts) return; renderPosTable("pos-body", lastAccounts); renderPosTable("adj-pos-body", lastAccounts); }
 async function loadPositions() {
   try {
     const { res, data } = await api("/positions");
@@ -360,8 +373,7 @@ async function loadPositions() {
       $("pos-body").innerHTML = msg; $("adj-pos-body").innerHTML = msg; return;
     }
     if (data.mark && lastPx == null) setPx(data.mark);
-    renderPosTable("pos-body", data.accounts, false);
-    renderPosTable("adj-pos-body", data.accounts, true);
+    lastAccounts = data.accounts; renderAllPos();
     drawPositionLines(data.accounts);
   } catch (e) {
     const msg = '<tr><td colspan="5" class="blocked">Não consegui falar com o servidor.</td></tr>';
