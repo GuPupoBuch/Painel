@@ -65,15 +65,27 @@ html.in-app .top-pnl,body.in-app .top-pnl{display:block}
   scroll-snap-align:center;background:transparent;border:0;border-bottom:2px solid transparent;
   border-radius:0;color:var(--muted);font-size:13px;font-weight:650;margin-bottom:-1px;
 }
-.accts{display:flex;gap:4px;margin:0 0 6px;min-width:0;max-width:100%;overflow-x:auto;scrollbar-width:none}
-.accts::-webkit-scrollbar{display:none}
-.acct{flex:0 0 auto;min-height:36px;padding:0 10px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:12px;font-weight:700}
-.acct.on,
-html[data-acct="todas"] .acct[data-acct="todas"],
-html[data-acct="pupo"] .acct[data-acct="pupo"],
-html[data-acct="pai"] .acct[data-acct="pai"],
-html[data-acct="mãe"] .acct[data-acct="mãe"],
-html[data-acct="tcheco"] .acct[data-acct="tcheco"]{color:var(--text);border-color:var(--accent)}
+.accts{
+  display:flex;flex-wrap:nowrap;gap:0;margin:0;min-width:0;max-width:100%;
+  overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;
+  border-bottom:1px solid var(--line);background:var(--bg);
+}
+.accts::-webkit-scrollbar{display:none;height:0}
+#accts .chip{
+  flex:0 0 auto;min-width:44px;min-height:44px;padding:0 12px;
+  border:0;border-bottom:2px solid transparent;border-radius:0;margin-bottom:-1px;
+  background:transparent;color:var(--muted);font-size:13px;font-weight:650;white-space:nowrap;
+}
+#accts .chip.on,
+html[data-acct="todas"] #accts .chip[data-acct="todas"],
+html[data-acct="pupo"] #accts .chip[data-acct="pupo"],
+html[data-acct="pai"] #accts .chip[data-acct="pai"],
+html[data-acct="mãe"] #accts .chip[data-acct="mãe"],
+html[data-acct="tcheco"] #accts .chip[data-acct="tcheco"]{color:var(--text);border-bottom-color:var(--accent)}
+.h-row{padding:7px 0;border-top:1px solid var(--line);font-size:13px;font-variant-numeric:tabular-nums}
+.h-row b{display:block;font-weight:650}
+.h-row.h-tot{border-top-color:#414a56;font-weight:700}
 .all-note{margin:8px 0 0;font-size:12px;color:var(--muted)}
 .tf.on,
 html[data-tf="1m"] .tf[data-bar="1m"],
@@ -236,6 +248,8 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   }
   html.in-app .tfs{background:transparent;border-bottom:0;padding:0 4px}
   html.in-app .tf{min-width:32px;min-height:26px;padding:0 6px;font-size:11px}
+  html.in-app .accts{background:transparent;border-bottom:0;padding:0 4px}
+  html.in-app #accts .chip{min-width:0;min-height:26px;padding:0 8px;font-size:11px}
   html.in-app .chart-wrap{grid-area:chart;min-width:0;min-height:0;background:#0e1114;border:1px solid #1c2228;border-top:0}
   html.in-app #chart{height:100%;min-height:0;border:0;border-radius:0;background:#0e1114}
   html.in-app #desk-order{grid-area:order;min-width:0;min-height:0}
@@ -263,7 +277,8 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   #desk-order input:focus{border-color:#0ecb81;outline:none}
   .d-size{font-size:20px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
   .d-size-rows{margin-top:4px;font-size:11px;color:#9aa6b2;font-variant-numeric:tabular-nums}
-  .d-size-rows div{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
+  #d-size-rows > div{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
+  #d-hedge-table .h-row{color:#d7dde3;border-top-color:#1c2228}
   .d-row{display:flex;gap:4px;align-items:center}
   .d-row input{flex:1;min-width:0}
   .d-row button,.d-mini{height:30px;padding:0 8px;background:#101418;color:#d7dde3;border:1px solid #2a323a;border-radius:3px;font-size:12px;font-weight:700}
@@ -352,11 +367,11 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   <button type="button" class="tf" data-bar="1M">1M</button>
 </div>
 <div class="accts" id="accts">
-  <button type="button" class="acct" data-acct="todas">Todas</button>
-  <button type="button" class="acct" data-acct="pupo">pupo</button>
-  <button type="button" class="acct" data-acct="pai">pai</button>
-  <button type="button" class="acct" data-acct="mãe">mãe</button>
-  <button type="button" class="acct" data-acct="tcheco">tcheco</button>
+  <button type="button" class="chip" data-acct="todas">Todas</button>
+  <button type="button" class="chip" data-acct="pupo">pupo</button>
+  <button type="button" class="chip" data-acct="pai">pai</button>
+  <button type="button" class="chip" data-acct="mãe">mãe</button>
+  <button type="button" class="chip" data-acct="tcheco">tcheco</button>
 </div>
 </div>
 <div class="chart-wrap" id="chart-wrap">
@@ -535,7 +550,7 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
       <button type="button" class="tab" id="tab-ajustar" aria-pressed="false">Ajustar</button>
     </div>
     <div id="pane-entrada">
-      <div class="sides">
+      <div class="sides" id="m-sides">
         <button type="button" class="side long on" id="btn-long" aria-pressed="true">LONG</button>
         <button type="button" class="side short" id="btn-short" aria-pressed="false">SHORT</button>
       </div>
@@ -1713,7 +1728,7 @@ function setDeskFilter(v) {
   deskFilter = v || "todas";
   try { localStorage.setItem("painel_acct", deskFilter); } catch (e) {}
   document.documentElement.setAttribute("data-acct", deskFilter);
-  document.querySelectorAll("#accts .acct").forEach((b) => b.classList.toggle("on", b.dataset.acct === deskFilter));
+  document.querySelectorAll("#accts .chip").forEach((b) => b.classList.toggle("on", b.dataset.acct === deskFilter));
   for (const id of ["d-filter", "d-filter-pos", "d-filter-ord"]) if ($(id) && $(id).options.length) $(id).value = deskFilter;
   renderDesk();
   redrawChartLines();
@@ -1740,6 +1755,7 @@ function paintKind() {
   show($("d-hedge"), hedge);
   show($("d-reduce-box"), reducing && !hedge && !scale);
   show($("d-sides"), !hedge);
+  show($("m-sides"), !hedge);
   show($("d-size-note"), !hedge);
   show($("d-reduce-toggle"), !hedge && !scale);
   if ($("btn-reduce")) show($("btn-reduce"), !hedge && !scale);
@@ -1805,11 +1821,27 @@ function hedgeRows() {
     return { name: a.name, atual, alvo: hedgePct, net, delta, action, longUsd, shortUsd, valor };
   });
 }
+function hedgeMove(r) {
+  if (Math.abs(r.delta) < 0.1) return "no alvo";
+  const verb = r.action === "reduzir" ? "recomprar" : "vender";
+  return verb + " " + fmtCt(Math.abs(r.delta)) + " ct · " + fmtUsd(Math.abs(r.delta) * 100);
+}
 function paintHedgeTable() {
   const rows = hedgeRows();
-  const line = (r) => `<div><span>${esc(r.name)} ${fmtPct(r.atual)} → ${fmtPct(r.alvo)}</span><span>${esc(r.action)} ${fmtCt(Math.abs(r.delta))} ct</span></div>`;
-  if ($("d-hedge-table")) $("d-hedge-table").innerHTML = rows.map(line).join("") || '<div class="d-empty">Sem contas.</div>';
-  if ($("m-hedge-table")) $("m-hedge-table").innerHTML = rows.map(line).join("");
+  const line = (r, tot) => `<div class="h-row${tot ? " h-tot" : ""}"><b>${esc(r.name)}</b><span>${fmtPct(r.atual)} → ${fmtPct(r.alvo)}</span><span>${hedgeMove(r)}</span></div>`;
+  let html = rows.map((r) => line(r, false)).join("");
+  if (rows.length) {
+    const valor = rows.reduce((s, r) => s + (r.valor || 0), 0);
+    const shortUsd = rows.reduce((s, r) => s + (r.shortUsd || 0), 0);
+    const alvoUsd = rows.reduce((s, r) => s + ((r.alvo || 0) / 100) * (r.valor || 0), 0);
+    const delta = rows.reduce((s, r) => s + r.delta, 0);
+    const atual = valor > 0 ? shortUsd / valor * 100 : 0;
+    const alvo = valor > 0 ? alvoUsd / valor * 100 : 0;
+    html += line({ name: "Total", atual, alvo, delta, action: delta >= 0 ? "vender" : "reduzir" }, true);
+  }
+  const empty = '<div class="d-empty">Sem contas.</div>';
+  if ($("d-hedge-table")) $("d-hedge-table").innerHTML = html || empty;
+  if ($("m-hedge-table")) $("m-hedge-table").innerHTML = html || empty;
 }
 let sheetKind = "scale";
 function openHedgeSheet() {
@@ -1987,7 +2019,7 @@ function initDesk() {
   $("d-hedge-go").onclick = () => openHedgeSheet();
   $("m-hedge-mkt").onclick = () => { hedgeOrd = "market"; $("m-hedge-mkt").classList.add("on"); $("m-hedge-lmt").classList.remove("on"); paintKind(); drawPreviews(); };
   $("m-hedge-lmt").onclick = () => { hedgeOrd = "limit"; $("m-hedge-lmt").classList.add("on"); $("m-hedge-mkt").classList.remove("on"); paintKind(); if (lastPx && !$("price").value) $("price").value = String(Math.round(lastPx * 10) / 10); drawPreviews(); };
-  $("accts").onclick = (ev) => { const b = ev.target.closest(".acct"); if (b) setDeskFilter(b.dataset.acct); };
+  $("accts").onclick = (ev) => { const b = ev.target.closest(".chip"); if (b) setDeskFilter(b.dataset.acct); };
   setDeskFilter(deskFilter);
   $("d-pcts").onclick = (ev) => {
     const b = ev.target.closest("[data-pct]"); if (!b) return;
