@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Trader">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no">
+<meta name="referrer" content="no-referrer">
+<title>Trader</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="favicon.png">
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js" defer></script>
+<style>
+:root{--bg:#0b0d10;--card:#161a20;--line:#2a3038;--text:#e8eaed;--muted:#8b939e;--green:#22c55e;--green-dim:#16351f;--red:#ef4444;--red-dim:#3a1616;--warn:#f5c84c;--err:#ff7b72}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif}
+body{padding:calc(10px + env(safe-area-inset-top)) 12px calc(20px + env(safe-area-inset-bottom));max-width:520px;margin:0 auto}
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.inst{font-size:11px;font-weight:600;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
+.px{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.01em;line-height:1.1}
+.px.up{color:var(--green)}.px.down{color:var(--red)}
+.ws{font-size:10px;color:var(--muted)}.ws.on::before{content:"● ";color:var(--green)}.ws.off::before{content:"● ";color:var(--err)}
+.tfs{display:flex;gap:4px;margin:6px 0 4px}
+.tf{flex:1;background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:5px 0;font-size:12px;font-weight:700}
+.tf.on{color:var(--text);border-color:#5b6570}
+#chart{height:210px;border-radius:10px;overflow:hidden;background:var(--card);border:1px solid var(--line)}
+#chart-msg{font-size:12px;color:var(--muted);padding:80px 0;text-align:center}
+label{display:block;font-size:11px;color:var(--muted);margin:8px 0 4px;font-weight:500}
+input{width:100%;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:18px;font-variant-numeric:tabular-nums;outline:none}
+input:focus{border-color:#5b6570}
+.sides{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.side{appearance:none;border:2px solid var(--line);background:var(--card);color:var(--text);border-radius:12px;padding:12px 6px;font-size:18px;font-weight:800;letter-spacing:.06em}
+.side.long.on{background:var(--green-dim);border-color:var(--green);color:var(--green)}
+.side.short.on{background:var(--red-dim);border-color:var(--red);color:var(--red)}
+.row{display:grid;grid-template-columns:1.6fr 1fr;gap:8px}
+.send{width:100%;margin-top:12px;border:0;border-radius:14px;padding:17px 12px;font-size:18px;font-weight:800;letter-spacing:.04em;color:#06140a;background:var(--green)}
+.send.short{background:var(--red);color:#fff}.send:disabled{opacity:.55}
+.result,.footer,.login-box,.err,.warn{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:14px}
+.err{border-color:#5a2a2a;color:var(--err);white-space:pre-wrap}.warn{border-color:#5a4a16;color:var(--warn)}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:13px}
+th{text-align:left;color:var(--muted);font-weight:500;font-size:11px;padding:0 4px 6px}
+td{padding:7px 4px;border-top:1px solid var(--line);vertical-align:top}
+td.name{font-weight:700}.muted{color:var(--muted)}
+.pos-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.pos-head h2{margin:0;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+button.refresh{background:transparent;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-size:13px;font-weight:600}
+.hidden{display:none!important}
+.login-box h2{margin:0 0 6px;font-size:20px}.login-box p{margin:0 0 10px;color:var(--muted);font-size:14px}
+.raw{margin-top:8px;font-size:11px;color:var(--muted);white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace}
+.blocked{color:var(--err)}.ok{color:var(--green)}
+button{cursor:pointer;font-family:inherit}
+</style>
+</head>
+<body>
+<div class="top">
+  <div><div class="inst">BTC-USD-SWAP · mark</div><div id="px" class="px">—</div></div>
+  <div id="ws" class="ws off">conectando</div>
+</div>
+<div class="tfs" id="tfs">
+  <button class="tf on" data-bar="1m">1m</button><button class="tf" data-bar="5m">5m</button><button class="tf" data-bar="15m">15m</button><button class="tf" data-bar="1H">1H</button>
+</div>
+<div id="chart"><div id="chart-msg">Carregando gráfico…</div></div>
+
+<section id="login-view" class="login-box hidden">
+  <h2>Entrar</h2>
+  <p>A senha fica neste aparelho por uns 90 dias.</p>
+  <form id="login-form">
+    <label for="password">Senha</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button class="send" type="submit" id="login-btn">Entrar</button>
+  </form>
+  <div id="login-err" class="err hidden"></div>
+</section>
+
+<section id="app-view" class="hidden">
+  <div class="sides">
+    <button type="button" class="side long on" id="btn-long" aria-pressed="true">LONG</button>
+    <button type="button" class="side short" id="btn-short" aria-pressed="false">SHORT</button>
+  </div>
+  <div class="row">
+    <div><label for="stop">Stop</label><input id="stop" type="text" inputmode="decimal" autocomplete="off" placeholder="63800" enterkeyhint="next"></div>
+    <div><label for="risk">Risco %</label><input id="risk" type="text" inputmode="decimal" autocomplete="off" value="1" enterkeyhint="go"></div>
+  </div>
+  <button type="button" class="send" id="send">ENVIAR A MERCADO</button>
+  <div id="banner-err" class="err hidden"></div>
+  <div id="banner-warn" class="warn hidden"></div>
+  <div id="result" class="result hidden">
+    <table><thead><tr><th>Conta</th><th>Tamanho</th><th>Média</th><th>Expo</th><th>Perda no stop</th></tr></thead><tbody id="result-body"></tbody></table>
+    <div id="result-raw" class="raw hidden"></div>
+  </div>
+  <div class="footer">
+    <div class="pos-head"><h2>Posições</h2><button type="button" class="refresh" id="refresh">Atualizar</button></div>
+    <table><thead><tr><th>Conta</th><th>Posição</th><th>Média</th><th>Stop</th><th>Expo</th></tr></thead>
+      <tbody id="pos-body"><tr><td colspan="5" class="muted">Carregando…</td></tr></tbody></table>
+  </div>
+</section>
+
+<script>
+const API = "https://krzznjwvcrbuhlfwsdel.supabase.co/functions/v1/painel";
+const INST = "BTC-USD-SWAP";
+const TK = "painel_token";
+const $ = (id) => document.getElementById(id);
+let side = "long", sending = false;
+
+// ---------- formatação ----------
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtUsd = (n) => n == null || Number.isNaN(n) ? "—" : "US$ " + Math.round(n).toLocaleString("pt-BR");
+const fmtPx = (n) => n == null || n === 0 || Number.isNaN(n) ? "—" : Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+const fmtPct = (n) => n == null || Number.isNaN(n) ? "—" : Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + "%";
+const parseNum = (s) => { const n = Number(String(s || "").trim().replace(/\s/g, "").replace(",", ".")); return Number.isFinite(n) && String(s || "").trim() !== "" ? n : null; };
+const show = (el, on) => el.classList.toggle("hidden", !on);
+
+// ---------- gráfico ----------
+const TZ = new Date().getTimezoneOffset() * 60; // segundos; desloca p/ hora local
+let chart = null, series = null, bar = "1m", lastPx = null;
+let posLines = [], stopPreview = null;
+const toT = (ms) => Math.floor(Number(ms) / 1000) - TZ;
+const toBar = (a) => ({ time: toT(a[0]), open: +a[1], high: +a[2], low: +a[3], close: +a[4] });
+
+function initChart() {
+  if (!window.LightweightCharts) { $("chart-msg").textContent = "Gráfico indisponível (sem conexão com o CDN)."; return false; }
+  $("chart").innerHTML = "";
+  chart = LightweightCharts.createChart($("chart"), {
+    autoSize: true,
+    layout: { background: { color: "#161a20" }, textColor: "#8b939e", fontSize: 11 },
+    grid: { vertLines: { color: "#1e232a" }, horzLines: { color: "#1e232a" } },
+    rightPriceScale: { borderColor: "#2a3038" },
+    timeScale: { borderColor: "#2a3038", timeVisible: true, secondsVisible: false, rightOffset: 4 },
+    crosshair: { mode: 0 },
+    handleScale: { axisPressedMouseMove: true }, handleScroll: { vertTouchDrag: false },
+  });
+  series = chart.addCandlestickSeries({
+    upColor: "#22c55e", downColor: "#ef4444", borderVisible: false, wickUpColor: "#22c55e", wickDownColor: "#ef4444",
+    priceFormat: { type: "price", precision: 1, minMove: 0.1 },
+  });
+  return true;
+}
+async function loadCandles() {
+  if (!series) return;
+  try {
+    const r = await fetch(`https://www.okx.com/api/v5/market/candles?instId=${INST}&bar=${bar}&limit=300`);
+    const j = await r.json();
+    const data = (j.data || []).map(toBar).reverse();
+    series.setData(data);
+    chart.timeScale().scrollToRealTime();
+  } catch (e) { /* WS segue atualizando */ }
+}
+
+// ---------- websockets OKX ----------
+function socket(url, args, onData) {
+  let ws = null, ping = null, retry = 0, closedByUs = false;
+  const open = () => {
+    closedByUs = false;
+    ws = new WebSocket(url);
+    ws.onopen = () => { retry = 0; ws.send(JSON.stringify({ op: "subscribe", args: args() })); ping = setInterval(() => ws.readyState === 1 && ws.send("ping"), 25000); wsState(); };
+    ws.onmessage = (ev) => { if (ev.data === "pong") return; try { const m = JSON.parse(ev.data); if (m.data) onData(m); } catch (e) {} };
+    ws.onclose = () => { clearInterval(ping); wsState(); if (!closedByUs) setTimeout(open, Math.min(15000, 500 * 2 ** retry++)); };
+    ws.onerror = () => { try { ws.close(); } catch (e) {} };
+  };
+  open();
+  return {
+    get up() { return ws && ws.readyState === 1; },
+    restart() { closedByUs = true; try { ws.close(); } catch (e) {} clearInterval(ping); setTimeout(open, 50); },
+    resub(oldArgs) { if (ws && ws.readyState === 1) { ws.send(JSON.stringify({ op: "unsubscribe", args: oldArgs })); ws.send(JSON.stringify({ op: "subscribe", args: args() })); } },
+  };
+}
+const candleArgs = () => [{ channel: "candle" + bar, instId: INST }];
+let wsCandle = null, wsMark = null;
+function wsState() {
+  const up = wsCandle && wsCandle.up && wsMark && wsMark.up;
+  $("ws").className = "ws " + (up ? "on" : "off");
+  $("ws").textContent = up ? "ao vivo" : "reconectando";
+}
+function setPx(p) {
+  const el = $("px");
+  el.textContent = Number(p).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  if (lastPx != null && p !== lastPx) el.className = "px " + (p > lastPx ? "up" : "down");
+  lastPx = p;
+}
+function startStreams() {
+  wsCandle = socket("wss://ws.okx.com/ws/v5/business", candleArgs, (m) => {
+    if (!series || !m.arg || m.arg.channel !== "candle" + bar) return;
+    for (const a of m.data) { try { series.update(toBar(a)); } catch (e) {} }
+  });
+  wsMark = socket("wss://ws.okx.com/ws/v5/public", () => [{ channel: "mark-price", instId: INST }], (m) => {
+    const p = parseFloat(m.data[0] && m.data[0].markPx); if (p > 0) setPx(p);
+  });
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") { loadCandles(); if (!wsCandle.up) wsCandle.restart(); if (!wsMark.up) wsMark.restart(); }
+});
+$("tfs").onclick = (ev) => {
+  const b = ev.target.closest(".tf"); if (!b || b.dataset.bar === bar) return;
+  const old = candleArgs(); bar = b.dataset.bar;
+  document.querySelectorAll(".tf").forEach((x) => x.classList.toggle("on", x === b));
+  loadCandles().then(() => wsCandle.resub(old));
+};
+
+// linhas: média de entrada e stop das posições abertas, mais prévia do stop digitado
+function drawPositionLines(accounts) {
+  if (!series) return;
+  posLines.forEach((l) => series.removePriceLine(l)); posLines = [];
+  const seen = new Set();
+  for (const a of accounts || []) {
+    if (!a.net) continue;
+    const isLong = a.net > 0;
+    const add = (price, color, title, style) => {
+      const k = title + Math.round(price * 10); if (!price || seen.has(k)) return; seen.add(k);
+      posLines.push(series.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title }));
+    };
+    add(a.avg, isLong ? "#22c55e" : "#ef4444", "entrada", 0);
+    (a.stops || []).forEach((s) => add(s, "#f5c84c", "stop", 2));
+  }
+}
+function drawStopPreview() {
+  if (!series) return;
+  if (stopPreview) { series.removePriceLine(stopPreview); stopPreview = null; }
+  const s = parseNum($("stop").value);
+  if (s && s > 0) stopPreview = series.createPriceLine({ price: s, color: "#8b939e", lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: "stop?" });
+}
+$("stop").addEventListener("input", drawStopPreview);
+
+// ---------- API ----------
+async function api(path, opts = {}) {
+  const t = localStorage.getItem(TK);
+  const headers = { ...(opts.headers || {}) };
+  if (t) headers["Authorization"] = "Bearer " + t;
+  const res = await fetch(API + path, { ...opts, headers });
+  let data = {}; try { data = await res.json(); } catch (e) {}
+  if (res.status === 401 && path !== "/login") { localStorage.removeItem(TK); setLogin(true); }
+  return { res, data };
+}
+function setLogin(need) { show($("login-view"), need); show($("app-view"), !need); }
+function setSide(n) {
+  side = n;
+  $("btn-long").classList.toggle("on", n === "long"); $("btn-short").classList.toggle("on", n === "short");
+  $("btn-long").setAttribute("aria-pressed", n === "long"); $("btn-short").setAttribute("aria-pressed", n === "short");
+  $("send").classList.toggle("short", n === "short");
+}
+$("btn-long").onclick = () => setSide("long");
+$("btn-short").onclick = () => setSide("short");
+
+$("login-form").onsubmit = async (ev) => {
+  ev.preventDefault(); show($("login-err"), false); $("login-btn").disabled = true;
+  try {
+    const { res, data } = await api("/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: $("password").value }) });
+    if (!res.ok || !data.token) { $("login-err").textContent = data.error || "Senha incorreta."; show($("login-err"), true); return; }
+    localStorage.setItem(TK, data.token); $("password").value = ""; setLogin(false); loadPositions();
+  } catch (e) { $("login-err").textContent = "Não consegui falar com o servidor."; show($("login-err"), true); }
+  finally { $("login-btn").disabled = false; }
+};
+
+async function loadPositions() {
+  try {
+    const { res, data } = await api("/positions");
+    if (res.status === 401) return;
+    if (!res.ok) { $("pos-body").innerHTML = `<tr><td colspan="5" class="blocked">${esc(data.error || "Falha ao ler posições.")}</td></tr>`; return; }
+    if (data.mark && lastPx == null) setPx(data.mark);
+    $("pos-body").innerHTML = (data.accounts || []).map((a) => {
+      const pos = !a.net ? "zerada" : `${a.side} ${Math.abs(a.net).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ct`;
+      const err = a.error ? `<div class="blocked">${esc(a.error)}</div>` : "";
+      const st = (a.stops || []).length ? a.stops.map(fmtPx).join(" / ") : "—";
+      return `<tr><td class="name">${esc(a.name)}</td><td>${esc(pos)}${err}</td><td>${fmtPx(a.avg)}</td><td>${a.net ? st : "—"}</td><td>${a.net ? fmtPct(a.expo) : "—"}</td></tr>`;
+    }).join("") || '<tr><td colspan="5" class="muted">Sem dados</td></tr>';
+    drawPositionLines(data.accounts);
+  } catch (e) { $("pos-body").innerHTML = '<tr><td colspan="5" class="blocked">Não consegui falar com o servidor.</td></tr>'; }
+}
+
+function renderResult(data) {
+  const rows = data.accounts || [];
+  $("result-body").innerHTML = rows.length ? rows.map((a) => `<tr>
+      <td class="name">${esc(a.name)}${a.error ? `<div class="blocked">${esc(a.error)}</div>` : '<div class="ok">ok</div>'}</td>
+      <td>${fmtUsd(a.size_usd)}</td><td>${fmtPx(a.avg)}</td><td>${fmtPct(a.expo)}</td><td>${a.loss_usd == null ? "—" : fmtUsd(a.loss_usd)}</td></tr>`).join("")
+    : '<tr><td colspan="5" class="muted">Sem linhas de conta no retorno.</td></tr>';
+  show($("result"), true);
+  const raw = $("result-raw");
+  if (data.raw && (data.aborted || !data.ok || data.dry)) { raw.textContent = data.raw; show(raw, true); } else show(raw, false);
+}
+
+$("send").onclick = async () => {
+  if (sending) return;
+  show($("banner-err"), false); show($("banner-warn"), false);
+  const stop = parseNum($("stop").value), risk = parseNum($("risk").value);
+  if (stop == null || stop <= 0) { $("banner-err").textContent = "Preenche um stop válido."; show($("banner-err"), true); return; }
+  if (risk == null || risk <= 0 || risk > 5) { $("banner-err").textContent = "Risco precisa ser maior que 0 e no máximo 5%."; show($("banner-err"), true); return; }
+  sending = true; $("send").disabled = true; $("send").textContent = "ENVIANDO…";
+  try {
+    const { res, data } = await api("/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ side, stop, risk }) });
+    if (res.status === 401) return;
+    if (data.error && !data.accounts) { $("banner-err").textContent = data.error; show($("banner-err"), true); return; }
+    renderResult(data);
+    if (data.aborted || data.ok === false) { $("banner-err").textContent = data.abort_msg || data.error || "Ordem bloqueada. Nada enviado."; show($("banner-err"), true); }
+    if (data.warning) { $("banner-warn").textContent = "Atenção: exposição acima de 100%."; show($("banner-warn"), true); }
+    loadPositions();
+  } catch (e) { $("banner-err").textContent = "Não consegui falar com o servidor. Confira as posições antes de reenviar."; show($("banner-err"), true); }
+  finally { sending = false; $("send").disabled = false; $("send").textContent = "ENVIAR A MERCADO"; }
+};
+$("refresh").onclick = () => loadPositions();
+$("risk").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); $("send").click(); } });
+
+window.addEventListener("DOMContentLoaded", () => {
+  if (initChart()) loadCandles();
+  startStreams();
+  if (localStorage.getItem(TK)) { setLogin(false); loadPositions(); } else setLogin(true);
+  setInterval(() => { if (document.visibilityState === "visible" && localStorage.getItem(TK)) loadPositions(); }, 30000);
+});
+</script>
+</body>
+</html>
