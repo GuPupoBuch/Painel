@@ -79,7 +79,16 @@ html[data-tf="12H"] .tf[data-bar="12H"],
 html[data-tf="1D"] .tf[data-bar="1D"],
 html[data-tf="1W"] .tf[data-bar="1W"],
 html[data-tf="1M"] .tf[data-bar="1M"]{color:var(--text);border-bottom-color:var(--accent)}
-#chart{width:100%;height:172px;border-radius:8px;overflow:hidden;background:var(--surface);border:1px solid var(--line);overscroll-behavior:contain;scroll-margin-top:calc(132px + env(safe-area-inset-top))}
+.chart-wrap{position:relative;min-width:0;max-width:100%}
+#chart{width:100%;height:58vh;min-height:360px;border-radius:8px;overflow:hidden;background:var(--surface);border:1px solid var(--line);overscroll-behavior:contain;scroll-margin-top:calc(132px + env(safe-area-inset-top));touch-action:pan-y}
+#chart.dragging{touch-action:none;cursor:ns-resize}
+body.dragging-order{overflow:hidden;touch-action:none}
+.drag-tag{
+  position:absolute;z-index:4;left:8px;transform:translateY(-50%);
+  pointer-events:none;padding:4px 8px;border-radius:8px;
+  background:#101418;color:var(--text);border:1px dashed #b7c9da;
+  font-size:13px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;
+}
 #chart-msg{height:100%;min-height:120px;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;font-size:13px;color:var(--muted)}
 
 label{display:block;margin:12px 0 6px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
@@ -185,14 +194,14 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   .actions{position:relative}
 }
 @media (max-width:959px) and (max-height:500px){
-  #chart{height:160px}
+  #chart{height:52vh;min-height:200px}
 }
 
 @media (min-width:960px){
   .px{font-size:40px}
   .pnl-head{font-size:28px}
   html:not(.in-app) body{max-width:440px;padding:calc(28px + env(safe-area-inset-top)) 20px calc(40px + env(safe-area-inset-bottom))}
-  html:not(.in-app) #chart{height:300px}
+  html:not(.in-app) #chart{height:58vh;min-height:360px}
   html.in-app body{
     max-width:1120px;
     padding:calc(16px + env(safe-area-inset-top)) 28px calc(28px + env(safe-area-inset-bottom));
@@ -206,7 +215,8 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   .chrome{display:contents}
   html.in-app .top{grid-area:top}
   html.in-app .tfs{grid-area:tfs;justify-self:stretch;width:auto;min-width:0;max-width:100%}
-  html.in-app #chart{grid-area:chart;height:400px}
+  html.in-app .chart-wrap{grid-area:chart;min-width:0}
+  html.in-app #chart{height:min(68vh,760px);min-height:520px}
   html.in-app #positions{grid-area:positions;min-width:0}
   html.in-app .actions{
     grid-area:actions;position:sticky;top:12px;align-self:start;min-width:0;
@@ -230,6 +240,21 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   .acct-avg,.acct-stop{text-align:right}
   .acct.flat .acct-avg,.acct.flat .acct-stop,.acct.tot .acct-pos,.acct.tot .acct-avg,.acct.tot .acct-stop{display:block}
 }
+.sheet{
+  position:fixed;inset:0;z-index:40;display:flex;align-items:flex-end;justify-content:center;
+  background:rgba(6,8,10,.62);padding:12px 12px calc(12px + env(safe-area-inset-bottom));
+}
+.sheet-card{width:min(440px,100%);max-width:100%;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 16px 14px}
+.sheet-card h2{margin:0 0 8px;font-size:18px;font-weight:650;letter-spacing:-.02em}
+.amend-list{list-style:none;margin:0;padding:0}
+.amend-list li{padding:8px 0;border-top:1px solid var(--line);font-size:15px}
+.amend-move{margin:12px 0 10px;font-size:22px;font-weight:700;letter-spacing:-.02em}
+.sheet-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sheet-actions button{min-height:48px;border-radius:8px;font-size:15px;font-weight:700}
+#amend-cancel{background:transparent;color:var(--text);border:1px solid var(--line)}
+#amend-ok{background:var(--accent);color:#1a1400;border:0}
+#amend-ok:disabled{opacity:.45}
+.sheet .err{margin:0 0 10px}
 </style>
 <script>
 (function () {
@@ -272,7 +297,10 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   <button type="button" class="tf" data-bar="1M">1M</button>
 </div>
 </div>
+<div class="chart-wrap" id="chart-wrap">
 <div id="chart"><div id="chart-msg">Carregando gráfico…</div></div>
+<div id="drag-tag" class="drag-tag hidden"></div>
+</div>
 
 <section id="login-view" class="login-box hidden">
   <h2>Entrar</h2>
@@ -359,6 +387,19 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   </div>
 </section>
 
+<div id="amend-sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="amend-title">
+  <div class="sheet-card">
+    <h2 id="amend-title">Mover ordem</h2>
+    <ul id="amend-list" class="amend-list"></ul>
+    <p id="amend-move" class="amend-move"></p>
+    <div id="amend-msg" class="err hidden"></div>
+    <div class="sheet-actions">
+      <button type="button" id="amend-cancel">Cancelar</button>
+      <button type="button" id="amend-ok">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const API = "https://krzznjwvcrbuhlfwsdel.supabase.co/functions/v1/painel";
 const INST = "BTC-USD-SWAP";
@@ -386,7 +427,16 @@ function savedTf() {
   return "1m";
 }
 let chart = null, series = null, bar = savedTf(), lastPx = null;
-let posLines = [], stopPreview = null;
+let posLines = [], previewLines = [], orderGroups = [];
+let entradaPreviewHold = false, adjPreviewHold = false;
+let drag = null, confirmState = null, dragBound = false;
+const TICK = 0.1, HIT_PX = 24;
+const STOP_COLOR = "#f5c84c", LIMIT_COLOR = "#e7e9ec", PREVIEW_COLOR = "#b7c9da";
+function snapPx(p) {
+  const n = Number(p);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * (1 / TICK)) / (1 / TICK);
+}
 const toT = (ms) => Math.floor(Number(ms) / 1000) - TZ;
 const toBar = (a) => ({ time: toT(a[0]), open: +a[1], high: +a[2], low: +a[3], close: +a[4] });
 
@@ -406,6 +456,7 @@ function initChart() {
     upColor: "#22c55e", downColor: "#ef4444", borderVisible: false, wickUpColor: "#22c55e", wickDownColor: "#ef4444",
     priceFormat: { type: "price", precision: 1, minMove: 0.1 },
   });
+  bindChartDrag();
   return true;
 }
 async function loadCandles() {
@@ -485,29 +536,305 @@ $("tfs").onclick = (ev) => {
   loadCandles().then(() => wsCandle.resub(old));
 };
 
-// linhas: média de entrada e stop das posições abertas, mais prévia do stop digitado
+// linhas: média da posição (não arrasta), ordens abertas (limite/stop) e prévia do formulário
+function dropLine(line) {
+  if (!series || !line) return;
+  try { series.removePriceLine(line); } catch (e) {}
+}
+function kindTitle(kind) { return kind === "stop" ? "stop" : "limite"; }
+function kindLabel(kind) { return kind === "stop" ? "Stop" : "Limite"; }
+function orderKind(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  if (raw.kind === "stop" || raw.kind === "limit") return raw.kind;
+  if (raw.algoId || raw.slTriggerPx != null) return "stop";
+  if (raw.ordId || raw.px != null) return "limit";
+  return null;
+}
+function accountOrders(a) {
+  const out = [];
+  const seenStop = new Set();
+  if (Array.isArray(a.orders)) {
+    for (const raw of a.orders) {
+      const kind = orderKind(raw);
+      const price = Number(raw && (raw.price != null ? raw.price : raw.px != null ? raw.px : raw.slTriggerPx));
+      if ((kind !== "stop" && kind !== "limit") || !(price > 0)) continue;
+      out.push({
+        account: a.name, prefix: a.prefix || null, kind, price,
+        ordId: raw.ordId || null, algoId: raw.algoId || null,
+        side: raw.side || raw.posSide || a.side || null,
+      });
+      if (kind === "stop") seenStop.add(snapPx(price));
+    }
+  }
+  for (const s of a.stops || []) {
+    const price = Number(s);
+    if (!(price > 0) || seenStop.has(snapPx(price))) continue;
+    out.push({ account: a.name, prefix: a.prefix || null, kind: "stop", price, ordId: null, algoId: null, side: a.side || null });
+  }
+  return out;
+}
 function drawPositionLines(accounts) {
   if (!series) return;
-  posLines.forEach((l) => series.removePriceLine(l)); posLines = [];
+  posLines.forEach(dropLine); posLines = [];
   const seen = new Set();
   for (const a of accounts || []) {
-    if (!a.net) continue;
-    const isLong = a.net > 0;
-    const add = (price, color, title, style) => {
-      const k = title + Math.round(price * 10); if (!price || seen.has(k)) return; seen.add(k);
-      posLines.push(series.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title }));
-    };
-    add(a.avg, isLong ? "#22c55e" : "#ef4444", "entrada", 0);
-    (a.stops || []).forEach((s) => add(s, "#f5c84c", "stop", 2));
+    if (!a.net || !a.avg) continue;
+    const key = Math.round(a.avg * 10);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    posLines.push(series.createPriceLine({
+      price: a.avg, color: a.net > 0 ? "#22c55e" : "#ef4444",
+      lineWidth: 1, lineStyle: 0, axisLabelVisible: true, title: "entrada",
+    }));
   }
 }
-function drawStopPreview() {
-  if (!series) return;
-  if (stopPreview) { series.removePriceLine(stopPreview); stopPreview = null; }
-  const s = parseNum($("stop").value);
-  if (s && s > 0) stopPreview = series.createPriceLine({ price: s, color: "#8b939e", lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: "stop?" });
+function drawOrderLines(accounts) {
+  if (!series || drag || confirmState) return;
+  orderGroups.forEach((g) => dropLine(g.line));
+  orderGroups = [];
+  const buckets = new Map();
+  for (const a of accounts || []) {
+    for (const o of accountOrders(a)) {
+      const price = snapPx(o.price);
+      if (!(price > 0)) continue;
+      const key = o.kind + "@" + price;
+      if (!buckets.has(key)) buckets.set(key, { key, kind: o.kind, price, orders: [] });
+      buckets.get(key).orders.push(o);
+    }
+  }
+  for (const g of buckets.values()) {
+    g.line = series.createPriceLine({
+      price: g.price,
+      color: g.kind === "stop" ? STOP_COLOR : LIMIT_COLOR,
+      lineWidth: 1,
+      lineStyle: g.kind === "stop" ? 2 : 0,
+      axisLabelVisible: true,
+      title: kindTitle(g.kind),
+    });
+    orderGroups.push(g);
+  }
 }
-$("stop").addEventListener("input", drawStopPreview);
+function addPreview(price, title) {
+  previewLines.push(series.createPriceLine({
+    price, color: PREVIEW_COLOR, lineWidth: 2, lineStyle: 3, axisLabelVisible: true, title,
+  }));
+}
+function drawPreviews() {
+  if (!series) return;
+  previewLines.forEach(dropLine);
+  previewLines = [];
+  const entradaOn = !$("pane-entrada").classList.contains("hidden");
+  if (entradaOn && !entradaPreviewHold) {
+    if (ordType === "limit") {
+      const p = parseNum($("price").value);
+      if (p > 0) addPreview(p, "prévia entrada " + fmtPx(p));
+    }
+    const s = parseNum($("stop").value);
+    if (s > 0) addPreview(s, "prévia stop");
+  }
+  const adjOn = !$("pane-ajustar").classList.contains("hidden");
+  if (adjOn && !adjPreviewHold && adjOrdType === "limit") {
+    const p = parseNum($("adj-price").value);
+    if (p > 0) addPreview(p, "prévia redução " + fmtPx(p));
+  }
+}
+function redrawChartLines() {
+  if (!series) return;
+  if (drag || confirmState) return;
+  if (lastAccounts) { drawPositionLines(lastAccounts); drawOrderLines(lastAccounts); }
+  drawPreviews();
+}
+function styleOrderLine(group, price) {
+  group.price = price;
+  try {
+    group.line.applyOptions({
+      price,
+      color: group.kind === "stop" ? STOP_COLOR : LIMIT_COLOR,
+      lineWidth: 1,
+      lineStyle: group.kind === "stop" ? 2 : 0,
+      axisLabelVisible: true,
+      title: kindTitle(group.kind),
+    });
+  } catch (e) {}
+}
+function showDragTag(price) {
+  const tag = $("drag-tag");
+  const y = series ? series.priceToCoordinate(price) : null;
+  if (y == null) { show(tag, false); return; }
+  tag.textContent = fmtPx(price);
+  tag.style.top = y + "px";
+  show(tag, true);
+}
+function hideDragTag() { show($("drag-tag"), false); }
+function chartLocalY(ev) {
+  const point = ev.touches && ev.touches[0] ? ev.touches[0]
+    : ev.changedTouches && ev.changedTouches[0] ? ev.changedTouches[0] : ev;
+  const rect = $("chart").getBoundingClientRect();
+  return point.clientY - rect.top;
+}
+function hitOrder(y) {
+  if (!series) return null;
+  let best = null, bestD = HIT_PX + 1;
+  for (const g of orderGroups) {
+    const cy = series.priceToCoordinate(g.price);
+    if (cy == null) continue;
+    const d = Math.abs(cy - y);
+    if (d <= HIT_PX && d < bestD) { best = g; bestD = d; }
+  }
+  return best;
+}
+function yToSnap(y) {
+  if (!series) return null;
+  const raw = series.coordinateToPrice(y);
+  if (raw == null || !Number.isFinite(raw) || !(raw > 0)) return null;
+  return snapPx(raw);
+}
+function setChartDragLock(on) {
+  if (!chart) return;
+  if (on) chart.applyOptions({ handleScroll: false, handleScale: false });
+  else chart.applyOptions({
+    handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+    handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
+  });
+}
+function paintDrag(price) {
+  drag.group.price = price;
+  drag.group.line.applyOptions({ price, title: fmtPx(price), lineWidth: 2 });
+  showDragTag(price);
+}
+function beginDrag(ev) {
+  if (ev.button != null && ev.button !== 0) return false;
+  const group = hitOrder(chartLocalY(ev));
+  if (!group) return false;
+  ev.preventDefault();
+  ev.stopPropagation();
+  drag = {
+    id: ev.pointerId != null ? ev.pointerId : 1,
+    origin: group.price, price: group.price, group, moved: false,
+  };
+  $("chart").classList.add("dragging");
+  document.body.classList.add("dragging-order");
+  setChartDragLock(true);
+  if (ev.pointerId != null && $("chart").setPointerCapture) {
+    try { $("chart").setPointerCapture(ev.pointerId); } catch (e) {}
+  }
+  paintDrag(group.price);
+  return true;
+}
+function moveDrag(ev) {
+  if (!drag) return;
+  if (ev.pointerId != null && ev.pointerId !== drag.id && ev.type !== "touchmove") return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  const price = yToSnap(chartLocalY(ev));
+  if (price == null) return;
+  if (price !== drag.origin) drag.moved = true;
+  drag.price = price;
+  paintDrag(price);
+}
+function endDrag(ev) {
+  if (!drag) return;
+  if (ev && ev.pointerId != null && ev.pointerId !== drag.id && ev.type !== "touchend" && ev.type !== "touchcancel") return;
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  const state = drag;
+  drag = null;
+  $("chart").classList.remove("dragging");
+  document.body.classList.remove("dragging-order");
+  setChartDragLock(false);
+  hideDragTag();
+  styleOrderLine(state.group, state.price);
+  if (!state.moved || state.price === state.origin) return;
+  openAmendSheet(state.group, state.origin, state.price);
+}
+function onChartDown(ev) {
+  if (drag || confirmState) { ev.preventDefault(); ev.stopPropagation(); return; }
+  beginDrag(ev);
+}
+function bindChartDrag() {
+  if (dragBound) return;
+  dragBound = true;
+  const wrap = $("chart-wrap");
+  const opts = { capture: true, passive: false };
+  wrap.addEventListener("pointerdown", onChartDown, opts);
+  wrap.addEventListener("mousedown", onChartDown, opts);
+  wrap.addEventListener("touchstart", onChartDown, opts);
+  wrap.addEventListener("pointermove", moveDrag, opts);
+  wrap.addEventListener("mousemove", moveDrag, opts);
+  wrap.addEventListener("touchmove", moveDrag, opts);
+  wrap.addEventListener("pointerup", endDrag, opts);
+  wrap.addEventListener("pointercancel", endDrag, opts);
+  wrap.addEventListener("mouseup", endDrag, opts);
+  wrap.addEventListener("touchend", endDrag, opts);
+  wrap.addEventListener("touchcancel", endDrag, opts);
+  window.addEventListener("pointermove", (ev) => { if (drag && ev.pointerId === drag.id) moveDrag(ev); }, opts);
+  window.addEventListener("touchmove", (ev) => { if (drag) moveDrag(ev); }, opts);
+  window.addEventListener("pointerup", (ev) => { if (drag && ev.pointerId === drag.id) endDrag(ev); });
+  window.addEventListener("pointercancel", (ev) => { if (drag && ev.pointerId === drag.id) endDrag(ev); });
+  window.addEventListener("touchend", (ev) => { if (drag) endDrag(ev); });
+  window.addEventListener("touchcancel", (ev) => { if (drag) endDrag(ev); });
+}
+function openAmendSheet(group, origin, next) {
+  if (confirmState) return;
+  confirmState = { group, origin, next, busy: false };
+  $("amend-list").innerHTML = group.orders.map((o) =>
+    `<li><span class="name">${esc(o.account)}</span> · ${kindLabel(o.kind)}</li>`).join("");
+  $("amend-move").textContent = fmtPx(origin) + " → " + fmtPx(next);
+  $("amend-msg").textContent = "";
+  show($("amend-msg"), false);
+  $("amend-ok").disabled = false;
+  show($("amend-sheet"), true);
+  try { $("amend-cancel").focus(); } catch (e) {}
+}
+function closeAmendSheet() {
+  confirmState = null;
+  show($("amend-sheet"), false);
+  show($("amend-msg"), false);
+  redrawChartLines();
+}
+// Única função que alteraria uma ordem já aberta.
+// A função painel não tem essa ação (rotas: login, positions, order, adjust, logout).
+// Não faz fetch e não manda nada. Para ligar depois, a função precisaria de um POST /amend
+// chamando a OKX: limite POST /api/v5/trade/amend-order { instId, ordId, newPx };
+// stop POST /api/v5/trade/amend-algos { instId, algoId, newSlTriggerPx }.
+async function amendOrder(order) {
+  void order;
+  const msg = "Ainda não suportado pelo servidor";
+  if ($("amend-msg")) { $("amend-msg").textContent = msg; show($("amend-msg"), true); }
+  return { ok: false, error: msg };
+}
+async function submitAmend() {
+  if (!confirmState || confirmState.busy) return;
+  const state = confirmState;
+  state.busy = true;
+  $("amend-ok").disabled = true;
+  let error = null;
+  for (const order of state.group.orders) {
+    const result = await amendOrder({
+      account: order.account, prefix: order.prefix, kind: order.kind, side: order.side,
+      ordId: order.ordId, algoId: order.algoId, price: state.origin, newPrice: state.next,
+    });
+    if (!result || result.ok === false) error = (result && result.error) || "Ainda não suportado pelo servidor";
+  }
+  if (error) {
+    $("amend-msg").textContent = error;
+    show($("amend-msg"), true);
+    styleOrderLine(state.group, state.origin);
+    state.busy = false;
+    return;
+  }
+  confirmState = null;
+  show($("amend-sheet"), false);
+  loadPositions();
+}
+$("amend-cancel").onclick = () => closeAmendSheet();
+$("amend-ok").onclick = () => submitAmend();
+$("amend-sheet").addEventListener("click", (ev) => { if (ev.target === $("amend-sheet")) closeAmendSheet(); });
+document.addEventListener("keydown", (ev) => {
+  if (!confirmState || ev.key !== "Escape") return;
+  ev.preventDefault();
+  closeAmendSheet();
+});
+$("stop").addEventListener("input", () => { entradaPreviewHold = false; drawPreviews(); });
 
 // ---------- API ----------
 async function api(path, opts = {}) {
@@ -544,7 +871,9 @@ function setOrdType(t) {
   $("btn-market").setAttribute("aria-pressed", t === "market"); $("btn-limit").setAttribute("aria-pressed", t === "limit");
   show($("price-row"), t === "limit");
   if (t === "limit") fillMark();
+  entradaPreviewHold = false;
   updateSendLabel();
+  drawPreviews();
 }
 function updateSendLabel() {
   if (sending) return;
@@ -558,8 +887,8 @@ function updateSendLabel() {
 }
 $("btn-market").onclick = () => setOrdType("market");
 $("btn-limit").onclick = () => setOrdType("limit");
-$("use-mark").onclick = () => { fillMark(); updateSendLabel(); };
-$("price").addEventListener("input", updateSendLabel);
+$("use-mark").onclick = () => { fillMark(); entradaPreviewHold = false; updateSendLabel(); drawPreviews(); };
+$("price").addEventListener("input", () => { entradaPreviewHold = false; updateSendLabel(); drawPreviews(); });
 
 $("login-form").onsubmit = async (ev) => {
   ev.preventDefault(); show($("login-err"), false); $("login-btn").disabled = true;
@@ -610,7 +939,7 @@ async function loadPositions() {
     }
     if (data.mark && lastPx == null) setPx(data.mark);
     lastAccounts = data.accounts; renderAllPos();
-    drawPositionLines(data.accounts);
+    redrawChartLines();
   } catch (e) {
     const msg = '<div class="acct-empty blocked">Não consegui falar com o servidor.</div>'; renderHeadPnl(null);
     $("pos-body").innerHTML = msg; $("adj-pos-body").innerHTML = msg;
@@ -640,6 +969,8 @@ $("send").onclick = async () => {
     if (side === "long" && stop >= price) { $("banner-err").textContent = "No long, o stop precisa ficar abaixo do preço limite."; show($("banner-err"), true); return; }
     if (side === "short" && stop <= price) { $("banner-err").textContent = "No short, o stop precisa ficar acima do preço limite."; show($("banner-err"), true); return; }
   }
+  entradaPreviewHold = true;
+  drawPreviews();
   sending = true; $("send").disabled = true; $("send").textContent = "ENVIANDO…";
   try {
     const payload = { side, stop, risk, ordType };
@@ -664,6 +995,7 @@ function setTab(name) {
   show($("pane-entrada"), entrada); show($("pane-ajustar"), !entrada);
   document.body.classList.toggle("tab-ajustar", !entrada);
   if (!entrada) { loadPositions(); if (adjOrdType === "limit") fillAdjMark(); updateAdjLabel(); }
+  drawPreviews();
 }
 $("tab-entrada").onclick = () => setTab("entrada");
 $("tab-ajustar").onclick = () => setTab("ajustar");
@@ -671,7 +1003,7 @@ $("tab-ajustar").onclick = () => setTab("ajustar");
 function fillAdjMark() {
   if (lastPx != null && lastPx > 0) $("adj-price").value = String(Math.round(lastPx * 10) / 10);
 }
-function invalidateAdjPreview() { adjPreview = null; $("adj-send").disabled = true; updateAdjLabel(); }
+function invalidateAdjPreview() { adjPreview = null; $("adj-send").disabled = true; adjPreviewHold = false; updateAdjLabel(); drawPreviews(); }
 function setAdjPct(p, fromInput) {
   adjPct = p;
   document.querySelectorAll("#pcts .pct").forEach((b) => b.classList.toggle("on", Number(b.dataset.pct) === p));
@@ -748,6 +1080,7 @@ async function runAdj(dry) {
   show($("adj-banner-err"), false); show($("adj-banner-warn"), false);
   const bad = adjValidate();
   if (bad) { $("adj-banner-err").textContent = bad; show($("adj-banner-err"), true); return; }
+  if (!dry) { adjPreviewHold = true; drawPreviews(); }
   adjSending = true; $("adj-preview").disabled = true; $("adj-send").disabled = true;
   $("adj-send").textContent = dry ? "CALCULANDO…" : "ENVIANDO…";
   try {
