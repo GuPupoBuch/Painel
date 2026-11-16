@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b0d10">
+<meta name="theme-color" content="#0c0e11">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Trader">
@@ -16,68 +16,261 @@
 <link rel="icon" type="image/png" href="favicon.png">
 <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js" defer></script>
 <style>
-:root{--bg:#0b0d10;--card:#161a20;--line:#2a3038;--text:#e8eaed;--muted:#8b939e;--green:#22c55e;--green-dim:#16351f;--red:#ef4444;--red-dim:#3a1616;--warn:#f5c84c;--err:#ff7b72}
+:root{
+  --bg:#0c0e11;--surface:#13171c;--line:#2c333c;--text:#e7e9ec;--muted:#8b949e;
+  --accent:#d6b25e;--green:#22c55e;--green-dim:#13281c;--red:#ef4444;--red-dim:#2a1516;--err:#f0a39a;
+}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif}
-body{padding:calc(10px + env(safe-area-inset-top)) 12px calc(20px + env(safe-area-inset-bottom));max-width:520px;margin:0 auto}
-.top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
-.inst{font-size:11px;font-weight:600;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
-.px{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.01em;line-height:1.1}
-.px.up{color:var(--green)}.px.down{color:var(--red)}
-.pnl-up{color:#22c55e;font-weight:700}.pnl-dn{color:#ef4444;font-weight:700}.tot td{border-top:1px solid #2a3038;font-weight:700}
-.ws{font-size:10px;color:var(--muted)}.ws.on::before{content:"● ";color:var(--green)}.ws.off::before{content:"● ";color:var(--err)}
-.tfs{display:flex;gap:4px;margin:6px 0 4px}
-.tf{flex:1;background:var(--card);border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:5px 0;font-size:12px;font-weight:700}
-.tf.on{color:var(--text);border-color:#5b6570}
-#chart{height:210px;border-radius:10px;overflow:hidden;background:var(--card);border:1px solid var(--line)}
-#chart-msg{font-size:12px;color:var(--muted);padding:80px 0;text-align:center}
-label{display:block;font-size:11px;color:var(--muted);margin:8px 0 4px;font-weight:500}
-input{width:100%;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:18px;font-variant-numeric:tabular-nums;outline:none}
-input:focus{border-color:#5b6570}
-.sides{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
-.side{appearance:none;border:2px solid var(--line);background:var(--card);color:var(--text);border-radius:12px;padding:12px 6px;font-size:18px;font-weight:800;letter-spacing:.06em}
+html{background:var(--bg);color-scheme:dark;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text)}
+body{
+  max-width:560px;margin:0 auto;
+  padding:0 12px calc(16px + env(safe-area-inset-bottom));
+  font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-variant-numeric:tabular-nums;line-height:1.35;-webkit-font-smoothing:antialiased;
+}
+button,input{font-family:inherit;font-variant-numeric:tabular-nums;touch-action:manipulation}
+button{cursor:pointer;-webkit-appearance:none;appearance:none;user-select:none}
+button:active{opacity:.82}
+button:focus-visible{outline:1px solid var(--accent);outline-offset:2px}
+::selection{background:#3a3426;color:var(--text)}
+.hidden{display:none!important}
+
+.top{display:flex;flex-direction:column;gap:2px;padding:calc(10px + env(safe-area-inset-top)) 0 8px}
+.inst-row,.px-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+.px-row{align-items:flex-end}
+.top-pnl{display:none;text-align:right;flex:0 0 auto;padding-bottom:1px}
+html.in-app .top-pnl,body.in-app .top-pnl{display:block}
+.inst{font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;white-space:nowrap}
+.px{margin-top:1px;font-size:30px;font-weight:650;letter-spacing:-.03em;line-height:1.05;white-space:nowrap}
+.pnl-head{margin-top:1px;font-size:20px;font-weight:650;letter-spacing:-.02em;line-height:1.05;color:var(--muted);white-space:nowrap}
+.pnl-up{color:var(--green);font-weight:700}
+.pnl-dn{color:var(--red);font-weight:700}
+.pnl-head.pnl-up{color:var(--green)}
+.pnl-head.pnl-dn{color:var(--red)}
+.ws{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;color:var(--muted);white-space:nowrap}
+.ws::before{content:"";width:6px;height:6px;border-radius:50%;background:#5c6570;flex:0 0 auto}
+.ws.on::before{background:var(--accent)}
+
+.tfs{
+  display:flex;gap:0;margin:0;min-width:0;max-width:100%;
+  overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;
+  scroll-snap-type:x proximity;scroll-padding-inline:8px;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;
+  border-bottom:1px solid var(--line);background:var(--bg);
+}
+.tfs::-webkit-scrollbar{display:none;height:0}
+.tf{
+  flex:0 0 auto;min-width:48px;min-height:44px;padding:0 10px;
+  scroll-snap-align:center;background:transparent;border:0;border-bottom:2px solid transparent;
+  border-radius:0;color:var(--muted);font-size:13px;font-weight:650;margin-bottom:-1px;
+}
+.tf.on,
+html[data-tf="1m"] .tf[data-bar="1m"],
+html[data-tf="3m"] .tf[data-bar="3m"],
+html[data-tf="5m"] .tf[data-bar="5m"],
+html[data-tf="15m"] .tf[data-bar="15m"],
+html[data-tf="30m"] .tf[data-bar="30m"],
+html[data-tf="1H"] .tf[data-bar="1H"],
+html[data-tf="2H"] .tf[data-bar="2H"],
+html[data-tf="4H"] .tf[data-bar="4H"],
+html[data-tf="6H"] .tf[data-bar="6H"],
+html[data-tf="12H"] .tf[data-bar="12H"],
+html[data-tf="1D"] .tf[data-bar="1D"],
+html[data-tf="1W"] .tf[data-bar="1W"],
+html[data-tf="1M"] .tf[data-bar="1M"]{color:var(--text);border-bottom-color:var(--accent)}
+#chart{width:100%;height:172px;border-radius:8px;overflow:hidden;background:var(--surface);border:1px solid var(--line);overscroll-behavior:contain;scroll-margin-top:calc(132px + env(safe-area-inset-top))}
+#chart-msg{height:100%;min-height:120px;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;font-size:13px;color:var(--muted)}
+
+label{display:block;margin:12px 0 6px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+input{
+  width:100%;min-height:48px;padding:12px;background:var(--surface);color:var(--text);
+  border:1px solid var(--line);border-radius:8px;font-size:16px;outline:none;
+}
+input::placeholder{color:#5c6570}
+input:focus{border-color:var(--accent)}
+input{scroll-margin-top:96px;scroll-margin-bottom:160px}
+input:-webkit-autofill{-webkit-text-fill-color:var(--text);caret-color:var(--text);box-shadow:0 0 0 1000px var(--surface) inset}
+.row,.price-row,.sides,.otypes,.pcts,.res-grid{min-width:0}
+.row>*,.price-row>*{min-width:0}
+.row{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,.8fr);gap:8px}
+.price-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
+.use-mark{min-height:48px;padding:0 14px;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:8px;font-size:14px;font-weight:650;white-space:nowrap}
+
+.sides,.otypes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.side,.otype,.pct{background:var(--surface);border:1px solid var(--line);border-radius:8px;color:var(--muted);min-height:48px}
+.side{color:var(--text);font-size:15px;font-weight:700;letter-spacing:.08em}
 .side.long.on{background:var(--green-dim);border-color:var(--green);color:var(--green)}
 .side.short.on{background:var(--red-dim);border-color:var(--red);color:var(--red)}
-.otypes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
-.otype{appearance:none;border:2px solid var(--line);background:var(--card);color:var(--muted);border-radius:12px;padding:10px 6px;font-size:15px;font-weight:700}
-.otype.on{color:var(--text);border-color:#5b6570;background:#1c222a}
-.price-row{display:grid;grid-template-columns:1.6fr auto;gap:8px;align-items:end;margin-top:0}
-.use-mark{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13px;font-weight:700;height:46px;white-space:nowrap}
-.row{display:grid;grid-template-columns:1.6fr 1fr;gap:8px}
-.send{width:100%;margin-top:12px;border:0;border-radius:14px;padding:17px 12px;font-size:18px;font-weight:800;letter-spacing:.04em;color:#06140a;background:var(--green)}
-.send.short{background:var(--red);color:#fff}.send:disabled{opacity:.55}
-.result,.footer,.login-box,.err,.warn{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:14px}
-.err{border-color:#5a2a2a;color:var(--err);white-space:pre-wrap}.warn{border-color:#5a4a16;color:var(--warn)}
-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:13px}
-th{text-align:left;color:var(--muted);font-weight:500;font-size:11px;padding:0 4px 6px}
-td{padding:7px 4px;border-top:1px solid var(--line);vertical-align:top}
-td.name{font-weight:700}.muted{color:var(--muted)}
-.pos-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
-.pos-head h2{margin:0;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
-button.refresh{background:transparent;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-size:13px;font-weight:600}
-.hidden{display:none!important}
-.login-box h2{margin:0 0 6px;font-size:20px}.login-box p{margin:0 0 10px;color:var(--muted);font-size:14px}
-.raw{margin-top:8px;font-size:11px;color:var(--muted);white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace}
-.blocked{color:var(--err)}.ok{color:var(--green)}
-button{cursor:pointer;font-family:inherit}
-.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 2px}
-.tab{appearance:none;border:2px solid var(--line);background:var(--card);color:var(--muted);border-radius:12px;padding:11px 6px;font-size:15px;font-weight:800;letter-spacing:.06em}
-.tab.on{color:var(--text);border-color:#5b6570;background:#1c222a}
-.pcts{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
-.pct{appearance:none;border:2px solid var(--line);background:var(--card);color:var(--muted);border-radius:12px;padding:10px 0;font-size:15px;font-weight:800}
-.pct.on{color:var(--text);border-color:#5b6570;background:#1c222a}
-.send.preview{background:#1c222a;color:var(--text);border:1px solid var(--line);margin-top:12px}
-.send.adj{background:var(--warn);color:#1a1400}
-.send.adj:disabled{opacity:.45}
+.otype,.pct{font-size:15px;font-weight:700}
+.otype.on,.pct.on{color:var(--text);border-color:var(--accent);background:transparent}
+.pcts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
+
+.tabs{display:grid;grid-template-columns:1fr 1fr;margin:4px 0 2px;border-bottom:1px solid var(--line)}
+.tab{min-height:48px;background:transparent;border:0;border-bottom:2px solid transparent;border-radius:0;color:var(--muted);font-size:14px;font-weight:700;letter-spacing:.06em;margin-bottom:-1px}
+.tab.on{color:var(--text);border-bottom-color:var(--accent)}
+
+.send{
+  width:100%;min-height:48px;padding:12px 10px;border:0;border-radius:8px;
+  background:var(--green);color:#04140c;font-size:15px;font-weight:700;letter-spacing:.03em;line-height:1.2;
+}
+.send.short{background:var(--red);color:#fff}
+.send.preview{background:transparent;color:var(--text);border:1px solid var(--line)}
+.send.adj{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.send:disabled,.send.adj:disabled{opacity:.45}
+#login-btn.send{margin-top:14px;background:var(--text);color:var(--bg)}
+.action-dock{display:flex;flex-direction:column;gap:8px}
+.action-dock .err,.action-dock .warn{margin:0}
+
+.err,.warn{margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:13px;line-height:1.35}
+.err{border-color:#6a3030;color:var(--err);white-space:pre-wrap;overflow-wrap:anywhere}
+.warn{border-color:#5c4e2a;color:var(--accent)}
+.login-box{margin-top:18px}
+.login-box h2{margin:0 0 6px;font-size:22px;font-weight:650;letter-spacing:-.02em}
+.login-box p{margin:0;color:var(--muted);font-size:14px;line-height:1.4}
+.raw{margin-top:8px;max-width:100%;overflow-x:auto;font-size:11px;line-height:1.4;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere;font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.blocked{color:var(--err);font-size:12px;font-weight:650;overflow-wrap:anywhere}
+.ok{color:var(--green);font-size:12px;font-weight:650}
+.muted{color:var(--muted)}
+.name{font-weight:650}
+
+.pos-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:10px 0 0}
+.pos-head h2{margin:0;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(--text);border:1px solid var(--line);border-radius:8px;font-size:13px;font-weight:650}
+.pos-cols{display:none}
+.acct-list,.res-list{min-width:0}
+.acct{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;
+  grid-template-areas:"name pnl" "pos pos" "avg stop";
+  column-gap:12px;row-gap:1px;align-items:baseline;
+  padding:6px 0 7px;border-top:1px solid var(--line);min-width:0;
+}
+.acct-name{grid-area:name;min-width:0;font-weight:650;font-size:15px}
+.acct-pnl{grid-area:pnl;text-align:right;font-weight:650;font-size:14px}
+.acct-pos{grid-area:pos;min-width:0;color:var(--muted);font-size:13px}
+.acct-avg{grid-area:avg;min-width:0}
+.acct-stop{grid-area:stop;min-width:0;text-align:right}
+.acct .k{display:inline;margin:0 4px 0 0;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.acct .num{font-size:13px}
+.sd.long{color:var(--green);font-weight:700}
+.sd.short{color:var(--red);font-weight:700}
+.acct.flat .acct-avg,.acct.flat .acct-stop,.acct.tot .acct-pos,.acct.tot .acct-avg,.acct.tot .acct-stop{display:none}
+.acct.tot{border-top-color:#414a56}
+.acct.tot .acct-name,.acct.tot .acct-pnl{font-weight:700}
+.acct-empty{padding:10px 0;font-size:13px}
+.res{padding:10px 0 4px;border-top:1px solid var(--line);scroll-margin-top:88px;scroll-margin-bottom:170px}
+.res-h{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:8px;min-width:0}
+.res-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}
+.kv{min-width:0}
+.kv .k{display:block;font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.kv .v{display:block;margin-top:2px;font-size:14px;overflow-wrap:anywhere}
+.result{margin-top:4px}
+
+.actions{margin-top:8px}
+.offstage{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;pointer-events:none}
+
+@media (max-width:959px){
+  .chrome{
+    position:sticky;top:0;z-index:30;margin:0 -12px;padding:0 12px;
+    background:var(--bg);
+  }
+  .top{position:static;margin:0;padding-left:0;padding-right:0;background:transparent}
+  .action-dock{
+    position:fixed;left:0;right:0;bottom:0;z-index:25;
+    padding:8px 12px calc(8px + env(safe-area-inset-bottom));
+    background:var(--bg);border-top:1px solid var(--line);
+  }
+  body.in-app{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+  body.in-app.tab-ajustar{padding-bottom:calc(148px + env(safe-area-inset-bottom))}
+  .actions{position:relative}
+}
+@media (max-width:959px) and (max-height:500px){
+  #chart{height:160px}
+}
+
+@media (min-width:960px){
+  .px{font-size:40px}
+  .pnl-head{font-size:28px}
+  html:not(.in-app) body{max-width:440px;padding:calc(28px + env(safe-area-inset-top)) 20px calc(40px + env(safe-area-inset-bottom))}
+  html:not(.in-app) #chart{height:300px}
+  html.in-app body{
+    max-width:1120px;
+    padding:calc(16px + env(safe-area-inset-top)) 28px calc(28px + env(safe-area-inset-bottom));
+    display:grid;
+    grid-template-columns:minmax(0,1.45fr) minmax(320px,.82fr);
+    grid-template-areas:"top top" "tfs tfs" "chart actions" "positions actions";
+    column-gap:36px;row-gap:8px;align-items:start;
+  }
+  html.in-app #app-view{display:contents}
+  html.in-app #app-view.hidden{display:none!important}
+  .chrome{display:contents}
+  html.in-app .top{grid-area:top}
+  html.in-app .tfs{grid-area:tfs;justify-self:stretch;width:auto;min-width:0;max-width:100%}
+  html.in-app #chart{grid-area:chart;height:400px}
+  html.in-app #positions{grid-area:positions;min-width:0}
+  html.in-app .actions{
+    grid-area:actions;position:sticky;top:12px;align-self:start;min-width:0;
+    margin-top:0;padding-left:28px;border-left:1px solid var(--line);
+  }
+  html.in-app .action-dock{position:static;padding:0;border:0;background:transparent;margin-top:14px}
+  .pos-cols{
+    display:grid;
+    grid-template-columns:minmax(72px,.9fr) minmax(0,1.5fr) minmax(72px,.9fr) minmax(72px,.9fr) minmax(100px,1.1fr);
+    gap:12px;padding:2px 0 4px;color:var(--muted);font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;
+  }
+  .pos-cols span:nth-child(n+3){text-align:right}
+  .acct{
+    grid-template-columns:minmax(72px,.9fr) minmax(0,1.5fr) minmax(72px,.9fr) minmax(72px,.9fr) minmax(100px,1.1fr);
+    grid-template-areas:"name pos avg stop pnl";
+    column-gap:12px;row-gap:0;align-items:center;padding:9px 0;
+  }
+  .acct .k{display:none}
+  .acct .num,.acct-pos{font-size:14px}
+  .acct-pos{color:var(--text)}
+  .acct-avg,.acct-stop{text-align:right}
+  .acct.flat .acct-avg,.acct.flat .acct-stop,.acct.tot .acct-pos,.acct.tot .acct-avg,.acct.tot .acct-stop{display:block}
+}
 </style>
+<script>
+(function () {
+  try { if (localStorage.getItem("painel_token")) document.documentElement.classList.add("in-app"); } catch (e) {}
+  var tf = ["1m","3m","5m","15m","30m","1H","2H","4H","6H","12H","1D","1W","1M"];
+  var bar = "1m";
+  try { var v = localStorage.getItem("painel_tf"); if (v && tf.indexOf(v) !== -1) bar = v; } catch (e) {}
+  document.documentElement.setAttribute("data-tf", bar);
+})();
+</script>
 </head>
 <body>
-<div class="top">
-  <div><div class="inst">BTC-USD-SWAP · mark</div><div id="px" class="px">—</div></div>
-  <div id="ws" class="ws off">conectando</div>
-</div>
+<div class="chrome">
+<header class="top">
+  <div class="inst-row">
+    <div class="inst">BTC-USD-SWAP · mark</div>
+    <div id="ws" class="ws off">conectando</div>
+  </div>
+  <div class="px-row">
+    <div id="px" class="px">—</div>
+    <div class="top-pnl">
+      <div class="inst">Resultado</div>
+      <div id="pnl-head" class="pnl-head">—</div>
+    </div>
+  </div>
+</header>
 <div class="tfs" id="tfs">
-  <button class="tf on" data-bar="1m">1m</button><button class="tf" data-bar="5m">5m</button><button class="tf" data-bar="15m">15m</button><button class="tf" data-bar="1H">1H</button>
+  <button type="button" class="tf" data-bar="1m">1m</button>
+  <button type="button" class="tf" data-bar="3m">3m</button>
+  <button type="button" class="tf" data-bar="5m">5m</button>
+  <button type="button" class="tf" data-bar="15m">15m</button>
+  <button type="button" class="tf" data-bar="30m">30m</button>
+  <button type="button" class="tf" data-bar="1H">1H</button>
+  <button type="button" class="tf" data-bar="2H">2H</button>
+  <button type="button" class="tf" data-bar="4H">4H</button>
+  <button type="button" class="tf" data-bar="6H">6H</button>
+  <button type="button" class="tf" data-bar="12H">12H</button>
+  <button type="button" class="tf" data-bar="1D">1D</button>
+  <button type="button" class="tf" data-bar="1W">1W</button>
+  <button type="button" class="tf" data-bar="1M">1M</button>
+</div>
 </div>
 <div id="chart"><div id="chart-msg">Carregando gráfico…</div></div>
 
@@ -93,70 +286,76 @@ button{cursor:pointer;font-family:inherit}
 </section>
 
 <section id="app-view" class="hidden">
-  <div class="tabs">
-    <button type="button" class="tab on" id="tab-entrada" aria-pressed="true">Entrada</button>
-    <button type="button" class="tab" id="tab-ajustar" aria-pressed="false">Ajustar</button>
-  </div>
-  <div id="pane-entrada">
-  <div class="sides">
-    <button type="button" class="side long on" id="btn-long" aria-pressed="true">LONG</button>
-    <button type="button" class="side short" id="btn-short" aria-pressed="false">SHORT</button>
-  </div>
-  <div class="otypes">
-    <button type="button" class="otype on" id="btn-market" aria-pressed="true">Mercado</button>
-    <button type="button" class="otype" id="btn-limit" aria-pressed="false">Limite</button>
-  </div>
-  <div id="price-row" class="price-row hidden">
-    <div><label for="price">Preço</label><input id="price" type="text" inputmode="decimal" autocomplete="off" placeholder="64000" enterkeyhint="next"></div>
-    <button type="button" class="use-mark" id="use-mark">Usar mark</button>
-  </div>
-  <div class="row">
-    <div><label for="stop">Stop</label><input id="stop" type="text" inputmode="decimal" autocomplete="off" placeholder="63800" enterkeyhint="next"></div>
-    <div><label for="risk">Risco %</label><input id="risk" type="text" inputmode="decimal" autocomplete="off" value="1" enterkeyhint="go"></div>
-  </div>
-  <button type="button" class="send" id="send">LONG A MERCADO</button>
-  <div id="banner-err" class="err hidden"></div>
-  <div id="banner-warn" class="warn hidden"></div>
-  <div id="result" class="result hidden">
-    <table><thead><tr><th>Conta</th><th>Tamanho</th><th>Média</th><th>Expo</th><th>Perda no stop</th></tr></thead><tbody id="result-body"></tbody></table>
-    <div id="result-raw" class="raw hidden"></div>
-  </div>
-  <div class="footer">
+  <section id="positions">
     <div class="pos-head"><h2>Posições</h2><button type="button" class="refresh" id="refresh">Atualizar</button></div>
-    <table><thead><tr><th>Conta</th><th>Posição</th><th>Média</th><th>Stop</th><th>Resultado</th></tr></thead>
-      <tbody id="pos-body"><tr><td colspan="5" class="muted">Carregando…</td></tr></tbody></table>
-  </div>
-  </div>
+    <div class="pos-cols" aria-hidden="true"><span>Conta</span><span>Posição</span><span>Média</span><span>Stop</span><span>Resultado</span></div>
+    <div id="pos-body" class="acct-list"><div class="acct-empty muted">Carregando…</div></div>
+  </section>
 
-  <div id="pane-ajustar" class="hidden">
-    <div class="footer" style="margin-top:10px">
-      <div class="pos-head"><h2>Posição atual</h2><button type="button" class="refresh" id="adj-refresh">Atualizar</button></div>
-      <table><thead><tr><th>Conta</th><th>Posição</th><th>Média</th><th>Stop</th><th>Resultado</th></tr></thead>
-        <tbody id="adj-pos-body"><tr><td colspan="5" class="muted">Carregando…</td></tr></tbody></table>
+  <div class="actions">
+    <div class="tabs">
+      <button type="button" class="tab on" id="tab-entrada" aria-pressed="true">Entrada</button>
+      <button type="button" class="tab" id="tab-ajustar" aria-pressed="false">Ajustar</button>
     </div>
-    <div class="pcts" id="pcts">
-      <button type="button" class="pct" data-pct="25">25%</button>
-      <button type="button" class="pct on" data-pct="50">50%</button>
-      <button type="button" class="pct" data-pct="75">75%</button>
-      <button type="button" class="pct" data-pct="100">100%</button>
+    <div id="pane-entrada">
+      <div class="sides">
+        <button type="button" class="side long on" id="btn-long" aria-pressed="true">LONG</button>
+        <button type="button" class="side short" id="btn-short" aria-pressed="false">SHORT</button>
+      </div>
+      <div class="otypes">
+        <button type="button" class="otype on" id="btn-market" aria-pressed="true">Mercado</button>
+        <button type="button" class="otype" id="btn-limit" aria-pressed="false">Limite</button>
+      </div>
+      <div id="price-row" class="price-row hidden">
+        <div><label for="price">Preço</label><input id="price" type="text" inputmode="decimal" autocomplete="off" placeholder="64000" enterkeyhint="next"></div>
+        <button type="button" class="use-mark" id="use-mark">Usar mark</button>
+      </div>
+      <div class="row">
+        <div><label for="stop">Stop</label><input id="stop" type="text" inputmode="decimal" autocomplete="off" placeholder="63800" enterkeyhint="next"></div>
+        <div><label for="risk">Risco %</label><input id="risk" type="text" inputmode="decimal" autocomplete="off" value="1" enterkeyhint="go"></div>
+      </div>
+      <div id="result" class="result hidden">
+        <div id="result-body" class="res-list"></div>
+        <div id="result-raw" class="raw hidden"></div>
+      </div>
+      <div class="action-dock">
+        <div id="banner-err" class="err hidden"></div>
+        <div id="banner-warn" class="warn hidden"></div>
+        <button type="button" class="send" id="send">LONG A MERCADO</button>
+      </div>
     </div>
-    <div><label for="adj-pct">% personalizado</label><input id="adj-pct" type="text" inputmode="decimal" autocomplete="off" value="50" enterkeyhint="go"></div>
-    <div class="otypes">
-      <button type="button" class="otype on" id="adj-btn-market" aria-pressed="true">Mercado</button>
-      <button type="button" class="otype" id="adj-btn-limit" aria-pressed="false">Limite</button>
+
+    <div id="pane-ajustar" class="hidden">
+      <div class="offstage" aria-hidden="true">
+        <button type="button" class="refresh" id="adj-refresh" tabindex="-1">Atualizar</button>
+        <div id="adj-pos-body"></div>
+      </div>
+      <div class="pcts" id="pcts">
+        <button type="button" class="pct" data-pct="25">25%</button>
+        <button type="button" class="pct on" data-pct="50">50%</button>
+        <button type="button" class="pct" data-pct="75">75%</button>
+        <button type="button" class="pct" data-pct="100">100%</button>
+      </div>
+      <div><label for="adj-pct">% personalizado</label><input id="adj-pct" type="text" inputmode="decimal" autocomplete="off" value="50" enterkeyhint="go"></div>
+      <div class="otypes">
+        <button type="button" class="otype on" id="adj-btn-market" aria-pressed="true">Mercado</button>
+        <button type="button" class="otype" id="adj-btn-limit" aria-pressed="false">Limite</button>
+      </div>
+      <div id="adj-price-row" class="price-row hidden">
+        <div><label for="adj-price">Preço</label><input id="adj-price" type="text" inputmode="decimal" autocomplete="off" placeholder="64000" enterkeyhint="next"></div>
+        <button type="button" class="use-mark" id="adj-use-mark">Usar mark</button>
+      </div>
+      <div id="adj-result" class="result hidden">
+        <div id="adj-result-body" class="res-list"></div>
+        <div id="adj-result-raw" class="raw hidden"></div>
+      </div>
+      <div class="action-dock">
+        <div id="adj-banner-err" class="err hidden"></div>
+        <div id="adj-banner-warn" class="warn hidden"></div>
+        <button type="button" class="send preview" id="adj-preview">VER PRÉVIA</button>
+        <button type="button" class="send adj" id="adj-send" disabled>REDUZIR 50% A MERCADO</button>
+      </div>
     </div>
-    <div id="adj-price-row" class="price-row hidden">
-      <div><label for="adj-price">Preço</label><input id="adj-price" type="text" inputmode="decimal" autocomplete="off" placeholder="64000" enterkeyhint="next"></div>
-      <button type="button" class="use-mark" id="adj-use-mark">Usar mark</button>
-    </div>
-    <button type="button" class="send preview" id="adj-preview">VER PRÉVIA</button>
-    <div id="adj-banner-err" class="err hidden"></div>
-    <div id="adj-banner-warn" class="warn hidden"></div>
-    <div id="adj-result" class="result hidden">
-      <table><thead><tr><th>Conta</th><th>Fecha</th><th>Resta</th><th>Expo</th><th>Stop</th></tr></thead><tbody id="adj-result-body"></tbody></table>
-      <div id="adj-result-raw" class="raw hidden"></div>
-    </div>
-    <button type="button" class="send adj" id="adj-send" disabled>REDUZIR 50% A MERCADO</button>
   </div>
 </section>
 
@@ -178,7 +377,15 @@ const show = (el, on) => el.classList.toggle("hidden", !on);
 
 // ---------- gráfico ----------
 const TZ = new Date().getTimezoneOffset() * 60; // segundos; desloca p/ hora local
-let chart = null, series = null, bar = "1m", lastPx = null;
+const TF_KEY = "painel_tf";
+const BARS = ["1m","3m","5m","15m","30m","1H","2H","4H","6H","12H","1D","1W","1M"];
+function savedTf() {
+  const attr = document.documentElement.getAttribute("data-tf");
+  if (BARS.indexOf(attr) >= 0) return attr;
+  try { const v = localStorage.getItem(TF_KEY); if (BARS.indexOf(v) >= 0) return v; } catch (e) {}
+  return "1m";
+}
+let chart = null, series = null, bar = savedTf(), lastPx = null;
 let posLines = [], stopPreview = null;
 const toT = (ms) => Math.floor(Number(ms) / 1000) - TZ;
 const toBar = (a) => ({ time: toT(a[0]), open: +a[1], high: +a[2], low: +a[3], close: +a[4] });
@@ -188,10 +395,10 @@ function initChart() {
   $("chart").innerHTML = "";
   chart = LightweightCharts.createChart($("chart"), {
     autoSize: true,
-    layout: { background: { color: "#161a20" }, textColor: "#8b939e", fontSize: 11 },
-    grid: { vertLines: { color: "#1e232a" }, horzLines: { color: "#1e232a" } },
-    rightPriceScale: { borderColor: "#2a3038" },
-    timeScale: { borderColor: "#2a3038", timeVisible: true, secondsVisible: false, rightOffset: 4 },
+    layout: { background: { color: "#13171c" }, textColor: "#8b949e", fontSize: 11 },
+    grid: { vertLines: { color: "#1b2027" }, horzLines: { color: "#1b2027" } },
+    rightPriceScale: { borderColor: "#2c333c" },
+    timeScale: { borderColor: "#2c333c", timeVisible: true, secondsVisible: false, rightOffset: 4 },
     crosshair: { mode: 0 },
     handleScale: { axisPressedMouseMove: true }, handleScroll: { vertTouchDrag: false },
   });
@@ -256,10 +463,25 @@ function startStreams() {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") { loadCandles(); if (!wsCandle.up) wsCandle.restart(); if (!wsMark.up) wsMark.restart(); }
 });
+function markTf(behavior) {
+  document.documentElement.setAttribute("data-tf", bar);
+  const row = $("tfs");
+  let on = null;
+  row.querySelectorAll(".tf").forEach((x) => {
+    const hit = x.dataset.bar === bar;
+    x.classList.toggle("on", hit);
+    if (hit) on = x;
+  });
+  if (!on) return;
+  const left = on.offsetLeft - (row.clientWidth - on.offsetWidth) / 2;
+  row.scrollTo({ left: Math.max(0, left), behavior: behavior || "auto" });
+}
+markTf("auto");
 $("tfs").onclick = (ev) => {
-  const b = ev.target.closest(".tf"); if (!b || b.dataset.bar === bar) return;
+  const b = ev.target.closest(".tf"); if (!b || BARS.indexOf(b.dataset.bar) < 0 || b.dataset.bar === bar) return;
   const old = candleArgs(); bar = b.dataset.bar;
-  document.querySelectorAll(".tf").forEach((x) => x.classList.toggle("on", x === b));
+  try { localStorage.setItem(TF_KEY, bar); } catch (e) {}
+  markTf("smooth");
   loadCandles().then(() => wsCandle.resub(old));
 };
 
@@ -297,7 +519,12 @@ async function api(path, opts = {}) {
   if (res.status === 401 && path !== "/login") { localStorage.removeItem(TK); setLogin(true); }
   return { res, data };
 }
-function setLogin(need) { show($("login-view"), need); show($("app-view"), !need); }
+function setLogin(need) {
+  show($("login-view"), need); show($("app-view"), !need);
+  document.body.classList.toggle("in-app", !need);
+  document.documentElement.classList.toggle("in-app", !need);
+  if (need) renderHeadPnl(null);
+}
 function setSide(n) {
   side = n;
   $("btn-long").classList.toggle("on", n === "long"); $("btn-short").classList.toggle("on", n === "short");
@@ -351,17 +578,26 @@ function pnlUsd(a) {
   return a.net * 100 * (m / a.avg - 1); // inverso: PnL_BTC = ct*100*(1/avg-1/mark); em USD × mark
 }
 const fmtPnl = (v) => v == null ? "—" : `<span class="${v >= 0 ? "pnl-up" : "pnl-dn"}">${v >= 0 ? "+" : "−"}${fmtUsd(Math.abs(v))}</span>`;
+function renderHeadPnl(v) {
+  const el = $("pnl-head");
+  if (!el) return;
+  if (v == null || Number.isNaN(v)) { el.textContent = "—"; el.className = "pnl-head"; return; }
+  el.className = "pnl-head " + (v >= 0 ? "pnl-up" : "pnl-dn");
+  el.textContent = (v >= 0 ? "+" : "−") + fmtUsd(Math.abs(v));
+}
 function renderPosTable(id, accounts) {
   let tot = 0, any = false;
   const rows = (accounts || []).map((a) => {
-    const pos = !a.net ? "zerada" : `${a.side} ${fmtUsd(Math.abs(a.net) * 100)}`;
+    const sideCls = a.side === "long" || a.side === "short" ? a.side : "";
+    const pos = !a.net ? "zerada" : `<span class="sd ${sideCls}">${esc(a.side)}</span> ${fmtUsd(Math.abs(a.net) * 100)}`;
     const err = a.error ? `<div class="blocked">${esc(a.error)}</div>` : "";
     const st = (a.stops || []).length ? a.stops.map(fmtPx).join(" / ") : "—";
     const p = pnlUsd(a); if (p != null) { tot += p; any = true; }
-    return `<tr><td class="name">${esc(a.name)}</td><td>${esc(pos)}${err}</td><td>${fmtPx(a.avg)}</td><td>${a.net ? st : "—"}</td><td>${fmtPnl(p)}</td></tr>`;
+    return `<article class="acct${a.net ? "" : " flat"}"><div class="acct-name">${esc(a.name)}${err}</div><div class="acct-pnl">${fmtPnl(p)}</div><div class="acct-pos">${pos}</div><div class="acct-avg"><span class="k">Média</span><span class="num">${a.net ? fmtPx(a.avg) : "—"}</span></div><div class="acct-stop"><span class="k">Stop</span><span class="num">${a.net ? st : "—"}</span></div></article>`;
   });
-  if (any) rows.push(`<tr class="tot"><td class="name">Total</td><td></td><td></td><td></td><td>${fmtPnl(tot)}</td></tr>`);
-  $(id).innerHTML = rows.join("") || '<tr><td colspan="5" class="muted">Sem dados</td></tr>';
+  if (any) rows.push(`<article class="acct tot"><div class="acct-name">Total</div><div class="acct-pnl">${fmtPnl(tot)}</div><div class="acct-pos"></div><div class="acct-avg"></div><div class="acct-stop"></div></article>`);
+  $(id).innerHTML = rows.join("") || '<div class="acct-empty muted">Sem dados</div>';
+  if (id === "pos-body") renderHeadPnl(any ? tot : null);
 }
 function renderAllPos() { if (!lastAccounts) return; renderPosTable("pos-body", lastAccounts); renderPosTable("adj-pos-body", lastAccounts); }
 async function loadPositions() {
@@ -369,25 +605,25 @@ async function loadPositions() {
     const { res, data } = await api("/positions");
     if (res.status === 401) return;
     if (!res.ok) {
-      const msg = `<tr><td colspan="5" class="blocked">${esc(data.error || "Falha ao ler posições.")}</td></tr>`;
-      $("pos-body").innerHTML = msg; $("adj-pos-body").innerHTML = msg; return;
+      const msg = `<div class="acct-empty blocked">${esc(data.error || "Falha ao ler posições.")}</div>`;
+      $("pos-body").innerHTML = msg; $("adj-pos-body").innerHTML = msg; renderHeadPnl(null); return;
     }
     if (data.mark && lastPx == null) setPx(data.mark);
     lastAccounts = data.accounts; renderAllPos();
     drawPositionLines(data.accounts);
   } catch (e) {
-    const msg = '<tr><td colspan="5" class="blocked">Não consegui falar com o servidor.</td></tr>';
+    const msg = '<div class="acct-empty blocked">Não consegui falar com o servidor.</div>'; renderHeadPnl(null);
     $("pos-body").innerHTML = msg; $("adj-pos-body").innerHTML = msg;
   }
 }
 
 function renderResult(data) {
   const rows = data.accounts || [];
-  $("result-body").innerHTML = rows.length ? rows.map((a) => `<tr>
-      <td class="name">${esc(a.name)}${a.error ? `<div class="blocked">${esc(a.error)}</div>` : '<div class="ok">ok</div>'}</td>
-      <td>${fmtUsd(a.size_usd)}</td><td>${fmtPx(a.avg)}</td><td>${fmtPct(a.expo)}</td><td>${a.loss_usd == null ? "—" : fmtUsd(a.loss_usd)}</td></tr>`).join("")
-    : '<tr><td colspan="5" class="muted">Sem linhas de conta no retorno.</td></tr>';
+  const kv = (k, v) => `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+  $("result-body").innerHTML = rows.length ? rows.map((a) => `<article class="res"><div class="res-h"><div class="name">${esc(a.name)}${a.error ? `<div class="blocked">${esc(a.error)}</div>` : '<div class="ok">ok</div>'}</div></div><div class="res-grid">${kv("Tamanho", fmtUsd(a.size_usd))}${kv("Média", fmtPx(a.avg))}${kv("Expo", fmtPct(a.expo))}${kv("Perda no stop", a.loss_usd == null ? "—" : fmtUsd(a.loss_usd))}</div></article>`).join("")
+    : '<div class="acct-empty muted">Sem linhas de conta no retorno.</div>';
   show($("result"), true);
+  if (window.matchMedia("(max-width: 959px)").matches) $("result").scrollIntoView({ block: "center", inline: "nearest" });
   const raw = $("result-raw");
   if (data.raw && (data.aborted || !data.ok || data.dry)) { raw.textContent = data.raw; show(raw, true); } else show(raw, false);
 }
@@ -426,6 +662,7 @@ function setTab(name) {
   $("tab-entrada").classList.toggle("on", entrada); $("tab-ajustar").classList.toggle("on", !entrada);
   $("tab-entrada").setAttribute("aria-pressed", entrada); $("tab-ajustar").setAttribute("aria-pressed", !entrada);
   show($("pane-entrada"), entrada); show($("pane-ajustar"), !entrada);
+  document.body.classList.toggle("tab-ajustar", !entrada);
   if (!entrada) { loadPositions(); if (adjOrdType === "limit") fillAdjMark(); updateAdjLabel(); }
 }
 $("tab-entrada").onclick = () => setTab("entrada");
@@ -490,19 +727,18 @@ function adjValidate() {
 }
 function renderAdjResult(data) {
   const rows = data.accounts || [];
+  const kv = (k, v) => `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`;
   $("adj-result-body").innerHTML = rows.length ? rows.map((a) => {
     const st = a.status === "ok" ? '<div class="ok">ok</div>' : a.status === "zerada" ? '<div class="muted">zerada</div>' : "";
     const err = a.error ? `<div class="blocked">${esc(a.error)}</div>` : st;
     const stop = a.stop ? `${fmtPx(a.stop)}${a.stop_action ? `<div class="muted">${esc(a.stop_action)}</div>` : ""}` : "—";
     const warn = a.fill_warn ? '<div class="muted">pode preencher na hora</div>' : "";
-    return `<tr>
-      <td class="name">${esc(a.name)}${err}</td>
-      <td>${fmtUsd(a.close_usd)}${a.close_ct ? `<div class="muted">${Number(a.close_ct).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ct</div>` : ""}${warn}</td>
-      <td>${a.pos_after == null ? "—" : fmtUsd(Number(a.pos_after) * 100)}</td>
-      <td>${fmtPct(a.expo_after)}</td>
-      <td>${stop}</td></tr>`;
-  }).join("") : '<tr><td colspan="5" class="muted">Sem linhas de conta no retorno.</td></tr>';
+    const fecha = `${fmtUsd(a.close_usd)}${a.close_ct ? `<div class="muted">${Number(a.close_ct).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ct</div>` : ""}${warn}`;
+    const resta = a.pos_after == null ? "—" : fmtUsd(Number(a.pos_after) * 100);
+    return `<article class="res"><div class="res-h"><div class="name">${esc(a.name)}${err}</div></div><div class="res-grid">${kv("Fecha", fecha)}${kv("Resta", resta)}${kv("Expo", fmtPct(a.expo_after))}${kv("Stop", stop)}</div></article>`;
+  }).join("") : '<div class="acct-empty muted">Sem linhas de conta no retorno.</div>';
   show($("adj-result"), true);
+  if (window.matchMedia("(max-width: 959px)").matches) $("adj-result").scrollIntoView({ block: "center", inline: "nearest" });
   const raw = $("adj-result-raw");
   if (data.raw && (data.aborted || !data.ok || data.dry)) { raw.textContent = data.raw; show(raw, true); } else show(raw, false);
 }
@@ -535,6 +771,12 @@ $("adj-send").onclick = () => {
   runAdj(false);
 };
 $("adj-pct").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); $("adj-preview").click(); } });
+
+document.addEventListener("focusin", (ev) => {
+  const t = ev.target;
+  if (!t || t.tagName !== "INPUT" || !window.matchMedia("(max-width: 959px)").matches) return;
+  setTimeout(() => t.scrollIntoView({ block: "center", inline: "nearest" }), 60);
+});
 
 window.addEventListener("DOMContentLoaded", () => {
   if (initChart()) loadCandles();
