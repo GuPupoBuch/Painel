@@ -59,6 +59,15 @@ button.refresh{background:transparent;color:var(--text);border:1px solid var(--l
 .raw{margin-top:8px;font-size:11px;color:var(--muted);white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace}
 .blocked{color:var(--err)}.ok{color:var(--green)}
 button{cursor:pointer;font-family:inherit}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 2px}
+.tab{appearance:none;border:2px solid var(--line);background:var(--card);color:var(--muted);border-radius:12px;padding:11px 6px;font-size:15px;font-weight:800;letter-spacing:.06em}
+.tab.on{color:var(--text);border-color:#5b6570;background:#1c222a}
+.pcts{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
+.pct{appearance:none;border:2px solid var(--line);background:var(--card);color:var(--muted);border-radius:12px;padding:10px 0;font-size:15px;font-weight:800}
+.pct.on{color:var(--text);border-color:#5b6570;background:#1c222a}
+.send.preview{background:#1c222a;color:var(--text);border:1px solid var(--line);margin-top:12px}
+.send.adj{background:var(--warn);color:#1a1400}
+.send.adj:disabled{opacity:.45}
 </style>
 </head>
 <body>
@@ -83,6 +92,11 @@ button{cursor:pointer;font-family:inherit}
 </section>
 
 <section id="app-view" class="hidden">
+  <div class="tabs">
+    <button type="button" class="tab on" id="tab-entrada" aria-pressed="true">Entrada</button>
+    <button type="button" class="tab" id="tab-ajustar" aria-pressed="false">Ajustar</button>
+  </div>
+  <div id="pane-entrada">
   <div class="sides">
     <button type="button" class="side long on" id="btn-long" aria-pressed="true">LONG</button>
     <button type="button" class="side short" id="btn-short" aria-pressed="false">SHORT</button>
@@ -111,6 +125,38 @@ button{cursor:pointer;font-family:inherit}
     <table><thead><tr><th>Conta</th><th>Posição</th><th>Média</th><th>Stop</th><th>Expo</th></tr></thead>
       <tbody id="pos-body"><tr><td colspan="5" class="muted">Carregando…</td></tr></tbody></table>
   </div>
+  </div>
+
+  <div id="pane-ajustar" class="hidden">
+    <div class="footer" style="margin-top:10px">
+      <div class="pos-head"><h2>Posição atual</h2><button type="button" class="refresh" id="adj-refresh">Atualizar</button></div>
+      <table><thead><tr><th>Conta</th><th>Posição</th><th>Média</th><th>Stop</th><th>Expo</th></tr></thead>
+        <tbody id="adj-pos-body"><tr><td colspan="5" class="muted">Carregando…</td></tr></tbody></table>
+    </div>
+    <div class="pcts" id="pcts">
+      <button type="button" class="pct" data-pct="25">25%</button>
+      <button type="button" class="pct on" data-pct="50">50%</button>
+      <button type="button" class="pct" data-pct="75">75%</button>
+      <button type="button" class="pct" data-pct="100">100%</button>
+    </div>
+    <div><label for="adj-pct">% personalizado</label><input id="adj-pct" type="text" inputmode="decimal" autocomplete="off" value="50" enterkeyhint="go"></div>
+    <div class="otypes">
+      <button type="button" class="otype on" id="adj-btn-market" aria-pressed="true">Mercado</button>
+      <button type="button" class="otype" id="adj-btn-limit" aria-pressed="false">Limite</button>
+    </div>
+    <div id="adj-price-row" class="price-row hidden">
+      <div><label for="adj-price">Preço</label><input id="adj-price" type="text" inputmode="decimal" autocomplete="off" placeholder="64000" enterkeyhint="next"></div>
+      <button type="button" class="use-mark" id="adj-use-mark">Usar mark</button>
+    </div>
+    <button type="button" class="send preview" id="adj-preview">VER PRÉVIA</button>
+    <div id="adj-banner-err" class="err hidden"></div>
+    <div id="adj-banner-warn" class="warn hidden"></div>
+    <div id="adj-result" class="result hidden">
+      <table><thead><tr><th>Conta</th><th>Fecha</th><th>Resta</th><th>Expo</th><th>Stop</th></tr></thead><tbody id="adj-result-body"></tbody></table>
+      <div id="adj-result-raw" class="raw hidden"></div>
+    </div>
+    <button type="button" class="send adj" id="adj-send" disabled>REDUZIR 50% A MERCADO</button>
+  </div>
 </section>
 
 <script>
@@ -119,6 +165,7 @@ const INST = "BTC-USD-SWAP";
 const TK = "painel_token";
 const $ = (id) => document.getElementById(id);
 let side = "long", sending = false, ordType = "market";
+let adjPct = 50, adjOrdType = "market", adjSending = false, adjPreview = null;
 
 // ---------- formatação ----------
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -295,20 +342,31 @@ $("login-form").onsubmit = async (ev) => {
   finally { $("login-btn").disabled = false; }
 };
 
+function renderPosTable(id, accounts, withUsd) {
+  $(id).innerHTML = (accounts || []).map((a) => {
+    const usd = withUsd && a.net ? ` · ${fmtUsd(Math.abs(a.net) * 100)}` : "";
+    const pos = !a.net ? "zerada" : `${a.side} ${Math.abs(a.net).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ct${usd}`;
+    const err = a.error ? `<div class="blocked">${esc(a.error)}</div>` : "";
+    const st = (a.stops || []).length ? a.stops.map(fmtPx).join(" / ") : "—";
+    return `<tr><td class="name">${esc(a.name)}</td><td>${esc(pos)}${err}</td><td>${fmtPx(a.avg)}</td><td>${a.net ? st : "—"}</td><td>${a.net ? fmtPct(a.expo) : "—"}</td></tr>`;
+  }).join("") || '<tr><td colspan="5" class="muted">Sem dados</td></tr>';
+}
 async function loadPositions() {
   try {
     const { res, data } = await api("/positions");
     if (res.status === 401) return;
-    if (!res.ok) { $("pos-body").innerHTML = `<tr><td colspan="5" class="blocked">${esc(data.error || "Falha ao ler posições.")}</td></tr>`; return; }
+    if (!res.ok) {
+      const msg = `<tr><td colspan="5" class="blocked">${esc(data.error || "Falha ao ler posições.")}</td></tr>`;
+      $("pos-body").innerHTML = msg; $("adj-pos-body").innerHTML = msg; return;
+    }
     if (data.mark && lastPx == null) setPx(data.mark);
-    $("pos-body").innerHTML = (data.accounts || []).map((a) => {
-      const pos = !a.net ? "zerada" : `${a.side} ${Math.abs(a.net).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ct`;
-      const err = a.error ? `<div class="blocked">${esc(a.error)}</div>` : "";
-      const st = (a.stops || []).length ? a.stops.map(fmtPx).join(" / ") : "—";
-      return `<tr><td class="name">${esc(a.name)}</td><td>${esc(pos)}${err}</td><td>${fmtPx(a.avg)}</td><td>${a.net ? st : "—"}</td><td>${a.net ? fmtPct(a.expo) : "—"}</td></tr>`;
-    }).join("") || '<tr><td colspan="5" class="muted">Sem dados</td></tr>';
+    renderPosTable("pos-body", data.accounts, false);
+    renderPosTable("adj-pos-body", data.accounts, true);
     drawPositionLines(data.accounts);
-  } catch (e) { $("pos-body").innerHTML = '<tr><td colspan="5" class="blocked">Não consegui falar com o servidor.</td></tr>'; }
+  } catch (e) {
+    const msg = '<tr><td colspan="5" class="blocked">Não consegui falar com o servidor.</td></tr>';
+    $("pos-body").innerHTML = msg; $("adj-pos-body").innerHTML = msg;
+  }
 }
 
 function renderResult(data) {
@@ -350,6 +408,121 @@ $("send").onclick = async () => {
 };
 $("refresh").onclick = () => loadPositions();
 $("risk").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); $("send").click(); } });
+
+function setTab(name) {
+  const entrada = name === "entrada";
+  $("tab-entrada").classList.toggle("on", entrada); $("tab-ajustar").classList.toggle("on", !entrada);
+  $("tab-entrada").setAttribute("aria-pressed", entrada); $("tab-ajustar").setAttribute("aria-pressed", !entrada);
+  show($("pane-entrada"), entrada); show($("pane-ajustar"), !entrada);
+  if (!entrada) { loadPositions(); if (adjOrdType === "limit") fillAdjMark(); updateAdjLabel(); }
+}
+$("tab-entrada").onclick = () => setTab("entrada");
+$("tab-ajustar").onclick = () => setTab("ajustar");
+
+function fillAdjMark() {
+  if (lastPx != null && lastPx > 0) $("adj-price").value = String(Math.round(lastPx * 10) / 10);
+}
+function invalidateAdjPreview() { adjPreview = null; $("adj-send").disabled = true; updateAdjLabel(); }
+function setAdjPct(p, fromInput) {
+  adjPct = p;
+  document.querySelectorAll("#pcts .pct").forEach((b) => b.classList.toggle("on", Number(b.dataset.pct) === p));
+  if (!fromInput) $("adj-pct").value = String(p);
+  invalidateAdjPreview();
+}
+function setAdjOrdType(t) {
+  adjOrdType = t;
+  $("adj-btn-market").classList.toggle("on", t === "market"); $("adj-btn-limit").classList.toggle("on", t === "limit");
+  $("adj-btn-market").setAttribute("aria-pressed", t === "market"); $("adj-btn-limit").setAttribute("aria-pressed", t === "limit");
+  show($("adj-price-row"), t === "limit");
+  if (t === "limit") fillAdjMark();
+  invalidateAdjPreview();
+}
+function updateAdjLabel() {
+  if (adjSending) return;
+  const pctLabel = (adjPct != null && adjPct > 0) ? `${Number(adjPct).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%` : "—";
+  if (adjOrdType === "limit") {
+    const pr = parseNum($("adj-price").value);
+    $("adj-send").textContent = pr && pr > 0 ? `REDUZIR ${pctLabel} LIMITE @ ${fmtPx(pr)}` : `REDUZIR ${pctLabel} LIMITE`;
+  } else {
+    $("adj-send").textContent = `REDUZIR ${pctLabel} A MERCADO`;
+  }
+}
+$("pcts").onclick = (ev) => {
+  const b = ev.target.closest(".pct"); if (!b) return;
+  setAdjPct(Number(b.dataset.pct));
+};
+$("adj-pct").addEventListener("input", () => {
+  const p = parseNum($("adj-pct").value);
+  adjPct = p;
+  document.querySelectorAll("#pcts .pct").forEach((b) => b.classList.toggle("on", p != null && Number(b.dataset.pct) === p));
+  invalidateAdjPreview();
+});
+$("adj-btn-market").onclick = () => setAdjOrdType("market");
+$("adj-btn-limit").onclick = () => setAdjOrdType("limit");
+$("adj-use-mark").onclick = () => { fillAdjMark(); invalidateAdjPreview(); };
+$("adj-price").addEventListener("input", invalidateAdjPreview);
+$("adj-refresh").onclick = () => loadPositions();
+
+function adjPayload(dry) {
+  const payload = { pct: adjPct, ordType: adjOrdType, dry };
+  if (adjOrdType === "limit") payload.price = parseNum($("adj-price").value);
+  return payload;
+}
+function adjValidate() {
+  if (adjPct == null || adjPct < 1 || adjPct > 100) return "Percentual inválido: use um valor de 1 a 100.";
+  if (adjOrdType === "limit") {
+    const pr = parseNum($("adj-price").value);
+    if (pr == null || pr <= 0) return "Preenche um preço limite válido.";
+  }
+  return null;
+}
+function renderAdjResult(data) {
+  const rows = data.accounts || [];
+  $("adj-result-body").innerHTML = rows.length ? rows.map((a) => {
+    const st = a.status === "ok" ? '<div class="ok">ok</div>' : a.status === "zerada" ? '<div class="muted">zerada</div>' : "";
+    const err = a.error ? `<div class="blocked">${esc(a.error)}</div>` : st;
+    const stop = a.stop ? `${fmtPx(a.stop)}${a.stop_action ? `<div class="muted">${esc(a.stop_action)}</div>` : ""}` : "—";
+    const warn = a.fill_warn ? '<div class="muted">pode preencher na hora</div>' : "";
+    return `<tr>
+      <td class="name">${esc(a.name)}${err}</td>
+      <td>${fmtUsd(a.close_usd)}${a.close_ct ? `<div class="muted">${Number(a.close_ct).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ct</div>` : ""}${warn}</td>
+      <td>${a.pos_after == null ? "—" : Number(a.pos_after).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " ct"}</td>
+      <td>${fmtPct(a.expo_after)}</td>
+      <td>${stop}</td></tr>`;
+  }).join("") : '<tr><td colspan="5" class="muted">Sem linhas de conta no retorno.</td></tr>';
+  show($("adj-result"), true);
+  const raw = $("adj-result-raw");
+  if (data.raw && (data.aborted || !data.ok || data.dry)) { raw.textContent = data.raw; show(raw, true); } else show(raw, false);
+}
+
+async function runAdj(dry) {
+  if (adjSending || sending) return;
+  show($("adj-banner-err"), false); show($("adj-banner-warn"), false);
+  const bad = adjValidate();
+  if (bad) { $("adj-banner-err").textContent = bad; show($("adj-banner-err"), true); return; }
+  adjSending = true; $("adj-preview").disabled = true; $("adj-send").disabled = true;
+  $("adj-send").textContent = dry ? "CALCULANDO…" : "ENVIANDO…";
+  try {
+    const { res, data } = await api("/adjust", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(adjPayload(dry)) });
+    if (res.status === 401) return;
+    if (data.error && !data.accounts) { $("adj-banner-err").textContent = data.error; show($("adj-banner-err"), true); adjPreview = null; return; }
+    renderAdjResult(data);
+    if (data.aborted || data.ok === false) { $("adj-banner-err").textContent = data.abort_msg || data.error || "Ajuste bloqueado. Nada enviado."; show($("adj-banner-err"), true); }
+    if (data.warning || data.warn_msg) { $("adj-banner-warn").textContent = data.warn_msg || "Preço limite cruzaria o mark e pode preencher na hora."; show($("adj-banner-warn"), true); }
+    if (dry && data.accounts) {
+      adjPreview = adjPayload(true);
+      $("adj-send").disabled = !(data.accounts || []).some((a) => a.status === "ok");
+    }
+    if (!dry) { adjPreview = null; loadPositions(); }
+  } catch (e) { $("adj-banner-err").textContent = "Não consegui falar com o servidor. Confira as posições antes de reenviar."; show($("adj-banner-err"), true); adjPreview = null; }
+  finally { adjSending = false; $("adj-preview").disabled = false; updateAdjLabel(); if (!adjPreview) $("adj-send").disabled = true; }
+}
+$("adj-preview").onclick = () => runAdj(true);
+$("adj-send").onclick = () => {
+  if (!adjPreview) return;
+  runAdj(false);
+};
+$("adj-pct").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); $("adj-preview").click(); } });
 
 window.addEventListener("DOMContentLoaded", () => {
   if (initChart()) loadCandles();
