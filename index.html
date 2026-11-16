@@ -79,7 +79,16 @@ html[data-tf="12H"] .tf[data-bar="12H"],
 html[data-tf="1D"] .tf[data-bar="1D"],
 html[data-tf="1W"] .tf[data-bar="1W"],
 html[data-tf="1M"] .tf[data-bar="1M"]{color:var(--text);border-bottom-color:var(--accent)}
-#chart{width:100%;height:172px;border-radius:8px;overflow:hidden;background:var(--surface);border:1px solid var(--line);overscroll-behavior:contain;scroll-margin-top:calc(132px + env(safe-area-inset-top))}
+.chart-wrap{position:relative;min-width:0;max-width:100%}
+#chart{width:100%;height:58vh;min-height:360px;border-radius:8px;overflow:hidden;background:var(--surface);border:1px solid var(--line);overscroll-behavior:contain;scroll-margin-top:calc(132px + env(safe-area-inset-top));touch-action:pan-y}
+#chart.dragging{touch-action:none;cursor:ns-resize}
+body.dragging-order{overflow:hidden;touch-action:none}
+.drag-tag{
+  position:absolute;z-index:4;left:8px;transform:translateY(-50%);
+  pointer-events:none;padding:4px 8px;border-radius:8px;
+  background:#101418;color:var(--text);border:1px dashed #b7c9da;
+  font-size:13px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;
+}
 #chart-msg{height:100%;min-height:120px;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;font-size:13px;color:var(--muted)}
 
 label{display:block;margin:12px 0 6px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
@@ -168,6 +177,8 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
 
 .actions{margin-top:8px}
 .offstage{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;pointer-events:none}
+.desk{display:none}
+#ohlc{display:none}
 
 @media (max-width:959px){
   .chrome{
@@ -185,51 +196,105 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   .actions{position:relative}
 }
 @media (max-width:959px) and (max-height:500px){
-  #chart{height:160px}
+  #chart{height:52vh;min-height:200px}
 }
 
-@media (min-width:960px){
-  .px{font-size:40px}
-  .pnl-head{font-size:28px}
+@media (min-width:1024px){
   html:not(.in-app) body{max-width:440px;padding:calc(28px + env(safe-area-inset-top)) 20px calc(40px + env(safe-area-inset-bottom))}
-  html:not(.in-app) #chart{height:300px}
+  html:not(.in-app) #chart{height:58vh;min-height:360px}
+  html.in-app,html.in-app body{height:100%}
   html.in-app body{
-    max-width:1120px;
-    padding:calc(16px + env(safe-area-inset-top)) 28px calc(28px + env(safe-area-inset-bottom));
+    max-width:none;height:100vh;overflow:hidden;margin:0;padding:6px;
+    background:#070809;color:#d7dde3;
     display:grid;
-    grid-template-columns:minmax(0,1.45fr) minmax(320px,.82fr);
-    grid-template-areas:"top top" "tfs tfs" "chart actions" "positions actions";
-    column-gap:36px;row-gap:8px;align-items:start;
+    grid-template-columns:300px minmax(0,1fr) 332px;
+    grid-template-rows:auto minmax(0,1fr);
+    grid-template-areas:"order tools side" "order chart side";
+    gap:6px;
   }
-  html.in-app #app-view{display:contents}
-  html.in-app #app-view.hidden{display:none!important}
-  .chrome{display:contents}
-  html.in-app .top{grid-area:top}
-  html.in-app .tfs{grid-area:tfs;justify-self:stretch;width:auto;min-width:0;max-width:100%}
-  html.in-app #chart{grid-area:chart;height:400px}
-  html.in-app #positions{grid-area:positions;min-width:0}
-  html.in-app .actions{
-    grid-area:actions;position:sticky;top:12px;align-self:start;min-width:0;
-    margin-top:0;padding-left:28px;border-left:1px solid var(--line);
+  html.in-app .desk{display:contents}
+  html.in-app #app-view{display:none!important}
+  html.in-app .top{display:none}
+  html.in-app .chrome{
+    grid-area:tools;display:flex;flex-direction:column;min-width:0;
+    background:#0e1114;border:1px solid #1c2228;border-bottom:0;
   }
-  html.in-app .action-dock{position:static;padding:0;border:0;background:transparent;margin-top:14px}
-  .pos-cols{
-    display:grid;
-    grid-template-columns:minmax(72px,.9fr) minmax(0,1.5fr) minmax(72px,.9fr) minmax(72px,.9fr) minmax(100px,1.1fr);
-    gap:12px;padding:2px 0 4px;color:var(--muted);font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;
+  html.in-app #ohlc{
+    display:block;padding:6px 8px 0;font-size:11px;letter-spacing:.01em;
+    color:#8b97a3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    font-variant-numeric:tabular-nums;
   }
-  .pos-cols span:nth-child(n+3){text-align:right}
-  .acct{
-    grid-template-columns:minmax(72px,.9fr) minmax(0,1.5fr) minmax(72px,.9fr) minmax(72px,.9fr) minmax(100px,1.1fr);
-    grid-template-areas:"name pos avg stop pnl";
-    column-gap:12px;row-gap:0;align-items:center;padding:9px 0;
+  html.in-app .tfs{background:transparent;border-bottom:0;padding:0 4px}
+  html.in-app .tf{min-width:32px;min-height:26px;padding:0 6px;font-size:11px}
+  html.in-app .chart-wrap{grid-area:chart;min-width:0;min-height:0;background:#0e1114;border:1px solid #1c2228;border-top:0}
+  html.in-app #chart{height:100%;min-height:0;border:0;border-radius:0;background:#0e1114}
+  html.in-app #desk-order{grid-area:order;min-width:0;min-height:0}
+  html.in-app #desk-side{grid-area:side;min-width:0;min-height:0;display:flex;flex-direction:column;gap:6px}
+  #desk-order,#d-balances,#d-positions,#d-orders{
+    background:#0e1114;border:1px solid #1c2228;min-width:0;min-height:0;
+    display:flex;flex-direction:column;
   }
-  .acct .k{display:none}
-  .acct .num,.acct-pos{font-size:14px}
-  .acct-pos{color:var(--text)}
-  .acct-avg,.acct-stop{text-align:right}
-  .acct.flat .acct-avg,.acct.flat .acct-stop,.acct.tot .acct-pos,.acct.tot .acct-avg,.acct.tot .acct-stop{display:block}
+  #d-positions,#d-orders{flex:1}
+  .d-hd{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    height:28px;padding:0 8px;border-bottom:1px solid #1c2228;flex:0 0 auto;
+    font-size:11px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:#8b97a3;
+  }
+  .d-hd select,.d-tool select{height:22px;background:#0e1114;color:#d7dde3;border:1px solid #2a323a;border-radius:3px;font-size:11px;padding:0 4px}
+  .d-body{overflow:auto;min-height:0;padding:8px}
+  .d-top{display:flex;gap:6px}
+  .d-top select{flex:1;min-width:0;height:28px;background:#101418;color:#d7dde3;border:1px solid #2a323a;border-radius:3px;font-size:12px;font-weight:650}
+  .d-tabs{display:grid;grid-template-columns:1fr 1fr 1fr;margin:8px 0;border-bottom:1px solid #1c2228}
+  .d-tab{min-height:28px;background:transparent;border:0;border-bottom:2px solid transparent;color:#7d8792;font-size:11px;font-weight:700;letter-spacing:.04em}
+  .d-tab.on{color:#d7dde3;border-bottom-color:#0ecb81}
+  .d-k{display:flex;justify-content:space-between;align-items:baseline;margin:8px 0 4px;font-size:10px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;color:#7d8792}
+  .d-k button{background:transparent;border:0;color:#9aa6b2;font-size:10px;font-weight:700;letter-spacing:.06em}
+  #desk-order input,#desk-order select.d-in{width:100%;height:30px;padding:0 8px;background:#101418;color:#d7dde3;border:1px solid #2a323a;border-radius:3px;font-size:13px}
+  #desk-order input:focus{border-color:#0ecb81;outline:none}
+  .d-size{font-size:20px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .d-size-rows{margin-top:4px;font-size:11px;color:#9aa6b2;font-variant-numeric:tabular-nums}
+  .d-size-rows div{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
+  .d-row{display:flex;gap:4px;align-items:center}
+  .d-row input{flex:1;min-width:0}
+  .d-row button,.d-mini{height:30px;padding:0 8px;background:#101418;color:#d7dde3;border:1px solid #2a323a;border-radius:3px;font-size:12px;font-weight:700}
+  .d-two{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .d-range{width:100%;margin:4px 0;accent-color:#0ecb81}
+  .d-togs{display:flex;gap:6px}
+  .d-tog{flex:1;min-height:26px;background:#101418;color:#7d8792;border:1px solid #2a323a;border-radius:3px;font-size:11px;font-weight:700}
+  .d-tog.on{color:#d7dde3;border-color:#0ecb81}
+  .d-bars{display:flex;align-items:flex-end;gap:2px;height:36px;margin:6px 0}
+  .d-bars i{display:block;flex:1;background:#0ecb81;min-height:2px;opacity:.85}
+  .d-bars.short i{background:#f6465d}
+  .d-avg{font-size:12px;font-variant-numeric:tabular-nums;color:#d7dde3}
+  .d-sides{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+  .d-sides button{min-height:46px;border:0;border-radius:3px;font-size:13px;font-weight:800;letter-spacing:.02em;line-height:1.15}
+  #d-long{background:#0ecb81;color:#04140c}
+  #d-short{background:#f6465d;color:#fff}
+  .d-note{margin-top:8px;font-size:11px;line-height:1.35;color:#7d8792}
+  .d-saldo{display:flex;justify-content:space-between;margin-top:8px;font-size:12px;font-variant-numeric:tabular-nums}
+  #d-msg{margin-top:8px}
+  .d-table{width:100%;border-collapse:collapse;font-size:11px;font-variant-numeric:tabular-nums}
+  .d-table th{text-align:left;color:#7d8792;font-size:10px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;padding:0 4px 4px}
+  .d-table td{padding:4px;border-top:1px solid #1c2228;vertical-align:top}
+  .d-table td.r,.d-table th.r{text-align:right}
+  .d-up{color:#0ecb81}.d-dn{color:#f6465d}
+  .d-empty{color:#7d8792;font-size:12px;padding:6px 0}
 }
+.sheet{
+  position:fixed;inset:0;z-index:40;display:flex;align-items:flex-end;justify-content:center;
+  background:rgba(6,8,10,.62);padding:12px 12px calc(12px + env(safe-area-inset-bottom));
+}
+.sheet-card{width:min(440px,100%);max-width:100%;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 16px 14px}
+.sheet-card h2{margin:0 0 8px;font-size:18px;font-weight:650;letter-spacing:-.02em}
+.amend-list{list-style:none;margin:0;padding:0}
+.amend-list li{padding:8px 0;border-top:1px solid var(--line);font-size:15px}
+.amend-move{margin:12px 0 10px;font-size:22px;font-weight:700;letter-spacing:-.02em}
+.sheet-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sheet-actions button{min-height:48px;border-radius:8px;font-size:15px;font-weight:700}
+#amend-cancel{background:transparent;color:var(--text);border:1px solid var(--line)}
+#amend-ok{background:var(--accent);color:#1a1400;border:0}
+#amend-ok:disabled{opacity:.45}
+.sheet .err{margin:0 0 10px}
 </style>
 <script>
 (function () {
@@ -256,6 +321,7 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
     </div>
   </div>
 </header>
+<div id="ohlc">OKX · BTC-USD-SWAP</div>
 <div class="tfs" id="tfs">
   <button type="button" class="tf" data-bar="1m">1m</button>
   <button type="button" class="tf" data-bar="3m">3m</button>
@@ -272,7 +338,122 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   <button type="button" class="tf" data-bar="1M">1M</button>
 </div>
 </div>
+<div class="chart-wrap" id="chart-wrap">
 <div id="chart"><div id="chart-msg">Carregando gráfico…</div></div>
+<div id="drag-tag" class="drag-tag hidden"></div>
+</div>
+
+<div id="desk" class="desk">
+<aside id="desk-order">
+  <div class="d-hd"><span>Ordem</span><span id="d-ws" class="ws off">conectando</span></div>
+  <div class="d-body">
+    <div class="d-top">
+      <select id="d-symbol" aria-label="Símbolo"><option>BTC-USD-SWAP</option></select>
+      <select id="d-filter" aria-label="Contas na tela"></select>
+    </div>
+    <div class="d-k">Tipo</div>
+    <select id="d-kind" class="d-in" aria-label="Tipo de ordem">
+      <option value="limit">LIMITE · ORDEM</option>
+      <option value="market">MERCADO</option>
+      <option value="scale">LIMITE · ESCALA</option>
+    </select>
+    <div class="d-tabs" id="d-tabs">
+      <button type="button" class="d-tab on" data-tab="post">Entrar</button>
+      <button type="button" class="d-tab" data-tab="reduce">Reduzir</button>
+      <button type="button" class="d-tab" data-tab="tpsl">Stop</button>
+    </div>
+    <div id="d-post">
+      <div class="d-k"><span>Risco %</span><button type="button" id="d-max">Máx. 5%</button></div>
+      <input id="d-risk" type="text" inputmode="decimal" value="1" aria-label="Risco %">
+      <input id="d-risk-range" class="d-range" type="range" min="0.1" max="5" step="0.1" value="1" aria-label="Risco">
+      <div class="d-k">Stop</div>
+      <input id="d-stop" type="text" inputmode="decimal" placeholder="63800" aria-label="Stop">
+      <div class="d-k"><span>Tamanho</span><span>calculado</span></div>
+      <div id="d-size" class="d-size">—</div>
+      <div id="d-size-rows" class="d-size-rows"></div>
+      <div id="d-price-box">
+        <div class="d-k">Preço</div>
+        <div class="d-row">
+          <input id="d-price" type="text" inputmode="decimal" placeholder="64000" aria-label="Preço limite">
+          <button type="button" id="d-best">Mark</button>
+          <button type="button" id="d-minus" aria-label="Diminuir preço">−</button>
+          <button type="button" id="d-plus" aria-label="Aumentar preço">+</button>
+        </div>
+      </div>
+      <div id="d-scale" class="hidden">
+        <div class="d-k">Preços da escala</div>
+        <div class="d-two">
+          <input id="d-from" type="text" inputmode="decimal" placeholder="De" aria-label="Preço inicial">
+          <input id="d-to" type="text" inputmode="decimal" placeholder="Até" aria-label="Preço final">
+        </div>
+        <div class="d-k">Ordens <span id="d-orders-n">8</span></div>
+        <input id="d-orders" class="d-range" type="range" min="2" max="50" value="8" aria-label="Quantidade de ordens">
+        <div class="d-togs">
+          <button type="button" class="d-tog on" id="d-price-even" aria-pressed="true">Preço igual</button>
+          <button type="button" class="d-tog on" id="d-size-even" aria-pressed="true">Tamanho igual</button>
+        </div>
+        <div id="d-bars" class="d-bars"></div>
+        <div class="d-avg">Média <b id="d-avg">—</b></div>
+      </div>
+      <div class="d-sides">
+        <button type="button" id="d-long">LONG</button>
+        <button type="button" id="d-short">SHORT</button>
+      </div>
+      <p class="d-note">O tamanho sai do risco e da distância até o stop, em cada conta. A ordem vai para as 4 contas.</p>
+    </div>
+    <div id="d-reduce" class="hidden">
+      <div class="d-k">Quanto fechar</div>
+      <div class="d-togs" id="d-pcts">
+        <button type="button" class="d-tog" data-pct="25">25%</button>
+        <button type="button" class="d-tog on" data-pct="50">50%</button>
+        <button type="button" class="d-tog" data-pct="75">75%</button>
+        <button type="button" class="d-tog" data-pct="100">100%</button>
+      </div>
+      <div class="d-k">% personalizado</div>
+      <input id="d-adj-pct" type="text" inputmode="decimal" value="50" aria-label="Percentual">
+      <div class="d-togs" style="margin-top:8px">
+        <button type="button" class="d-tog on" id="d-adj-market">Mercado</button>
+        <button type="button" class="d-tog" id="d-adj-limit">Limite</button>
+      </div>
+      <div id="d-adj-price-box" class="hidden">
+        <div class="d-k">Preço</div>
+        <div class="d-row">
+          <input id="d-adj-price" type="text" inputmode="decimal" placeholder="64000" aria-label="Preço da redução">
+          <button type="button" id="d-adj-best">Mark</button>
+        </div>
+      </div>
+      <div class="d-sides">
+        <button type="button" id="d-adj-preview" style="background:#101418;color:#d7dde3;border:1px solid #2a323a">Ver prévia</button>
+        <button type="button" id="d-adj-send" style="background:transparent;color:#d6b25e;border:1px solid #d6b25e">Reduzir</button>
+      </div>
+      <p class="d-note">A prévia e a redução usam o mesmo pedido de hoje.</p>
+    </div>
+    <div id="d-tpsl" class="hidden">
+      <div class="d-k">Stop da entrada</div>
+      <input id="d-stop-2" type="text" inputmode="decimal" placeholder="63800" aria-label="Stop da entrada">
+      <p class="d-note">Este stop entra junto com a ordem nova. Para mover um stop que já está aberto, arraste a linha no gráfico. O servidor ainda não troca o preço sozinho, e não há como cancelar daqui.</p>
+      <div id="d-stop-list" class="d-size-rows"></div>
+    </div>
+    <div id="d-msg" class="err hidden"></div>
+    <div id="d-result" class="d-size-rows"></div>
+    <div class="d-saldo"><span>Saldo</span><b id="d-equity">—</b></div>
+  </div>
+</aside>
+<aside id="desk-side">
+  <section id="d-balances">
+    <div class="d-hd"><span>Saldos</span></div>
+    <div class="d-body" id="d-bal-body"></div>
+  </section>
+  <section id="d-positions">
+    <div class="d-hd"><span>Posições</span><select id="d-filter-pos" aria-label="Filtrar posições"></select></div>
+    <div class="d-body" id="d-pos-body"></div>
+  </section>
+  <section id="d-orders">
+    <div class="d-hd"><span>Ordens</span><select id="d-filter-ord" aria-label="Filtrar ordens"></select></div>
+    <div class="d-body" id="d-ord-body"></div>
+  </section>
+</aside>
+</div>
 
 <section id="login-view" class="login-box hidden">
   <h2>Entrar</h2>
@@ -359,6 +540,32 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   </div>
 </section>
 
+<div id="amend-sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="amend-title">
+  <div class="sheet-card">
+    <h2 id="amend-title">Mover ordem</h2>
+    <ul id="amend-list" class="amend-list"></ul>
+    <p id="amend-move" class="amend-move"></p>
+    <div id="amend-msg" class="err hidden"></div>
+    <div class="sheet-actions">
+      <button type="button" id="amend-cancel">Cancelar</button>
+      <button type="button" id="amend-ok">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div id="scale-sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="scale-title">
+  <div class="sheet-card">
+    <h2 id="scale-title">Escala</h2>
+    <p class="d-note" id="scale-note">Nada é enviado agora. O servidor ainda não aceita uma escala.</p>
+    <ul id="scale-list" class="amend-list"></ul>
+    <div id="scale-msg" class="err hidden"></div>
+    <div class="sheet-actions">
+      <button type="button" id="scale-cancel">Cancelar</button>
+      <button type="button" id="scale-ok">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const API = "https://krzznjwvcrbuhlfwsdel.supabase.co/functions/v1/painel";
 const INST = "BTC-USD-SWAP";
@@ -386,9 +593,52 @@ function savedTf() {
   return "1m";
 }
 let chart = null, series = null, bar = savedTf(), lastPx = null;
-let posLines = [], stopPreview = null;
+let posLines = [], previewLines = [], orderGroups = [];
+let entradaPreviewHold = false, adjPreviewHold = false;
+let drag = null, confirmState = null, dragBound = false;
+const TICK = 0.1, HIT_PX = 24;
+const STOP_COLOR = "#f5c84c", LIMIT_COLOR = "#e7e9ec", PREVIEW_COLOR = "#b7c9da";
+function snapPx(p) {
+  const n = Number(p);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * (1 / TICK)) / (1 / TICK);
+}
+function isDesk() { return window.matchMedia("(min-width: 1024px)").matches; }
+let volSeries = null, lastCandles = [];
+let deskKind = "limit", deskTab = "post", deskFilter = "todas", priceEven = true, sizeEven = true, scaleOpen = false;
 const toT = (ms) => Math.floor(Number(ms) / 1000) - TZ;
-const toBar = (a) => ({ time: toT(a[0]), open: +a[1], high: +a[2], low: +a[3], close: +a[4] });
+const toBar = (a) => ({ time: toT(a[0]), open: +a[1], high: +a[2], low: +a[3], close: +a[4], volume: +a[5] || 0 });
+function volPoint(d) {
+  return { time: d.time, value: d.volume || 0, color: d.close >= d.open ? "rgba(14,203,129,0.5)" : "rgba(246,70,93,0.45)" };
+}
+function paintLegend(d) {
+  const el = $("ohlc");
+  if (!el || !d) return;
+  const n = (v) => v == null || Number.isNaN(v) ? "—" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+  const vol = d.volume == null ? "—" : Number(d.volume).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
+  el.textContent = `OKX · ${bar} · BTC-USD-SWAP   O ${n(d.open)}  H ${n(d.high)}  L ${n(d.low)}  C ${n(d.close)}  V ${vol}`;
+}
+function paintCandles(data) {
+  lastCandles = data || [];
+  if (series) series.setData(lastCandles.map((d) => ({ time: d.time, open: d.open, high: d.high, low: d.low, close: d.close })));
+  if (volSeries) volSeries.setData(lastCandles.map(volPoint));
+  if (lastCandles.length) paintLegend(lastCandles[lastCandles.length - 1]);
+}
+function syncVolume() {
+  if (!chart || !series) return;
+  const want = isDesk();
+  chart.applyOptions({ layout: { background: { color: want ? "#0e1114" : "#13171c" }, textColor: "#8b949e", fontSize: 11 } });
+  if (want && !volSeries) {
+    volSeries = chart.addHistogramSeries({ priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
+    chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+    series.priceScale().applyOptions({ scaleMargins: { top: 0.08, bottom: 0.22 } });
+    if (lastCandles.length) volSeries.setData(lastCandles.map(volPoint));
+  } else if (!want && volSeries) {
+    chart.removeSeries(volSeries);
+    volSeries = null;
+    series.priceScale().applyOptions({ scaleMargins: { top: 0.1, bottom: 0.05 } });
+  }
+}
 
 function initChart() {
   if (!window.LightweightCharts) { $("chart-msg").textContent = "Gráfico indisponível (sem conexão com o CDN)."; return false; }
@@ -406,6 +656,15 @@ function initChart() {
     upColor: "#22c55e", downColor: "#ef4444", borderVisible: false, wickUpColor: "#22c55e", wickDownColor: "#ef4444",
     priceFormat: { type: "price", precision: 1, minMove: 0.1 },
   });
+  chart.subscribeCrosshairMove((param) => {
+    if (!isDesk()) return;
+    const d = param && param.seriesData && series && param.seriesData.get(series);
+    if (!d) { if (lastCandles.length) paintLegend(lastCandles[lastCandles.length - 1]); return; }
+    const row = lastCandles.find((c) => c.time === d.time);
+    paintLegend({ open: d.open, high: d.high, low: d.low, close: d.close, volume: row ? row.volume : null });
+  });
+  bindChartDrag();
+  syncVolume();
   return true;
 }
 async function loadCandles() {
@@ -413,8 +672,7 @@ async function loadCandles() {
   try {
     const r = await fetch(`https://www.okx.com/api/v5/market/candles?instId=${INST}&bar=${bar}&limit=300`);
     const j = await r.json();
-    const data = (j.data || []).map(toBar).reverse();
-    series.setData(data);
+    paintCandles((j.data || []).map(toBar).reverse());
     chart.timeScale().scrollToRealTime();
   } catch (e) { /* WS segue atualizando */ }
 }
@@ -443,6 +701,7 @@ function wsState() {
   const up = wsCandle && wsCandle.up && wsMark && wsMark.up;
   $("ws").className = "ws " + (up ? "on" : "off");
   $("ws").textContent = up ? "ao vivo" : "reconectando";
+  if (typeof updateDesk === "function") updateDesk();
 }
 function setPx(p) {
   const el = $("px");
@@ -454,7 +713,15 @@ function setPx(p) {
 function startStreams() {
   wsCandle = socket("wss://ws.okx.com/ws/v5/business", candleArgs, (m) => {
     if (!series || !m.arg || m.arg.channel !== "candle" + bar) return;
-    for (const a of m.data) { try { series.update(toBar(a)); } catch (e) {} }
+    for (const raw of m.data) {
+      try {
+        const bar = toBar(raw);
+        series.update({ time: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close });
+        if (volSeries) volSeries.update(volPoint(bar));
+        const i = lastCandles.findIndex((c) => c.time === bar.time);
+        if (i >= 0) lastCandles[i] = bar; else lastCandles.push(bar);
+      } catch (e) {}
+    }
   });
   wsMark = socket("wss://ws.okx.com/ws/v5/public", () => [{ channel: "mark-price", instId: INST }], (m) => {
     const p = parseFloat(m.data[0] && m.data[0].markPx); if (p > 0) setPx(p);
@@ -485,29 +752,354 @@ $("tfs").onclick = (ev) => {
   loadCandles().then(() => wsCandle.resub(old));
 };
 
-// linhas: média de entrada e stop das posições abertas, mais prévia do stop digitado
+// linhas: média da posição (não arrasta), ordens abertas (limite/stop) e prévia do formulário
+function dropLine(line) {
+  if (!series || !line) return;
+  try { series.removePriceLine(line); } catch (e) {}
+}
+function kindTitle(kind) { return kind === "stop" ? "stop" : "limite"; }
+function kindLabel(kind) { return kind === "stop" ? "Stop" : "Limite"; }
+function orderKind(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  if (raw.kind === "stop" || raw.kind === "limit") return raw.kind;
+  if (raw.algoId || raw.slTriggerPx != null) return "stop";
+  if (raw.ordId || raw.px != null) return "limit";
+  return null;
+}
+function accountOrders(a) {
+  const out = [];
+  const seenStop = new Set();
+  if (Array.isArray(a.orders)) {
+    for (const raw of a.orders) {
+      const kind = orderKind(raw);
+      const price = Number(raw && (raw.price != null ? raw.price : raw.px != null ? raw.px : raw.slTriggerPx));
+      if ((kind !== "stop" && kind !== "limit") || !(price > 0)) continue;
+      out.push({
+        account: a.name, prefix: a.prefix || null, kind, price,
+        ordId: raw.ordId || null, algoId: raw.algoId || null,
+        side: raw.side || raw.posSide || a.side || null,
+      });
+      if (kind === "stop") seenStop.add(snapPx(price));
+    }
+  }
+  for (const s of a.stops || []) {
+    const price = Number(s);
+    if (!(price > 0) || seenStop.has(snapPx(price))) continue;
+    out.push({ account: a.name, prefix: a.prefix || null, kind: "stop", price, ordId: null, algoId: null, side: a.side || null });
+  }
+  return out;
+}
+function visibleAccounts(accounts) {
+  const list = accounts || [];
+  if (!isDesk() || deskFilter === "todas") return list;
+  return list.filter((a) => a.name === deskFilter);
+}
 function drawPositionLines(accounts) {
   if (!series) return;
-  posLines.forEach((l) => series.removePriceLine(l)); posLines = [];
-  const seen = new Set();
-  for (const a of accounts || []) {
-    if (!a.net) continue;
-    const isLong = a.net > 0;
-    const add = (price, color, title, style) => {
-      const k = title + Math.round(price * 10); if (!price || seen.has(k)) return; seen.add(k);
-      posLines.push(series.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title }));
-    };
-    add(a.avg, isLong ? "#22c55e" : "#ef4444", "entrada", 0);
-    (a.stops || []).forEach((s) => add(s, "#f5c84c", "stop", 2));
+  posLines.forEach(dropLine); posLines = [];
+  const groups = new Map();
+  for (const a of visibleAccounts(accounts)) {
+    if (!a.net || !a.avg) continue;
+    const key = (a.net > 0 ? "L" : "S") + ":" + Math.round(a.avg * 10);
+    let g = groups.get(key);
+    if (!g) { g = { price: a.avg, long: a.net > 0, usd: 0 }; groups.set(key, g); }
+    g.usd += Math.abs(a.net) * 100;
+  }
+  for (const g of groups.values()) {
+    const title = isDesk()
+      ? (g.long ? "CRS/M LONG " : "CRS/M SHORT ") + Math.round(g.usd).toLocaleString("pt-BR")
+      : "entrada";
+    posLines.push(series.createPriceLine({
+      price: g.price, color: g.long ? "#22c55e" : "#ef4444",
+      lineWidth: isDesk() ? 2 : 1, lineStyle: 0, axisLabelVisible: true, title,
+    }));
   }
 }
-function drawStopPreview() {
-  if (!series) return;
-  if (stopPreview) { series.removePriceLine(stopPreview); stopPreview = null; }
-  const s = parseNum($("stop").value);
-  if (s && s > 0) stopPreview = series.createPriceLine({ price: s, color: "#8b939e", lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: "stop?" });
+function drawOrderLines(accounts) {
+  if (!series || drag || confirmState) return;
+  orderGroups.forEach((g) => dropLine(g.line));
+  orderGroups = [];
+  const buckets = new Map();
+  for (const a of visibleAccounts(accounts)) {
+    for (const o of accountOrders(a)) {
+      const price = snapPx(o.price);
+      if (!(price > 0)) continue;
+      const key = o.kind + "@" + price;
+      if (!buckets.has(key)) buckets.set(key, { key, kind: o.kind, price, orders: [] });
+      buckets.get(key).orders.push(o);
+    }
+  }
+  for (const g of buckets.values()) {
+    g.line = series.createPriceLine({
+      price: g.price,
+      color: g.kind === "stop" ? (isDesk() ? "#f6465d" : STOP_COLOR) : (isDesk() ? "#d7dde3" : LIMIT_COLOR),
+      lineWidth: 1,
+      lineStyle: g.kind === "stop" ? 2 : 0,
+      axisLabelVisible: true,
+      title: kindTitle(g.kind),
+    });
+    orderGroups.push(g);
+  }
 }
-$("stop").addEventListener("input", drawStopPreview);
+function addPreview(price, title, opt) {
+  const o = opt || {};
+  previewLines.push(series.createPriceLine({
+    price,
+    color: o.color || PREVIEW_COLOR,
+    lineWidth: o.lineWidth || 2,
+    lineStyle: o.lineStyle == null ? 3 : o.lineStyle,
+    axisLabelVisible: o.axisLabelVisible !== false,
+    title: title || "",
+  }));
+}
+function drawPreviews() {
+  if (!series) return;
+  previewLines.forEach(dropLine);
+  previewLines = [];
+  if (isDesk()) drawDeskPreviews();
+  else drawMobilePreviews();
+  if (typeof updateDesk === "function") updateDesk();
+}
+function drawMobilePreviews() {
+  const entradaOn = !$("pane-entrada").classList.contains("hidden");
+  if (entradaOn && !entradaPreviewHold) {
+    if (ordType === "limit") {
+      const p = parseNum($("price").value);
+      if (p > 0) addPreview(p, "prévia entrada " + fmtPx(p));
+    }
+    const s = parseNum($("stop").value);
+    if (s > 0) addPreview(s, "prévia stop");
+  }
+  const adjOn = !$("pane-ajustar").classList.contains("hidden");
+  if (adjOn && !adjPreviewHold && adjOrdType === "limit") {
+    const p = parseNum($("adj-price").value);
+    if (p > 0) addPreview(p, "prévia redução " + fmtPx(p));
+  }
+}
+function drawDeskPreviews() {
+  const stop = parseNum($("stop").value);
+  const col = side === "short" ? "#f6465d" : "#0ecb81";
+  if (deskTab === "reduce") {
+    if (!adjPreviewHold && adjOrdType === "limit") {
+      const p = parseNum($("adj-price").value);
+      if (p > 0) addPreview(p, "prévia redução " + fmtPx(p), { color: "#b7c9da", lineStyle: 1 });
+    }
+    return;
+  }
+  if (stop > 0 && !entradaPreviewHold) addPreview(stop, "prévia stop", { color: "#ffb0be", lineStyle: 3 });
+  if (deskTab !== "post" || entradaPreviewHold) return;
+  if (deskKind === "scale") {
+    const plan = scalePlan();
+    if (!plan) return;
+    plan.legs.forEach((leg, i) => {
+      const end = i === 0 || i === plan.legs.length - 1;
+      addPreview(leg.price, end ? "PLACE SCALE" : "", { color: col, lineStyle: 1, lineWidth: end ? 2 : 1, axisLabelVisible: end });
+    });
+    addPreview(plan.avg, "média", { color: col, lineStyle: 2, lineWidth: 1 });
+    return;
+  }
+  if (deskKind === "limit") {
+    const p = parseNum($("price").value);
+    if (p > 0) addPreview(p, "LIMITE", { color: col, lineStyle: 1 });
+  }
+}
+function redrawChartLines() {
+  if (!series) return;
+  if (drag || confirmState) return;
+  if (lastAccounts) { drawPositionLines(lastAccounts); drawOrderLines(lastAccounts); }
+  drawPreviews();
+}
+function styleOrderLine(group, price) {
+  group.price = price;
+  try {
+    group.line.applyOptions({
+      price,
+      color: group.kind === "stop" ? (isDesk() ? "#f6465d" : STOP_COLOR) : (isDesk() ? "#d7dde3" : LIMIT_COLOR),
+      lineWidth: 1,
+      lineStyle: group.kind === "stop" ? 2 : 0,
+      axisLabelVisible: true,
+      title: kindTitle(group.kind),
+    });
+  } catch (e) {}
+}
+function showDragTag(price) {
+  const tag = $("drag-tag");
+  const y = series ? series.priceToCoordinate(price) : null;
+  if (y == null) { show(tag, false); return; }
+  tag.textContent = fmtPx(price);
+  tag.style.top = y + "px";
+  show(tag, true);
+}
+function hideDragTag() { show($("drag-tag"), false); }
+function chartLocalY(ev) {
+  const point = ev.touches && ev.touches[0] ? ev.touches[0]
+    : ev.changedTouches && ev.changedTouches[0] ? ev.changedTouches[0] : ev;
+  const rect = $("chart").getBoundingClientRect();
+  return point.clientY - rect.top;
+}
+function hitOrder(y) {
+  if (!series) return null;
+  let best = null, bestD = HIT_PX + 1;
+  for (const g of orderGroups) {
+    const cy = series.priceToCoordinate(g.price);
+    if (cy == null) continue;
+    const d = Math.abs(cy - y);
+    if (d <= HIT_PX && d < bestD) { best = g; bestD = d; }
+  }
+  return best;
+}
+function yToSnap(y) {
+  if (!series) return null;
+  const raw = series.coordinateToPrice(y);
+  if (raw == null || !Number.isFinite(raw) || !(raw > 0)) return null;
+  return snapPx(raw);
+}
+function setChartDragLock(on) {
+  if (!chart) return;
+  if (on) chart.applyOptions({ handleScroll: false, handleScale: false });
+  else chart.applyOptions({
+    handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+    handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
+  });
+}
+function paintDrag(price) {
+  drag.group.price = price;
+  drag.group.line.applyOptions({ price, title: fmtPx(price), lineWidth: 2 });
+  showDragTag(price);
+}
+function beginDrag(ev) {
+  if (ev.button != null && ev.button !== 0) return false;
+  const group = hitOrder(chartLocalY(ev));
+  if (!group) return false;
+  ev.preventDefault();
+  ev.stopPropagation();
+  drag = {
+    id: ev.pointerId != null ? ev.pointerId : 1,
+    origin: group.price, price: group.price, group, moved: false,
+  };
+  $("chart").classList.add("dragging");
+  document.body.classList.add("dragging-order");
+  setChartDragLock(true);
+  if (ev.pointerId != null && $("chart").setPointerCapture) {
+    try { $("chart").setPointerCapture(ev.pointerId); } catch (e) {}
+  }
+  paintDrag(group.price);
+  return true;
+}
+function moveDrag(ev) {
+  if (!drag) return;
+  if (ev.pointerId != null && ev.pointerId !== drag.id && ev.type !== "touchmove") return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  const price = yToSnap(chartLocalY(ev));
+  if (price == null) return;
+  if (price !== drag.origin) drag.moved = true;
+  drag.price = price;
+  paintDrag(price);
+}
+function endDrag(ev) {
+  if (!drag) return;
+  if (ev && ev.pointerId != null && ev.pointerId !== drag.id && ev.type !== "touchend" && ev.type !== "touchcancel") return;
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  const state = drag;
+  drag = null;
+  $("chart").classList.remove("dragging");
+  document.body.classList.remove("dragging-order");
+  setChartDragLock(false);
+  hideDragTag();
+  styleOrderLine(state.group, state.price);
+  if (!state.moved || state.price === state.origin) return;
+  openAmendSheet(state.group, state.origin, state.price);
+}
+function onChartDown(ev) {
+  if (drag || confirmState || scaleOpen) { ev.preventDefault(); ev.stopPropagation(); return; }
+  beginDrag(ev);
+}
+function bindChartDrag() {
+  if (dragBound) return;
+  dragBound = true;
+  const wrap = $("chart-wrap");
+  const opts = { capture: true, passive: false };
+  wrap.addEventListener("pointerdown", onChartDown, opts);
+  wrap.addEventListener("mousedown", onChartDown, opts);
+  wrap.addEventListener("touchstart", onChartDown, opts);
+  wrap.addEventListener("pointermove", moveDrag, opts);
+  wrap.addEventListener("mousemove", moveDrag, opts);
+  wrap.addEventListener("touchmove", moveDrag, opts);
+  wrap.addEventListener("pointerup", endDrag, opts);
+  wrap.addEventListener("pointercancel", endDrag, opts);
+  wrap.addEventListener("mouseup", endDrag, opts);
+  wrap.addEventListener("touchend", endDrag, opts);
+  wrap.addEventListener("touchcancel", endDrag, opts);
+  window.addEventListener("pointermove", (ev) => { if (drag && ev.pointerId === drag.id) moveDrag(ev); }, opts);
+  window.addEventListener("touchmove", (ev) => { if (drag) moveDrag(ev); }, opts);
+  window.addEventListener("pointerup", (ev) => { if (drag && ev.pointerId === drag.id) endDrag(ev); });
+  window.addEventListener("pointercancel", (ev) => { if (drag && ev.pointerId === drag.id) endDrag(ev); });
+  window.addEventListener("touchend", (ev) => { if (drag) endDrag(ev); });
+  window.addEventListener("touchcancel", (ev) => { if (drag) endDrag(ev); });
+}
+function openAmendSheet(group, origin, next) {
+  if (confirmState) return;
+  confirmState = { group, origin, next, busy: false };
+  $("amend-list").innerHTML = group.orders.map((o) =>
+    `<li><span class="name">${esc(o.account)}</span> · ${kindLabel(o.kind)}</li>`).join("");
+  $("amend-move").textContent = fmtPx(origin) + " → " + fmtPx(next);
+  $("amend-msg").textContent = "";
+  show($("amend-msg"), false);
+  $("amend-ok").disabled = false;
+  show($("amend-sheet"), true);
+  try { $("amend-cancel").focus(); } catch (e) {}
+}
+function closeAmendSheet() {
+  confirmState = null;
+  show($("amend-sheet"), false);
+  show($("amend-msg"), false);
+  redrawChartLines();
+}
+// Única função que alteraria uma ordem já aberta.
+// A função painel não tem essa ação (rotas: login, positions, order, adjust, logout).
+// Não faz fetch e não manda nada. Para ligar depois, a função precisaria de um POST /amend
+// chamando a OKX: limite POST /api/v5/trade/amend-order { instId, ordId, newPx };
+// stop POST /api/v5/trade/amend-algos { instId, algoId, newSlTriggerPx }.
+async function amendOrder(order) {
+  void order;
+  const msg = "Ainda não suportado pelo servidor";
+  if ($("amend-msg")) { $("amend-msg").textContent = msg; show($("amend-msg"), true); }
+  return { ok: false, error: msg };
+}
+async function submitAmend() {
+  if (!confirmState || confirmState.busy) return;
+  const state = confirmState;
+  state.busy = true;
+  $("amend-ok").disabled = true;
+  let error = null;
+  for (const order of state.group.orders) {
+    const result = await amendOrder({
+      account: order.account, prefix: order.prefix, kind: order.kind, side: order.side,
+      ordId: order.ordId, algoId: order.algoId, price: state.origin, newPrice: state.next,
+    });
+    if (!result || result.ok === false) error = (result && result.error) || "Ainda não suportado pelo servidor";
+  }
+  if (error) {
+    $("amend-msg").textContent = error;
+    show($("amend-msg"), true);
+    styleOrderLine(state.group, state.origin);
+    state.busy = false;
+    return;
+  }
+  confirmState = null;
+  show($("amend-sheet"), false);
+  loadPositions();
+}
+$("amend-cancel").onclick = () => closeAmendSheet();
+$("amend-ok").onclick = () => submitAmend();
+$("amend-sheet").addEventListener("click", (ev) => { if (ev.target === $("amend-sheet")) closeAmendSheet(); });
+document.addEventListener("keydown", (ev) => {
+  if (!confirmState || ev.key !== "Escape") return;
+  ev.preventDefault();
+  closeAmendSheet();
+});
+$("stop").addEventListener("input", () => { entradaPreviewHold = false; drawPreviews(); });
 
 // ---------- API ----------
 async function api(path, opts = {}) {
@@ -531,6 +1123,7 @@ function setSide(n) {
   $("btn-long").setAttribute("aria-pressed", n === "long"); $("btn-short").setAttribute("aria-pressed", n === "short");
   $("send").classList.toggle("short", n === "short");
   updateSendLabel();
+  drawPreviews();
 }
 $("btn-long").onclick = () => setSide("long");
 $("btn-short").onclick = () => setSide("short");
@@ -544,7 +1137,9 @@ function setOrdType(t) {
   $("btn-market").setAttribute("aria-pressed", t === "market"); $("btn-limit").setAttribute("aria-pressed", t === "limit");
   show($("price-row"), t === "limit");
   if (t === "limit") fillMark();
+  entradaPreviewHold = false;
   updateSendLabel();
+  drawPreviews();
 }
 function updateSendLabel() {
   if (sending) return;
@@ -558,8 +1153,8 @@ function updateSendLabel() {
 }
 $("btn-market").onclick = () => setOrdType("market");
 $("btn-limit").onclick = () => setOrdType("limit");
-$("use-mark").onclick = () => { fillMark(); updateSendLabel(); };
-$("price").addEventListener("input", updateSendLabel);
+$("use-mark").onclick = () => { fillMark(); entradaPreviewHold = false; updateSendLabel(); drawPreviews(); };
+$("price").addEventListener("input", () => { entradaPreviewHold = false; updateSendLabel(); drawPreviews(); });
 
 $("login-form").onsubmit = async (ev) => {
   ev.preventDefault(); show($("login-err"), false); $("login-btn").disabled = true;
@@ -599,7 +1194,12 @@ function renderPosTable(id, accounts) {
   $(id).innerHTML = rows.join("") || '<div class="acct-empty muted">Sem dados</div>';
   if (id === "pos-body") renderHeadPnl(any ? tot : null);
 }
-function renderAllPos() { if (!lastAccounts) return; renderPosTable("pos-body", lastAccounts); renderPosTable("adj-pos-body", lastAccounts); }
+function renderAllPos() {
+  if (!lastAccounts) return;
+  renderPosTable("pos-body", lastAccounts);
+  renderPosTable("adj-pos-body", lastAccounts);
+  renderDesk();
+}
 async function loadPositions() {
   try {
     const { res, data } = await api("/positions");
@@ -610,7 +1210,7 @@ async function loadPositions() {
     }
     if (data.mark && lastPx == null) setPx(data.mark);
     lastAccounts = data.accounts; renderAllPos();
-    drawPositionLines(data.accounts);
+    redrawChartLines();
   } catch (e) {
     const msg = '<div class="acct-empty blocked">Não consegui falar com o servidor.</div>'; renderHeadPnl(null);
     $("pos-body").innerHTML = msg; $("adj-pos-body").innerHTML = msg;
@@ -640,6 +1240,8 @@ $("send").onclick = async () => {
     if (side === "long" && stop >= price) { $("banner-err").textContent = "No long, o stop precisa ficar abaixo do preço limite."; show($("banner-err"), true); return; }
     if (side === "short" && stop <= price) { $("banner-err").textContent = "No short, o stop precisa ficar acima do preço limite."; show($("banner-err"), true); return; }
   }
+  entradaPreviewHold = true;
+  drawPreviews();
   sending = true; $("send").disabled = true; $("send").textContent = "ENVIANDO…";
   try {
     const payload = { side, stop, risk, ordType };
@@ -664,6 +1266,7 @@ function setTab(name) {
   show($("pane-entrada"), entrada); show($("pane-ajustar"), !entrada);
   document.body.classList.toggle("tab-ajustar", !entrada);
   if (!entrada) { loadPositions(); if (adjOrdType === "limit") fillAdjMark(); updateAdjLabel(); }
+  drawPreviews();
 }
 $("tab-entrada").onclick = () => setTab("entrada");
 $("tab-ajustar").onclick = () => setTab("ajustar");
@@ -671,7 +1274,7 @@ $("tab-ajustar").onclick = () => setTab("ajustar");
 function fillAdjMark() {
   if (lastPx != null && lastPx > 0) $("adj-price").value = String(Math.round(lastPx * 10) / 10);
 }
-function invalidateAdjPreview() { adjPreview = null; $("adj-send").disabled = true; updateAdjLabel(); }
+function invalidateAdjPreview() { adjPreview = null; $("adj-send").disabled = true; adjPreviewHold = false; updateAdjLabel(); drawPreviews(); }
 function setAdjPct(p, fromInput) {
   adjPct = p;
   document.querySelectorAll("#pcts .pct").forEach((b) => b.classList.toggle("on", Number(b.dataset.pct) === p));
@@ -748,6 +1351,7 @@ async function runAdj(dry) {
   show($("adj-banner-err"), false); show($("adj-banner-warn"), false);
   const bad = adjValidate();
   if (bad) { $("adj-banner-err").textContent = bad; show($("adj-banner-err"), true); return; }
+  if (!dry) { adjPreviewHold = true; drawPreviews(); }
   adjSending = true; $("adj-preview").disabled = true; $("adj-send").disabled = true;
   $("adj-send").textContent = dry ? "CALCULANDO…" : "ENVIANDO…";
   try {
@@ -772,6 +1376,286 @@ $("adj-send").onclick = () => {
 };
 $("adj-pct").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); $("adj-preview").click(); } });
 
+// Tamanho igual ao da função painel: ct = trunc(eq * risco / den / 0,1) / 10,
+// den = |100 * (1/entrada − 1/stop)|, USD = ct * 100. Só para mostrar. O pedido não muda.
+function sizeFromRisk(eq, entry, stop, riskPct) {
+  if (!(eq > 0) || !(entry > 0) || !(stop > 0) || !(riskPct > 0)) return null;
+  const den = Math.abs(100 * (1 / entry - 1 / stop));
+  if (!(den > 0)) return null;
+  const ct = Math.trunc(eq * (riskPct / 100) / den / 0.1 + 1e-9) / 10;
+  return { ct, usd: ct * 100 };
+}
+function accountsForSize() {
+  return (lastAccounts || []).filter((a) => !a.error);
+}
+function sizesAt(entry) {
+  const stop = parseNum($("stop").value);
+  const risk = parseNum($("risk").value);
+  const rows = [];
+  let totalUsd = 0, totalCt = 0, any = false;
+  for (const a of accountsForSize()) {
+    const sz = sizeFromRisk(a.eq, entry, stop, risk);
+    rows.push({ name: a.name, sz });
+    if (sz && sz.ct > 0) { totalUsd += sz.usd; totalCt += sz.ct; any = true; }
+  }
+  return { rows, totalUsd, totalCt, any, entry, stop, risk };
+}
+function scalePlan() {
+  const from = parseNum($("d-from") && $("d-from").value);
+  const to = parseNum($("d-to") && $("d-to").value);
+  const n = Math.round(Number($("d-orders") && $("d-orders").value));
+  const stop = parseNum($("stop").value);
+  const risk = parseNum($("risk").value);
+  if (!(from > 0) || !(to > 0) || from === to || n < 2 || n > 50) return null;
+  const prices = [];
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    const u = priceEven ? t : t * t;
+    prices.push(from + (to - from) * u);
+  }
+  const weights = prices.map((_, i) => sizeEven ? 1 : i + 1);
+  const wsum = weights.reduce((s, w) => s + w, 0);
+  const legs = prices.map((price, i) => {
+    const share = risk > 0 ? risk * weights[i] / wsum : 0;
+    let usd = 0, ct = 0;
+    const per = [];
+    for (const a of accountsForSize()) {
+      const sz = sizeFromRisk(a.eq, price, stop, share);
+      per.push({ name: a.name, sz });
+      if (sz && sz.ct > 0) { usd += sz.usd; ct += sz.ct; }
+    }
+    return { price, share, usd, ct, per, weight: weights[i] };
+  });
+  const totalUsd = legs.reduce((s, l) => s + l.usd, 0);
+  const avg = totalUsd > 0
+    ? legs.reduce((s, l) => s + l.price * l.usd, 0) / totalUsd
+    : prices.reduce((s, p) => s + p, 0) / prices.length;
+  return { legs, avg, stop, risk, totalUsd, n };
+}
+function fmtSize(sz) {
+  if (!sz || !(sz.ct > 0)) return "—";
+  return fmtCt(sz.ct) + " ct · " + fmtUsd(sz.usd);
+}
+function fmtCt(n) { return Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 1 }); }
+function renderSizeRows(rows) {
+  return rows.map((r) => `<div><span>${esc(r.name)}</span><span>${fmtSize(r.sz)}</span></div>`).join("");
+}
+function updateDesk() {
+  if (!$("d-size")) return;
+  const ws = $("d-ws");
+  if (ws && $("ws")) { ws.className = $("ws").className; ws.textContent = $("ws").textContent; }
+  if (document.activeElement !== $("d-risk")) $("d-risk").value = $("risk").value;
+  if (document.activeElement !== $("d-stop")) $("d-stop").value = $("stop").value;
+  if (document.activeElement !== $("d-stop-2")) $("d-stop-2").value = $("stop").value;
+  if ($("d-risk-range") && document.activeElement !== $("d-risk-range")) {
+    const r = parseNum($("risk").value);
+    if (r != null) $("d-risk-range").value = String(Math.min(5, Math.max(0.1, r)));
+  }
+  if (deskKind === "limit" && document.activeElement !== $("d-price")) $("d-price").value = $("price").value;
+  const entry = deskKind === "market" ? lastPx : parseNum($("price").value);
+  const sized = sizesAt(entry);
+  if (deskKind === "scale") {
+    const plan = scalePlan();
+    $("d-size").textContent = plan && plan.totalUsd > 0 ? fmtUsd(plan.totalUsd) : "—";
+    const totals = new Map();
+    if (plan) for (const leg of plan.legs) for (const p of leg.per) {
+      const cur = totals.get(p.name) || { ct: 0, usd: 0, any: false };
+      if (p.sz && p.sz.ct > 0) { cur.ct += p.sz.ct; cur.usd += p.sz.usd; cur.any = true; }
+      totals.set(p.name, cur);
+    }
+    const rows = accountsForSize().map((a) => ({ name: a.name, sz: totals.get(a.name) && totals.get(a.name).any ? totals.get(a.name) : null }));
+    $("d-size-rows").innerHTML = renderSizeRows(rows);
+    $("d-avg").textContent = plan ? fmtPx(plan.avg) : "—";
+    const bars = $("d-bars");
+    bars.classList.toggle("short", side === "short");
+    const maxW = plan ? Math.max(...plan.legs.map((l) => l.weight)) : 1;
+    bars.innerHTML = plan ? plan.legs.map((l) => `<i style="height:${Math.max(8, Math.round(l.weight / maxW * 36))}px"></i>`).join("") : "";
+    const usd = plan && plan.totalUsd > 0 ? Math.round(plan.totalUsd).toLocaleString("pt-BR") : "—";
+    const px = plan ? fmtPx(plan.avg) : "—";
+    $("d-long").textContent = "LONG " + usd + " @ " + px;
+    $("d-short").textContent = "SHORT " + usd + " @ " + px;
+  } else {
+    $("d-size").textContent = sized.any ? fmtUsd(sized.totalUsd) : "—";
+    $("d-size-rows").innerHTML = renderSizeRows(sized.rows);
+    const usd = sized.any ? Math.round(sized.totalUsd).toLocaleString("pt-BR") : "—";
+    const px = entry > 0 ? fmtPx(entry) : "—";
+    const kind = deskKind === "limit" ? "limite" : "mercado";
+    $("d-long").textContent = "LONG " + usd + " @ " + px;
+    $("d-short").textContent = "SHORT " + usd + " @ " + px;
+    void kind;
+  }
+  const eqs = accountsForSize();
+  const btc = eqs.reduce((s, a) => s + (Number(a.eq) || 0), 0);
+  const mark = lastPx || (eqs[0] && eqs[0].mark);
+  $("d-equity").textContent = btc > 0 ? fmtBtc(btc) + " BTC" + (mark ? " · " + fmtUsd(btc * mark) : "") : "—";
+  const stops = [];
+  for (const a of visibleAccounts(lastAccounts)) for (const s of a.stops || []) stops.push(`<div><span>${esc(a.name)}</span><span>${fmtPx(s)}</span></div>`);
+  if ($("d-stop-list")) $("d-stop-list").innerHTML = stops.join("") || '<div class="d-empty">Nenhum stop aberto.</div>';
+  const err = !$("banner-err").classList.contains("hidden") ? $("banner-err").textContent
+    : !$("adj-banner-err").classList.contains("hidden") ? $("adj-banner-err").textContent : "";
+  const warn = !$("banner-warn").classList.contains("hidden") ? $("banner-warn").textContent
+    : !$("adj-banner-warn").classList.contains("hidden") ? $("adj-banner-warn").textContent : "";
+  $("d-msg").textContent = err || warn || "";
+  $("d-msg").className = err ? "err" : warn ? "warn" : "err hidden";
+}
+function fmtBtc(n) { return Number(n).toLocaleString("pt-BR", { minimumFractionDigits: 4, maximumFractionDigits: 6 }); }
+function renderDesk() {
+  if (!$("d-bal-body")) return;
+  const list = visibleAccounts(lastAccounts);
+  const mark = lastPx || (list[0] && list[0].mark) || 0;
+  let btc = 0, usd = 0;
+  const rows = (lastAccounts || []).filter((a) => deskFilter === "todas" || a.name === deskFilter).map((a) => {
+    const eq = Number(a.eq) || 0;
+    const val = mark && eq ? eq * mark : 0;
+    btc += eq; usd += val;
+    return `<tr><td>BTC</td><td>${esc(a.name)}</td><td class="r">${a.eq ? fmtBtc(a.eq) : "—"}</td><td class="r">${val ? fmtUsd(val) : "—"}</td></tr>`;
+  });
+  $("d-bal-body").innerHTML = `<table class="d-table"><thead><tr><th>Moeda</th><th>Conta</th><th class="r">Saldo</th><th class="r">US$</th></tr></thead><tbody>${rows.join("")}<tr><td>Total</td><td></td><td class="r">${btc ? fmtBtc(btc) : "—"}</td><td class="r">${usd ? fmtUsd(usd) : "—"}</td></tr></tbody></table>`;
+  const pos = list.filter((a) => a.net);
+  $("d-pos-body").innerHTML = pos.length ? `<table class="d-table"><thead><tr><th>Símbolo</th><th>Conta</th><th class="r">Entrada</th><th class="r">Tamanho</th><th class="r">Resultado</th></tr></thead><tbody>${pos.map((a) => {
+    const p = pnlUsd(a);
+    const notion = Math.abs(a.net) * 100;
+    const roe = p == null || !notion ? null : p / notion * 100;
+    const cls = p == null ? "" : p >= 0 ? "d-up" : "d-dn";
+    const pnl = p == null ? "—" : (p >= 0 ? "+" : "−") + fmtUsd(Math.abs(p)) + (roe == null ? "" : " " + (roe >= 0 ? "+" : "−") + fmtPct(Math.abs(roe)));
+    return `<tr><td>BTC-USD-SWAP</td><td>${esc(a.name)}</td><td class="r">${fmtPx(a.avg)}</td><td class="r">${fmtUsd(notion)}</td><td class="r ${cls}">${pnl}</td></tr>`;
+  }).join("")}</tbody></table>` : '<div class="d-empty">Sem posição.</div>';
+  const orders = [];
+  for (const a of list) for (const o of accountOrders(a)) orders.push(o);
+  $("d-ord-body").innerHTML = orders.length ? `<table class="d-table"><thead><tr><th>Símbolo</th><th>Tipo</th><th>Conta</th><th class="r">Preço</th></tr></thead><tbody>${orders.map((o) => `<tr><td>BTC-USD-SWAP</td><td>${o.kind === "stop" ? "Stop" : "Limite"}</td><td>${esc(o.account)}</td><td class="r">${fmtPx(o.price)}</td></tr>`).join("")}</tbody></table>` : '<div class="d-empty">Nenhuma ordem aberta.</div>';
+  updateDesk();
+}
+function fillFilters() {
+  const html = '<option value="todas">Todas</option>' + ["pupo", "pai", "mãe", "tcheco"].map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+  for (const id of ["d-filter", "d-filter-pos", "d-filter-ord"]) {
+    const el = $(id);
+    if (!el || el.options.length) continue;
+    el.innerHTML = html;
+  }
+}
+function setDeskFilter(v) {
+  deskFilter = v || "todas";
+  for (const id of ["d-filter", "d-filter-pos", "d-filter-ord"]) if ($(id)) $(id).value = deskFilter;
+  renderDesk();
+  redrawChartLines();
+}
+function copyField(from, to) {
+  if (!$(from) || !$(to)) return;
+  if ($(to).value === $(from).value) return;
+  $(to).value = $(from).value;
+  $(to).dispatchEvent(new Event("input", { bubbles: true }));
+}
+function setDeskKind(kind) {
+  deskKind = kind;
+  if ($("d-kind")) $("d-kind").value = kind;
+  show($("d-price-box"), kind === "limit");
+  show($("d-scale"), kind === "scale");
+  if (kind === "market") setOrdType("market");
+  else if (kind === "limit") setOrdType("limit");
+  else { entradaPreviewHold = false; drawPreviews(); }
+}
+function setDeskTab(name) {
+  deskTab = name;
+  document.querySelectorAll("#d-tabs .d-tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
+  show($("d-post"), name === "post");
+  show($("d-reduce"), name === "reduce");
+  show($("d-tpsl"), name === "tpsl");
+  if (name === "reduce") setTab("ajustar");
+  else if (name === "post") setTab("entrada");
+  drawPreviews();
+}
+function openScaleSheet() {
+  const plan = scalePlan();
+  if (!plan) {
+    $("d-msg").textContent = "Preencha os dois preços, o stop e o risco.";
+    $("d-msg").className = "err";
+    return;
+  }
+  const byName = new Map();
+  for (const leg of plan.legs) for (const p of leg.per) {
+    const cur = byName.get(p.name) || { ct: 0, usd: 0 };
+    if (p.sz && p.sz.ct > 0) { cur.ct += p.sz.ct; cur.usd += p.sz.usd; }
+    byName.set(p.name, cur);
+  }
+  const head = [...byName.entries()].map(([name, sz]) => `<li><span class="name">${esc(name)}</span> · ${fmtCt(sz.ct)} ct · ${fmtUsd(sz.usd)}</li>`).join("");
+  const legs = plan.legs.map((l) => `<li>${fmtPx(l.price)} · ${l.usd > 0 ? fmtUsd(l.usd) : "—"}</li>`).join("");
+  $("scale-list").innerHTML = head + `<li>Stop ${fmtPx(plan.stop)} · média ${fmtPx(plan.avg)} · risco ${fmtPct(plan.risk)}</li>` + legs;
+  $("scale-msg").textContent = "";
+  show($("scale-msg"), false);
+  $("scale-ok").disabled = false;
+  scaleOpen = true;
+  show($("scale-sheet"), true);
+  try { $("scale-cancel").focus(); } catch (e) {}
+}
+function closeScaleSheet() {
+  scaleOpen = false;
+  show($("scale-sheet"), false);
+}
+// A escala não cabe no pedido atual: /order manda um risco inteiro, um preço e um stop,
+// para as 4 contas, e recusa quem já tem posição. Não chama a rede.
+async function submitScale() {
+  const msg = "Ainda não suportado pelo servidor";
+  $("scale-msg").textContent = msg;
+  show($("scale-msg"), true);
+  $("scale-ok").disabled = true;
+  return { ok: false, error: msg };
+}
+function initDesk() {
+  if (!$("d-kind")) return;
+  fillFilters();
+  $("d-kind").onchange = () => setDeskKind($("d-kind").value);
+  $("d-filter").onchange = () => setDeskFilter($("d-filter").value);
+  $("d-filter-pos").onchange = () => setDeskFilter($("d-filter-pos").value);
+  $("d-filter-ord").onchange = () => setDeskFilter($("d-filter-ord").value);
+  $("d-tabs").onclick = (ev) => { const b = ev.target.closest(".d-tab"); if (b) setDeskTab(b.dataset.tab); };
+  $("d-risk").addEventListener("input", () => copyField("d-risk", "risk"));
+  $("d-risk-range").addEventListener("input", () => { $("d-risk").value = $("d-risk-range").value; copyField("d-risk", "risk"); });
+  $("d-max").onclick = () => { $("d-risk").value = "5"; $("d-risk-range").value = "5"; copyField("d-risk", "risk"); };
+  $("d-stop").addEventListener("input", () => copyField("d-stop", "stop"));
+  $("d-stop-2").addEventListener("input", () => copyField("d-stop-2", "stop"));
+  $("d-price").addEventListener("input", () => copyField("d-price", "price"));
+  $("d-best").onclick = () => { fillMark(); entradaPreviewHold = false; updateSendLabel(); drawPreviews(); };
+  const nudge = (dir) => {
+    const cur = parseNum($("price").value) || lastPx || 0;
+    if (!(cur > 0)) return;
+    $("d-price").value = String(Math.round((cur + dir) * 10) / 10);
+    copyField("d-price", "price");
+  };
+  $("d-minus").onclick = () => nudge(-1);
+  $("d-plus").onclick = () => nudge(1);
+  const touchScale = () => { entradaPreviewHold = false; drawPreviews(); };
+  $("d-from").addEventListener("input", touchScale);
+  $("d-to").addEventListener("input", touchScale);
+  $("d-orders").addEventListener("input", () => { $("d-orders-n").textContent = $("d-orders").value; touchScale(); });
+  $("d-price-even").onclick = () => { priceEven = !priceEven; $("d-price-even").classList.toggle("on", priceEven); $("d-price-even").setAttribute("aria-pressed", priceEven); $("d-price-even").textContent = priceEven ? "Preço igual" : "Preço acumulado"; touchScale(); };
+  $("d-size-even").onclick = () => { sizeEven = !sizeEven; $("d-size-even").classList.toggle("on", sizeEven); $("d-size-even").setAttribute("aria-pressed", sizeEven); $("d-size-even").textContent = sizeEven ? "Tamanho igual" : "Tamanho crescente"; touchScale(); };
+  $("d-long").onclick = () => { if (deskKind === "scale") { setSide("long"); openScaleSheet(); return; } setSide("long"); $("send").click(); };
+  $("d-short").onclick = () => { if (deskKind === "scale") { setSide("short"); openScaleSheet(); return; } setSide("short"); $("send").click(); };
+  $("d-pcts").onclick = (ev) => {
+    const b = ev.target.closest("[data-pct]"); if (!b) return;
+    setAdjPct(Number(b.dataset.pct));
+    $("d-adj-pct").value = b.dataset.pct;
+    document.querySelectorAll("#d-pcts .d-tog").forEach((x) => x.classList.toggle("on", x === b));
+  };
+  $("d-adj-pct").addEventListener("input", () => { $("adj-pct").value = $("d-adj-pct").value; $("adj-pct").dispatchEvent(new Event("input", { bubbles: true })); });
+  const markAdj = (limit) => { setAdjOrdType(limit ? "limit" : "market"); $("d-adj-market").classList.toggle("on", !limit); $("d-adj-limit").classList.toggle("on", limit); show($("d-adj-price-box"), limit); if (limit) $("d-adj-price").value = $("adj-price").value; };
+  $("d-adj-market").onclick = () => markAdj(false);
+  $("d-adj-limit").onclick = () => markAdj(true);
+  $("d-adj-price").addEventListener("input", () => copyField("d-adj-price", "adj-price"));
+  $("d-adj-best").onclick = () => { fillAdjMark(); $("d-adj-price").value = $("adj-price").value; invalidateAdjPreview(); };
+  $("d-adj-preview").onclick = () => $("adj-preview").click();
+  $("d-adj-send").onclick = () => $("adj-send").click();
+  $("scale-cancel").onclick = () => closeScaleSheet();
+  $("scale-ok").onclick = () => submitScale();
+  $("scale-sheet").addEventListener("click", (ev) => { if (ev.target === $("scale-sheet")) closeScaleSheet(); });
+  document.querySelectorAll("#d-pcts .d-tog").forEach((b) => b.classList.toggle("on", Number(b.dataset.pct) === adjPct));
+  if (isDesk()) setDeskKind("limit");
+  const mq = window.matchMedia("(min-width: 1024px)");
+  const onDesk = () => { syncVolume(); if (deskKind !== "scale") setDeskKind(ordType === "limit" ? "limit" : "market"); redrawChartLines(); };
+  if (mq.addEventListener) mq.addEventListener("change", onDesk); else mq.addListener(onDesk);
+}
+$("risk").addEventListener("input", () => { if (typeof updateDesk === "function") updateDesk(); });
+
 document.addEventListener("focusin", (ev) => {
   const t = ev.target;
   if (!t || t.tagName !== "INPUT" || !window.matchMedia("(max-width: 959px)").matches) return;
@@ -780,6 +1664,7 @@ document.addEventListener("focusin", (ev) => {
 
 window.addEventListener("DOMContentLoaded", () => {
   if (initChart()) loadCandles();
+  initDesk();
   startStreams();
   if (localStorage.getItem(TK)) { setLogin(false); loadPositions(); } else setLogin(true);
   setInterval(() => { if (document.visibilityState === "visible" && localStorage.getItem(TK)) loadPositions(); }, 30000);
