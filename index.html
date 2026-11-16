@@ -37,6 +37,11 @@ input:focus{border-color:#5b6570}
 .side{appearance:none;border:2px solid var(--line);background:var(--card);color:var(--text);border-radius:12px;padding:12px 6px;font-size:18px;font-weight:800;letter-spacing:.06em}
 .side.long.on{background:var(--green-dim);border-color:var(--green);color:var(--green)}
 .side.short.on{background:var(--red-dim);border-color:var(--red);color:var(--red)}
+.otypes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.otype{appearance:none;border:2px solid var(--line);background:var(--card);color:var(--muted);border-radius:12px;padding:10px 6px;font-size:15px;font-weight:700}
+.otype.on{color:var(--text);border-color:#5b6570;background:#1c222a}
+.price-row{display:grid;grid-template-columns:1.6fr auto;gap:8px;align-items:end;margin-top:0}
+.use-mark{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13px;font-weight:700;height:46px;white-space:nowrap}
 .row{display:grid;grid-template-columns:1.6fr 1fr;gap:8px}
 .send{width:100%;margin-top:12px;border:0;border-radius:14px;padding:17px 12px;font-size:18px;font-weight:800;letter-spacing:.04em;color:#06140a;background:var(--green)}
 .send.short{background:var(--red);color:#fff}.send:disabled{opacity:.55}
@@ -82,11 +87,19 @@ button{cursor:pointer;font-family:inherit}
     <button type="button" class="side long on" id="btn-long" aria-pressed="true">LONG</button>
     <button type="button" class="side short" id="btn-short" aria-pressed="false">SHORT</button>
   </div>
+  <div class="otypes">
+    <button type="button" class="otype on" id="btn-market" aria-pressed="true">Mercado</button>
+    <button type="button" class="otype" id="btn-limit" aria-pressed="false">Limite</button>
+  </div>
+  <div id="price-row" class="price-row hidden">
+    <div><label for="price">Preço</label><input id="price" type="text" inputmode="decimal" autocomplete="off" placeholder="64000" enterkeyhint="next"></div>
+    <button type="button" class="use-mark" id="use-mark">Usar mark</button>
+  </div>
   <div class="row">
     <div><label for="stop">Stop</label><input id="stop" type="text" inputmode="decimal" autocomplete="off" placeholder="63800" enterkeyhint="next"></div>
     <div><label for="risk">Risco %</label><input id="risk" type="text" inputmode="decimal" autocomplete="off" value="1" enterkeyhint="go"></div>
   </div>
-  <button type="button" class="send" id="send">ENVIAR A MERCADO</button>
+  <button type="button" class="send" id="send">LONG A MERCADO</button>
   <div id="banner-err" class="err hidden"></div>
   <div id="banner-warn" class="warn hidden"></div>
   <div id="result" class="result hidden">
@@ -105,7 +118,7 @@ const API = "https://krzznjwvcrbuhlfwsdel.supabase.co/functions/v1/painel";
 const INST = "BTC-USD-SWAP";
 const TK = "painel_token";
 const $ = (id) => document.getElementById(id);
-let side = "long", sending = false;
+let side = "long", sending = false, ordType = "market";
 
 // ---------- formatação ----------
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -241,9 +254,36 @@ function setSide(n) {
   $("btn-long").classList.toggle("on", n === "long"); $("btn-short").classList.toggle("on", n === "short");
   $("btn-long").setAttribute("aria-pressed", n === "long"); $("btn-short").setAttribute("aria-pressed", n === "short");
   $("send").classList.toggle("short", n === "short");
+  updateSendLabel();
 }
 $("btn-long").onclick = () => setSide("long");
 $("btn-short").onclick = () => setSide("short");
+
+function fillMark() {
+  if (lastPx != null && lastPx > 0) $("price").value = String(Math.round(lastPx * 10) / 10);
+}
+function setOrdType(t) {
+  ordType = t;
+  $("btn-market").classList.toggle("on", t === "market"); $("btn-limit").classList.toggle("on", t === "limit");
+  $("btn-market").setAttribute("aria-pressed", t === "market"); $("btn-limit").setAttribute("aria-pressed", t === "limit");
+  show($("price-row"), t === "limit");
+  if (t === "limit") fillMark();
+  updateSendLabel();
+}
+function updateSendLabel() {
+  if (sending) return;
+  const label = side === "short" ? "SHORT" : "LONG";
+  if (ordType === "limit") {
+    const p = parseNum($("price").value);
+    $("send").textContent = p && p > 0 ? `${label} LIMITE @ ${fmtPx(p)}` : `${label} LIMITE`;
+  } else {
+    $("send").textContent = `${label} A MERCADO`;
+  }
+}
+$("btn-market").onclick = () => setOrdType("market");
+$("btn-limit").onclick = () => setOrdType("limit");
+$("use-mark").onclick = () => { fillMark(); updateSendLabel(); };
+$("price").addEventListener("input", updateSendLabel);
 
 $("login-form").onsubmit = async (ev) => {
   ev.preventDefault(); show($("login-err"), false); $("login-btn").disabled = true;
@@ -286,11 +326,19 @@ $("send").onclick = async () => {
   if (sending) return;
   show($("banner-err"), false); show($("banner-warn"), false);
   const stop = parseNum($("stop").value), risk = parseNum($("risk").value);
+  const price = parseNum($("price").value);
   if (stop == null || stop <= 0) { $("banner-err").textContent = "Preenche um stop válido."; show($("banner-err"), true); return; }
   if (risk == null || risk <= 0 || risk > 5) { $("banner-err").textContent = "Risco precisa ser maior que 0 e no máximo 5%."; show($("banner-err"), true); return; }
+  if (ordType === "limit") {
+    if (price == null || price <= 0) { $("banner-err").textContent = "Preenche um preço limite válido."; show($("banner-err"), true); return; }
+    if (side === "long" && stop >= price) { $("banner-err").textContent = "No long, o stop precisa ficar abaixo do preço limite."; show($("banner-err"), true); return; }
+    if (side === "short" && stop <= price) { $("banner-err").textContent = "No short, o stop precisa ficar acima do preço limite."; show($("banner-err"), true); return; }
+  }
   sending = true; $("send").disabled = true; $("send").textContent = "ENVIANDO…";
   try {
-    const { res, data } = await api("/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ side, stop, risk }) });
+    const payload = { side, stop, risk, ordType };
+    if (ordType === "limit") payload.price = price;
+    const { res, data } = await api("/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (res.status === 401) return;
     if (data.error && !data.accounts) { $("banner-err").textContent = data.error; show($("banner-err"), true); return; }
     renderResult(data);
@@ -298,7 +346,7 @@ $("send").onclick = async () => {
     if (data.warning) { $("banner-warn").textContent = "Atenção: exposição acima de 100%."; show($("banner-warn"), true); }
     loadPositions();
   } catch (e) { $("banner-err").textContent = "Não consegui falar com o servidor. Confira as posições antes de reenviar."; show($("banner-err"), true); }
-  finally { sending = false; $("send").disabled = false; $("send").textContent = "ENVIAR A MERCADO"; }
+  finally { sending = false; $("send").disabled = false; updateSendLabel(); }
 };
 $("refresh").onclick = () => loadPositions();
 $("risk").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); $("send").click(); } });
