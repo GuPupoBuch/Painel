@@ -345,7 +345,7 @@ $("login-form").onsubmit = async (ev) => {
 function renderPosTable(id, accounts, withUsd) {
   $(id).innerHTML = (accounts || []).map((a) => {
     const usd = withUsd && a.net ? ` · ${fmtUsd(Math.abs(a.net) * 100)}` : "";
-    const pos = !a.net ? "zerada" : `${a.side} ${Math.abs(a.net).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ct${usd}`;
+    const pos = !a.net ? "zerada" : `${a.side} ${fmtUsd(Math.abs(a.net) * 100)}`;
     const err = a.error ? `<div class="blocked">${esc(a.error)}</div>` : "";
     const st = (a.stops || []).length ? a.stops.map(fmtPx).join(" / ") : "—";
     return `<tr><td class="name">${esc(a.name)}</td><td>${esc(pos)}${err}</td><td>${fmtPx(a.avg)}</td><td>${a.net ? st : "—"}</td><td>${a.net ? fmtPct(a.expo) : "—"}</td></tr>`;
@@ -486,7 +486,7 @@ function renderAdjResult(data) {
     return `<tr>
       <td class="name">${esc(a.name)}${err}</td>
       <td>${fmtUsd(a.close_usd)}${a.close_ct ? `<div class="muted">${Number(a.close_ct).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ct</div>` : ""}${warn}</td>
-      <td>${a.pos_after == null ? "—" : Number(a.pos_after).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " ct"}</td>
+      <td>${a.pos_after == null ? "—" : fmtUsd(Number(a.pos_after) * 100)}</td>
       <td>${fmtPct(a.expo_after)}</td>
       <td>${stop}</td></tr>`;
   }).join("") : '<tr><td colspan="5" class="muted">Sem linhas de conta no retorno.</td></tr>';
