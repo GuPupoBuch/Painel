@@ -751,3 +751,34 @@ Deno.test("trava de ambiente: detecção não autoriza; autorização sem detec�
     if (okxAllowedByEnv(envOf(vars), edge) !== want) throw new Error(`okxAllowedByEnv: ${why} deveria ser ${want}`);
   }
 });
+
+Deno.test("trava de ambiente: diagnóstico mostra a forma dos marcadores sem vazar valores", () => {
+  const { okxEnvDiagnostics } = __test;
+  const secretFlag = "true";
+  const base = "https://www.okx.com";
+  const vars = { ...HOSTED_ENV, OKX_LIVE_ENABLED: secretFlag, OKX_BASE: base };
+  const d = okxEnvDiagnostics(envOf(vars), true);
+  const txt = JSON.stringify(d);
+  for (const raw of [EXEC_ID, DEP_ID, "krzznjwvcrbuhlfwsdel", base, "okx.com"]) {
+    if (txt.includes(raw)) throw new Error(`diagnóstico vazou ${raw}`);
+  }
+  if (!(d.edgeRuntime && d.execId.uuidOk && d.deploymentId.refPrefixOk && d.deploymentId.formatOk && d.deploymentId.segments === 3 &&
+    d.liveFlag.exactTrue && d.okxBase.exactOrigin && d.hosted && d.allowed)) throw new Error("produção completa: " + txt);
+  const shape = (s: string) => s.replace(/[A-Za-z]/g, "a").replace(/[0-9]/g, "9");
+  if (d.execId.shape !== shape(EXEC_ID) || d.deploymentId.shape !== shape(DEP_ID)) {
+    throw new Error("shape: " + d.execId.shape + " / " + d.deploymentId.shape);
+  }
+
+  // cenários de bloqueio: o diagnóstico aponta o motivo
+  const semFlag = okxEnvDiagnostics(envOf(HOSTED_ENV), true);
+  if (semFlag.allowed || semFlag.liveFlag.present || !semFlag.hosted) throw new Error("sem flag: " + JSON.stringify(semFlag));
+  const flagErrada = okxEnvDiagnostics(envOf({ ...HOSTED_ENV, OKX_LIVE_ENABLED: " True " }), true);
+  if (flagErrada.allowed || flagErrada.liveFlag.exactTrue || !flagErrada.liveFlag.looseTrue) throw new Error("flag errada: " + JSON.stringify(flagErrada));
+  const depEstranho = okxEnvDiagnostics(envOf({ ...HOSTED_ENV, OKX_LIVE_ENABLED: "true", DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdel_fn" }), true);
+  if (depEstranho.allowed || depEstranho.deploymentId.formatOk || !depEstranho.deploymentId.refPrefixOk || depEstranho.deploymentId.segments !== 2) {
+    throw new Error("deployment id fora do formato: " + JSON.stringify(depEstranho));
+  }
+  const local = okxEnvDiagnostics(envOf({ OKX_BASE: "http://127.0.0.1:8788" }), false);
+  if (!local.allowed || local.hosted || local.okxBase.exactOrigin || local.execId.present) throw new Error("mock local: " + JSON.stringify(local));
+  if (JSON.stringify(local).includes("8788")) throw new Error("diagnóstico vazou OKX_BASE local");
+});

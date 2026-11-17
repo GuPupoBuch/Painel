@@ -61,6 +61,27 @@ const okxBaseOf = (get: EnvGet) => get("OKX_BASE") || OKX_REAL_ORIGIN;
 function okxAllowedByEnv(get: EnvGet, hasEdgeRuntime: boolean): boolean {
   return okxTargetAllowed(okxBaseOf(get), okxLiveAuthorized(get), hostedMarkersPresent(get, hasEdgeRuntime));
 }
+// Diagnóstico da trava, só com a FORMA dos valores: letras viram "a", dígitos viram "9", o resto fica.
+// Nenhum valor real sai no log (nem ids, nem a flag, nem OKX_BASE). Não muda nenhuma decisão da trava.
+const shapeOf = (s: string) => s.replace(/[A-Za-z]/g, "a").replace(/[0-9]/g, "9");
+function okxEnvDiagnostics(get: EnvGet, hasEdgeRuntime: boolean) {
+  const exec = get("SB_EXECUTION_ID");
+  const dep = get("DENO_DEPLOYMENT_ID");
+  const flag = get("OKX_LIVE_ENABLED");
+  const base = get("OKX_BASE");
+  return {
+    edgeRuntime: hasEdgeRuntime,
+    execId: { present: exec !== "", len: exec.length, uuidOk: UUID_RE.test(exec), shape: shapeOf(exec) },
+    deploymentId: {
+      present: dep !== "", len: dep.length, refPrefixOk: dep.startsWith(PROJECT_REF + "_"),
+      formatOk: DEPLOYMENT_ID_RE.test(dep), segments: dep === "" ? 0 : dep.split("_").length, shape: shapeOf(dep),
+    },
+    liveFlag: { present: flag !== "", exactTrue: flag === "true", looseTrue: flag.trim().toLowerCase() === "true" },
+    okxBase: { present: base !== "", exactOrigin: base === "" || base === OKX_REAL_ORIGIN },
+    hosted: hostedMarkersPresent(get, hasEdgeRuntime),
+    allowed: okxAllowedByEnv(get, hasEdgeRuntime),
+  };
+}
 
 // ---------- crypto ----------
 async function hmacRaw(key: string, msg: string): Promise<Uint8Array> {
@@ -1861,6 +1882,8 @@ const handler = async (req: Request): Promise<Response> => {
 // no Edge Runtime (nuvem ou supabase functions serve), Deno.serve exatamente como antes;
 // num deno run comum, só 127.0.0.1 (porta PANEL_PORT, padrão 8000).
 if (import.meta.main) {
+  // uma linha por instância, ao subir: mostra por que a OKX real está liberada ou bloqueada
+  console.log(JSON.stringify({ ev: "okx-env", ...okxEnvDiagnostics(env, IN_EDGE_RUNTIME) }));
   if (IN_EDGE_RUNTIME) Deno.serve(handler);
   else Deno.serve({ hostname: "127.0.0.1", port: parseInt(env("PANEL_PORT") || "8000") }, handler);
 }
@@ -1868,7 +1891,7 @@ if (import.meta.main) {
 export const __test = {
   setReq(fn: typeof req) { req = fn; },
   reset() { orderBusy = false; },
-  okxTargetAllowed, okxAllowedByEnv, hostedMarkersPresent, okxLiveAuthorized,
+  okxTargetAllowed, okxAllowedByEnv, hostedMarkersPresent, okxLiveAuthorized, okxEnvDiagnostics,
   ctFromRisk, ctFromEquityPct, lossBtc, scalePrices, hedgeNumbers, realizedPnlBtc, allocateReduce, splitLots, contractMap,
   runOrder, runReduce, runAdjust, runScale, runScaleReduce, runScaleAmount, runSized, runAlgo, runAmend, runCancel, runHedge, runHedgeScale, harmonicAvg, scaleRiskLots, fetchPositions, ACC,
 };
