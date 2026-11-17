@@ -1,9 +1,10 @@
 // Painel de ordens OKX (porta fiel de /workspace/okx/mkt.py, caminho sem --add).
 // API JSON apenas; a página HTML é servida fora do supabase.co (que reescreve text/html).
-// Rotas: POST /login, GET /session, GET /positions, POST /order, POST /adjust, POST /scale, POST /amend, POST /logout.
+// Rotas: POST /login, GET /session, GET /positions, POST /order, POST /adjust, POST /scale, POST /amend, POST /cancel, POST /logout.
+// /order aceita ordType market|limit (como antes) e também trigger (stop a mercado) e chase.
+// Tamanho por risco+stop segue igual. sizeMode usd|pct abre por valor ou % do saldo, sem exigir risco.
 // Auth: token assinado (Authorization: Bearer) ~90 dias.
 
-const B = "https://www.okx.com";
 const INST = "BTC-USD-SWAP";
 const CAP = 1000.0;
 const ACC: [string, string][] = [["OKX", "pupo"], ["OKX2", "pai"], ["OKX3", "mãe"], ["OKX4", "tcheco"]];
@@ -12,6 +13,7 @@ const LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const LOGIN_MAX = 5;
 
 const env = (k: string) => Deno.env.get(k) ?? "";
+const B = env("OKX_BASE") || "https://www.okx.com";
 const enc = new TextEncoder();
 
 // ---------- crypto ----------
@@ -68,6 +70,16 @@ async function conds(P: string): Promise<J[]> {
   const r = await req(P, "GET", "/api/v5/trade/orders-algo-pending?ordType=conditional&instType=SWAP");
   if (!Array.isArray(r?.data)) throw okxErr(r, "stops");
   return r.data.filter((x: J) => x.instId === INST);
+}
+// Trigger e chase não derrubam a leitura da conta se a OKX recusar o ordType.
+async function algosOf(P: string, ordType: string): Promise<J[]> {
+  try {
+    const r = await req(P, "GET", "/api/v5/trade/orders-algo-pending?ordType=" + ordType + "&instId=" + INST);
+    if (!Array.isArray(r?.data)) return [];
+    return r.data.filter((x: J) => x.instId === INST && (x.ordType == null || x.ordType === "" || x.ordType === ordType));
+  } catch {
+    return [];
+  }
 }
 async function markPx(): Promise<number> {
   const r = await req("OKX", "GET", "/api/v5/public/mark-price?instId=" + INST);
@@ -165,6 +177,25 @@ function ctFromRisk(eq: number, entry: number, stop: number, riskPct: number): n
   if (!(den > 0)) return 0;
   return Math.trunc(eq * (riskPct / 100) / den / 0.1 + 1e-9) / 10;
 }
+// % do saldo em USD da conta. ctVal 100: contratos = eq * mark * pct / 100 / 100, truncados no lote 0,1.
+function ctFromEquityPct(eq: number, mark: number, pct: number): number {
+  if (!(eq > 0) || !(mark > 0) || !(pct > 0)) return 0;
+  const usd = eq * mark * (pct / 100);
+  return Math.trunc(usd / 100 / 0.1 + 1e-9) / 10;
+}
+function orderSide(posSide: Side, reduce: boolean): "buy" | "sell" {
+  if (reduce) return posSide === "long" ? "sell" : "buy";
+  return posSide === "long" ? "buy" : "sell";
+}
+function ratioFromPct(pct: number): string {
+  return String(parseFloat((pct / 100).toPrecision(8)));
+}
+type SizeMode = "usd" | "pct" | "risk" | "contracts";
+function stopGuarded(posSide: Side, stop: number, entry: number, market: boolean): boolean {
+  if (!(stop > 0) || !(entry > 0)) return false;
+  if (!market) return stopOnSide(posSide, stop, entry);
+  return posSide === "short" ? entry < stop * 0.999 : entry > stop * 1.001;
+}
 function lossBtc(ct: number, entry: number, stop: number): number {
   return ct * 100 * Math.abs(1 / entry - 1 / stop);
 }
@@ -196,7 +227,9 @@ async function fetchPositions() {
   const mark = await markPx();
   const accounts = await Promise.all(ACC.map(async ([P, name]) => {
     try {
-      const [eq, legs, cs, limits] = await Promise.all([eq_of(P), legsOf(P), conds(P), pendingLimits(P)]);
+      const [eq, legs, cs, limits, triggers, chases] = await Promise.all([
+        eq_of(P), legsOf(P), conds(P), pendingLimits(P), algosOf(P, "trigger"), algosOf(P, "chase"),
+      ]);
       const net = legs.reduce((s, l) => s + l.pos * (l.posSide === "short" ? -1 : 1), 0);
       const mx = legs.reduce((a: Leg | null, l) => (!a || l.pos > a.pos ? l : a), null);
       const avg = mx ? mx.avg : 0;
@@ -218,6 +251,19 @@ async function fetchPositions() {
           kind: "stop", algoId: x.algoId ?? null, price: parseFloat(x.slTriggerPx),
           posSide: x.posSide ?? null, closeFraction: x.closeFraction ?? null, slTriggerPx: parseFloat(x.slTriggerPx),
         })).filter((s) => s.price > 0),
+        ...triggers.map((x) => ({
+          kind: "trigger", algoId: x.algoId ?? null, price: parseFloat(x.triggerPx),
+          posSide: x.posSide ?? null, side: x.side ?? null, sz: parseFloat(x.sz || "0"),
+          reduceOnly: x.reduceOnly === true || x.reduceOnly === "true",
+          triggerPxType: x.triggerPxType || "last",
+        })).filter((s) => s.price > 0),
+        ...chases.map((x) => ({
+          kind: "chase", algoId: x.algoId ?? null, price: null,
+          posSide: x.posSide ?? null, side: x.side ?? null, sz: parseFloat(x.sz || "0"),
+          reduceOnly: x.reduceOnly === true || x.reduceOnly === "true",
+          chaseType: x.chaseType ?? null, chaseVal: x.chaseVal ?? null,
+          maxChaseType: x.maxChaseType ?? null, maxChaseVal: x.maxChaseVal ?? null,
+        })),
       ];
       return { prefix: P, name, net, avg, mark: mk, eq, expo, side: net > 0 ? "long" : net < 0 ? "short" : "zerada", stops, legs: legRows, orders, error: null };
     } catch (e) {
@@ -844,11 +890,32 @@ async function runScaleReduce(side: Side, from: number, to: number, n: number, p
   return out;
 }
 
-async function runAmend(kind: "limit" | "stop", prefix: string, id: string, newPx: number, dry: boolean) {
+async function runAmend(kind: "limit" | "stop" | "trigger", prefix: string, id: string, newPx: number, dry: boolean, triggerPxType?: string | null) {
   const acc = ACC.find(([P]) => P === prefix);
   const out: J = { kind, account: prefix, id, newPx, dry, aborted: false, abort_msg: null };
   if (!acc) return { ...out, aborted: true, abort_msg: "Conta desconhecida." };
   if (!(newPx > 0)) return { ...out, aborted: true, abort_msg: "Preço inválido." };
+  if (kind === "trigger") {
+    const [triggers, mark] = await Promise.all([algosOf(prefix, "trigger"), markPx()]);
+    const algo = triggers.find((x) => String(x.algoId) === id);
+    if (!algo) return { ...out, aborted: true, abort_msg: "Stop não encontrado." };
+    const posSide: Side = algo.posSide === "short" ? "short" : "long";
+    const reduceOnly = algo.reduceOnly === true || algo.reduceOnly === "true";
+    const pxType = triggerPxType === "mark" || algo.triggerPxType === "mark" ? "mark" : "last";
+    out.posSide = posSide;
+    out.mark = mark;
+    out.reduceOnly = reduceOnly;
+    if (reduceOnly && !stopOnSide(posSide, newPx, mark)) return { ...out, aborted: true, abort_msg: "Stop ficaria do lado errado do mark." };
+    if (dry) { out.raw = "DRY: nada enviado"; return out; }
+    const e = await req(prefix, "POST", "/api/v5/trade/amend-algos", {
+      instId: INST, algoId: id, newTriggerPx: pyG(newPx), newOrdPx: "-1", newTriggerPxType: pxType,
+    });
+    const d = (e.data && e.data[0]) || {};
+    const ok = e.code === "0" && (d.sCode == null || d.sCode === "0");
+    out.ok = ok;
+    if (!ok) { out.aborted = true; out.abort_msg = d.sMsg || e.msg || "não alterou o stop"; }
+    return out;
+  }
   if (kind === "stop") {
     const [cs, legs, mark] = await Promise.all([conds(prefix), legsOf(prefix), markPx()]);
     const algo = cs.find((x) => String(x.algoId) === id);
@@ -965,6 +1032,316 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
   return out;
 }
 
+type Book = { P: string; n: string; eq: number; legs: Leg[]; cs: J[]; err: string | null };
+async function readBooks(): Promise<{ mark: number; rows: Book[] }> {
+  const mark = await markPx();
+  const rows = await Promise.all(ACC.map(async ([P, n]) => {
+    try {
+      const [eq, legs, cs] = await Promise.all([eq_of(P), legsOf(P), conds(P)]);
+      return { P, n, eq, legs, cs, err: null as string | null };
+    } catch (e) {
+      return { P, n, eq: 0, legs: [] as Leg[], cs: [] as J[], err: "falha ao ler conta: " + String((e as Error).message || e).slice(0, 120) };
+    }
+  }));
+  return { mark, rows };
+}
+function chaseMaxFields(unit: string | null, value: number | null): { maxChaseType?: string; maxChaseVal?: string; error?: string } {
+  if (value == null || !(value > 0)) return {};
+  const u = (unit || "usd").toLowerCase();
+  if (u === "pct" || u === "%") {
+    if (value > 100) return { error: "Distância máxima inválida." };
+    return { maxChaseType: "ratio", maxChaseVal: ratioFromPct(value) };
+  }
+  if (u === "ratio") {
+    if (!(value > 0 && value < 1)) return { error: "Distância máxima inválida." };
+    return { maxChaseType: "ratio", maxChaseVal: String(parseFloat(value.toPrecision(8))) };
+  }
+  if (u === "usd" || u === "distance") return { maxChaseType: "distance", maxChaseVal: pyG(value) };
+  return { error: "Distância máxima inválida." };
+}
+
+// Abre market/limit com tamanho em USD (reparte pelo saldo) ou % do saldo. Não mexe no caminho risco+stop.
+async function runSized(side: Side, ordType: "market" | "limit", price: number | null, dry: boolean, mode: "usd" | "pct", amount: number, stop: number | null) {
+  const out: J = { side, ordType, price: ordType === "limit" ? price : null, sizeMode: mode, amount, stop, dry, aborted: false, abort_msg: null, accounts: [] };
+  if (mode === "usd" && !(amount > 0)) return { ...out, aborted: true, abort_msg: "Valor em USD inválido." };
+  if (mode === "pct" && !(amount >= 1 && amount <= 100)) return { ...out, aborted: true, abort_msg: "Percentual inválido: use um valor de 1 a 100." };
+  if (ordType === "limit" && !(price != null && price > 0)) return { ...out, aborted: true, abort_msg: "ABORT preço inválido" };
+  const { mark, rows } = await readBooks();
+  out.mark = mark;
+  const entry = ordType === "limit" ? price! : mark;
+  if (stop != null && stop > 0 && !stopGuarded(side, stop, entry, ordType === "market")) {
+    const msg = side === "long" ? "No long, o stop precisa ficar abaixo da entrada." : "No short, o stop precisa ficar acima da entrada.";
+    return { ...out, aborted: true, abort_msg: msg };
+  }
+  const weights = rows.map((r) => (r.eq > 0 && mark > 0 ? r.eq * mark : 0));
+  const usdCts = mode === "usd" ? splitLots(amount / 100, weights) : [];
+  const planned = rows.map((r, i) => {
+    const adding = r.legs.some((l) => l.posSide === side && l.pos > 0);
+    const ct = mode === "usd" ? usdCts[i] : ctFromEquityPct(r.eq, mark, amount);
+    const gross = r.legs.reduce((s, l) => s + l.pos, 0);
+    const expo = r.eq > 0 && mark > 0 ? (gross + ct) * 100 / (r.eq * mark) * 100 : 0;
+    let err = r.err;
+    if (!err && !(r.eq > 0)) err = "saldo zerado";
+    else if (!err && ct < 0.1) err = "tamanho < 0.1 ct";
+    else if (!err && expo > CAP) err = `expo ${expo.toFixed(0)}% > teto`;
+    const loss = !err && stop && stop > 0 ? lossBtc(ct, entry, stop) : null;
+    return { ...r, ct, expo, adding, err, loss };
+  });
+  out.accounts = planned.map((r) => ({
+    prefix: r.P, name: r.n, ct: r.ct, size_usd: r.ct * 100, avg: null, expo: r.expo,
+    loss_btc: r.loss, loss_usd: r.loss != null ? r.loss * mark : null,
+    status: r.err ? "bloqueado" : "ok", error: r.err,
+  }));
+  if (dry) { out.raw = "DRY: nada enviado"; return out; }
+  if (planned.some((r) => r.err)) return { ...out, aborted: true, abort_msg: "ABORT: nenhuma ordem enviada" };
+  const osSide = orderSide(side, false);
+  const sent = await Promise.all(planned.map(async (r) => {
+    try {
+      const body: J = { instId: INST, tdMode: "cross", side: osSide, posSide: side, ordType, sz: r.ct.toFixed(1) };
+      if (ordType === "limit") body.px = pyG(price!);
+      if (stop != null && stop > 0 && !r.adding) body.attachAlgoOrds = [{ slTriggerPx: pyG(stop), slOrdPx: "-1", slTriggerPxType: "mark" }];
+      const e = await req(r.P, "POST", "/api/v5/trade/order", body);
+      const d = (e.data && e.data[0]) || {};
+      const ok = e.code === "0" && d.sCode === "0";
+      if (ok && r.adding && stop != null && stop > 0) {
+        const moved = await ensureCf1(r.P, side, stop);
+        if (moved.err) return { ok: false, msg: "entrou; stop: " + moved.err };
+      }
+      return { ok, msg: ok ? null : (d.sMsg || e.msg || "ordem recusada") };
+    } catch (e) {
+      return { ok: false, msg: String((e as Error).message || e).slice(0, 120) };
+    }
+  }));
+  out.accounts = planned.map((r, i) => {
+    const row = out.accounts[i];
+    row.status = sent[i].ok ? "ok" : "falhou";
+    row.error = sent[i].ok ? null : sent[i].msg;
+    return row;
+  });
+  if (out.accounts.some((a: J) => a.status !== "ok")) { out.aborted = true; out.abort_msg = "Alguma conta não entrou. Confira a tabela."; }
+  return out;
+}
+
+async function runAlgo(opts: {
+  kind: "trigger" | "chase";
+  side: Side;
+  reduce: boolean;
+  dry: boolean;
+  mode: SizeMode;
+  amount: number | null;
+  stop: number | null;
+  contracts: Record<string, number> | null;
+  triggerPx: number | null;
+  triggerPxType: "last" | "mark";
+  maxChaseUnit: string | null;
+  maxChase: number | null;
+}) {
+  const out: J = {
+    kind: opts.kind, side: opts.side, reduce: opts.reduce, ordType: opts.kind, dry: opts.dry,
+    sizeMode: opts.mode, aborted: false, abort_msg: null, accounts: [],
+    triggerPx: opts.kind === "trigger" ? opts.triggerPx : null, triggerPxType: opts.triggerPxType,
+  };
+  if (opts.kind === "trigger" && !(opts.triggerPx != null && opts.triggerPx > 0)) return { ...out, aborted: true, abort_msg: "Preço de gatilho inválido." };
+  if (opts.reduce && opts.mode === "risk") return { ...out, aborted: true, abort_msg: "Para reduzir, use USD ou %." };
+  if (opts.mode === "usd" && !(opts.amount != null && opts.amount > 0)) return { ...out, aborted: true, abort_msg: "Valor em USD inválido." };
+  if (opts.mode === "pct" && !(opts.amount != null && opts.amount >= 1 && opts.amount <= 100)) return { ...out, aborted: true, abort_msg: "Percentual inválido: use um valor de 1 a 100." };
+  if (opts.mode === "risk") {
+    if (!(opts.amount != null && opts.amount > 0 && opts.amount <= 5)) return { ...out, aborted: true, abort_msg: "Risco inválido: use um valor maior que 0 e no máximo 5%." };
+    if (!(opts.stop != null && opts.stop > 0)) return { ...out, aborted: true, abort_msg: "Stop inválido." };
+  }
+  if (opts.mode === "contracts" && !opts.contracts) return { ...out, aborted: true, abort_msg: "Quantidade inválida." };
+  const max = chaseMaxFields(opts.maxChaseUnit, opts.maxChase);
+  if (max.error) return { ...out, aborted: true, abort_msg: max.error };
+  const { mark, rows } = await readBooks();
+  out.mark = mark;
+  const entry = opts.kind === "trigger" ? opts.triggerPx! : mark;
+  if (!opts.reduce && opts.stop != null && opts.stop > 0 && !stopGuarded(opts.side, opts.stop, entry, opts.kind === "chase")) {
+    return { ...out, aborted: true, abort_msg: opts.side === "long" ? "No long, o stop precisa ficar abaixo da entrada." : "No short, o stop precisa ficar acima da entrada." };
+  }
+  const weights = rows.map((r) => (r.eq > 0 && mark > 0 ? r.eq * mark : 0));
+  const openUsd = !opts.reduce && opts.mode === "usd" ? splitLots((opts.amount || 0) / 100, weights) : [];
+  const reduceUsd = opts.reduce && opts.mode === "usd"
+    ? allocateReduce(rows.map((r) => ({ key: r.n, pos: r.legs.find((l) => l.posSide === opts.side && l.pos > 0)?.pos || 0 })), (opts.amount || 0) / 100)
+    : [];
+  const planned = rows.map((r, i) => {
+    const leg = r.legs.find((l) => l.posSide === opts.side && l.pos > 0) ?? null;
+    const adding = !!leg;
+    let ct = 0;
+    let skip = false;
+    let absent = false;
+    let err = r.err;
+    if (opts.reduce) {
+      if (!leg) { skip = true; err = `sem perna ${opts.side}`; }
+      else if (opts.mode === "contracts" && (opts.contracts![r.n] ?? opts.contracts![r.P]) == null) { skip = true; absent = true; err = null; }
+      else if (opts.mode === "contracts") ct = clampLot(opts.contracts![r.n] ?? opts.contracts![r.P], leg!.pos);
+      else if (opts.mode === "pct") {
+        const pct = opts.amount || 0;
+        ct = pct >= 100 - 1e-9 ? leg!.pos : Math.min(leg!.pos, floor01(leg!.pos * pct / 100));
+      } else ct = reduceUsd.find((a) => a.key === r.n)?.ct || 0;
+      if (!skip && ct < 0.1) err = "tamanho < 0.1 ct";
+    } else if (!err) {
+      if (opts.mode === "contracts") {
+        const raw = opts.contracts![r.n] ?? opts.contracts![r.P];
+        if (raw == null) { skip = true; absent = true; }
+        else ct = roundLot(raw);
+      } else if (opts.mode === "usd") ct = openUsd[i] || 0;
+      else if (opts.mode === "pct") ct = ctFromEquityPct(r.eq, mark, opts.amount || 0);
+      else ct = ctFromRisk(r.eq, entry, opts.stop || 0, opts.amount || 0);
+      const gross = r.legs.reduce((s, l) => s + l.pos, 0);
+      const expo = r.eq > 0 && mark > 0 ? (gross + ct) * 100 / (r.eq * mark) * 100 : 0;
+      if (!skip && !(r.eq > 0)) err = "saldo zerado";
+      else if (!skip && ct < 0.1) err = "tamanho < 0.1 ct";
+      else if (!skip && expo > CAP) err = `expo ${expo.toFixed(0)}% > teto`;
+    }
+    return { ...r, leg, ct, adding, skip, absent, err };
+  });
+  out.accounts = planned.map((r) => ({
+    prefix: r.P, name: r.n, side: opts.side, ct: r.ct, size_usd: r.ct * 100, close_ct: opts.reduce ? r.ct : 0,
+    status: r.absent ? "fora" : r.skip ? "sem perna" : r.err ? "bloqueado" : "ok",
+    error: r.absent ? null : r.err,
+  }));
+  const actionable = planned.filter((r) => !r.skip);
+  if (opts.reduce && !actionable.length) {
+    return { ...out, aborted: true, abort_msg: `Nenhuma conta com perna ${opts.side}.` };
+  }
+  if (opts.dry) { out.raw = "DRY: nada enviado"; return out; }
+  const sendable = planned.filter((r) => !r.skip && !r.err);
+  if (!opts.reduce && planned.some((r) => r.err)) return { ...out, aborted: true, abort_msg: "ABORT: nenhuma ordem enviada" };
+  if (!sendable.length) return { ...out, aborted: true, abort_msg: "ABORT: nenhuma ordem enviada" };
+  const osSide = orderSide(opts.side, opts.reduce);
+  const sent = await Promise.all(planned.map(async (r) => {
+    if (r.skip || r.err) return { sent: false, ok: false, msg: r.err };
+    try {
+      const body: J = { instId: INST, tdMode: "cross", side: osSide, posSide: opts.side, ordType: opts.kind, sz: r.ct.toFixed(1) };
+      if (opts.reduce) body.reduceOnly = true;
+      if (opts.kind === "trigger") {
+        body.triggerPx = pyG(opts.triggerPx!);
+        body.orderPx = "-1";
+        body.triggerPxType = opts.triggerPxType;
+        if (!opts.reduce && opts.stop != null && opts.stop > 0 && !r.adding) {
+          body.attachAlgoOrds = [{ slTriggerPx: pyG(opts.stop), slOrdPx: "-1", slTriggerPxType: "mark" }];
+        }
+      } else {
+        body.chaseType = "distance";
+        body.chaseVal = "0";
+        if (max.maxChaseType && max.maxChaseVal) {
+          body.maxChaseType = max.maxChaseType;
+          body.maxChaseVal = max.maxChaseVal;
+        }
+      }
+      const e = await req(r.P, "POST", "/api/v5/trade/order-algo", body);
+      const d = (e.data && e.data[0]) || {};
+      const ok = e.code === "0" && (d.sCode == null || d.sCode === "0");
+      if (ok && !opts.reduce && r.adding && opts.stop != null && opts.stop > 0) {
+        const moved = await ensureCf1(r.P, opts.side, opts.stop);
+        if (moved.err) return { sent: true, ok: false, msg: "entrou; stop: " + moved.err };
+      }
+      return { sent: true, ok, msg: ok ? null as string | null : (d.sMsg || e.msg || "ordem recusada") };
+    } catch (e) {
+      return { sent: true, ok: false, msg: String((e as Error).message || e).slice(0, 120) };
+    }
+  }));
+  out.accounts = planned.map((r, i) => {
+    const row = out.accounts[i];
+    if (r.skip || r.err) return row;
+    row.status = sent[i].ok ? "ok" : "falhou";
+    row.error = sent[i].ok ? null : sent[i].msg;
+    return row;
+  });
+  out.raw = "enviado";
+  if (out.accounts.some((a: J) => a.status === "falhou")) { out.aborted = true; out.abort_msg = "Alguma conta não entrou. Confira a tabela."; }
+  return out;
+}
+
+async function runScaleAmount(side: Side, from: number, to: number, n: number, priceSkew: boolean, sizeSkew: boolean, dry: boolean, mode: "usd" | "pct", amount: number, stop: number | null) {
+  const out: J = { side, from, to, n, sizeMode: mode, amount, stop, dry, aborted: false, abort_msg: null, accounts: [] };
+  if (!(n >= 2 && n <= 50)) return { ...out, aborted: true, abort_msg: "A escala precisa de 2 a 50 ordens." };
+  if (!(from > 0) || !(to > 0) || from === to) return { ...out, aborted: true, abort_msg: "ABORT preço inválido" };
+  if (mode === "usd" && !(amount > 0)) return { ...out, aborted: true, abort_msg: "Valor em USD inválido." };
+  if (mode === "pct" && !(amount >= 1 && amount <= 100)) return { ...out, aborted: true, abort_msg: "Percentual inválido: use um valor de 1 a 100." };
+  const prices = scalePrices(from, to, n, priceSkew);
+  if (stop != null && stop > 0 && prices.some((p) => !stopOnSide(side, stop, p))) {
+    return { ...out, aborted: true, abort_msg: side === "long" ? "No long, o stop precisa ficar abaixo de todas as pernas." : "No short, o stop precisa ficar acima de todas as pernas." };
+  }
+  const weights = prices.map((_, i) => (sizeSkew ? i + 1 : 1));
+  const { mark, rows } = await readBooks();
+  out.mark = mark;
+  const eqW = rows.map((r) => (r.eq > 0 && mark > 0 ? r.eq * mark : 0));
+  const totals = mode === "usd" ? splitLots(amount / 100, eqW) : rows.map((r) => ctFromEquityPct(r.eq, mark, amount));
+  const planned = rows.map((r, i) => {
+    const parts = splitLots(totals[i] || 0, weights).map((ct, k) => ({ price: prices[k], ct })).filter((p) => p.ct >= 0.1);
+    const ct = roundLot(parts.reduce((s, p) => s + p.ct, 0));
+    const gross = r.legs.reduce((s, l) => s + l.pos, 0);
+    const expo = r.eq > 0 && mark > 0 ? (gross + ct) * 100 / (r.eq * mark) * 100 : 0;
+    let err = r.err;
+    if (!err && !(r.eq > 0)) err = "saldo zerado";
+    else if (!err && ct < 0.1) err = "tamanho < 0.1 ct";
+    else if (!err && expo > CAP) err = `expo ${expo.toFixed(0)}% > teto`;
+    return { ...r, ct, parts, expo, err };
+  });
+  out.accounts = planned.map((r) => ({
+    prefix: r.P, name: r.n, ct: r.ct, size_usd: r.ct * 100, expo: r.expo,
+    legs: r.parts.map((p) => ({ price: p.price, ct: p.ct, usd: p.ct * 100 })),
+    status: r.err ? "bloqueado" : "ok", error: r.err,
+  }));
+  if (dry) { out.raw = "DRY: nada enviado"; return out; }
+  if (!planned.some((r) => !r.err)) return { ...out, aborted: true, abort_msg: "ABORT: nenhuma ordem enviada" };
+  const osSide = orderSide(side, false);
+  const O = await Promise.all(planned.map(async (r) => {
+    if (r.err) return { ok: false, msg: r.err, placed: [] as string[] };
+    const placed: string[] = [];
+    let fail = "";
+    for (let i = 0; i < r.parts.length; i += 20) {
+      const chunk = r.parts.slice(i, i + 20).map((l) => ({
+        instId: INST, tdMode: "cross", side: osSide, posSide: side, ordType: "limit", sz: l.ct.toFixed(1), px: pyG(l.price),
+      }));
+      const e = await req(r.P, "POST", "/api/v5/trade/batch-orders", chunk);
+      const data = Array.isArray(e.data) ? e.data : [];
+      let bad = e.code !== "0" && e.code !== "2";
+      data.forEach((d: J) => {
+        if (d && d.sCode === "0" && d.ordId) placed.push(String(d.ordId));
+        else { bad = true; fail = fail || d?.sMsg || e.msg || "perna recusada"; }
+      });
+      if (!data.length && e.code !== "0") { bad = true; fail = fail || e.msg || "batch recusado"; }
+      if (bad) {
+        if (placed.length) await cancelBatch(r.P, placed);
+        return { ok: false, msg: fail || "perna recusada", placed: [] as string[] };
+      }
+    }
+    if (stop != null && stop > 0) {
+      const stopRes = await ensureCf1(r.P, side, stop);
+      if (stopRes.err) {
+        if (placed.length) await cancelBatch(r.P, placed);
+        return { ok: false, msg: stopRes.err, placed: [] as string[] };
+      }
+    }
+    return { ok: true, msg: null as string | null, placed };
+  }));
+  out.accounts = planned.map((r, i) => {
+    const row = out.accounts[i];
+    if (r.err) return row;
+    row.status = O[i].ok ? "ok" : "falhou";
+    row.error = O[i].ok ? null : O[i].msg;
+    row.ordIds = O[i].placed;
+    return row;
+  });
+  if (out.accounts.some((a: J) => a.status === "falhou")) { out.aborted = true; out.abort_msg = "Alguma conta não entrou na escala. O que tinha sido enviado nessa conta foi cancelado."; }
+  return out;
+}
+
+async function runCancel(prefix: string, algoId: string, dry: boolean) {
+  const out: J = { account: prefix, algoId, dry, aborted: false, abort_msg: null };
+  if (!ACC.find(([P]) => P === prefix)) return { ...out, aborted: true, abort_msg: "Conta desconhecida." };
+  if (!algoId) return { ...out, aborted: true, abort_msg: "Falta o id da ordem." };
+  if (dry) { out.raw = "DRY: nada enviado"; return out; }
+  const e = await req(prefix, "POST", "/api/v5/trade/cancel-algos", [{ algoId, instId: INST }]);
+  const d = (e.data && e.data[0]) || {};
+  const ok = e.code === "0" && (d.sCode == null || d.sCode === "0");
+  out.ok = ok;
+  if (!ok) { out.aborted = true; out.abort_msg = d.sMsg || e.msg || "não cancelou a ordem"; }
+  return out;
+}
+
 // ---------- sessão ----------
 async function issueToken(): Promise<string> {
   const exp = Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400;
@@ -1048,7 +1425,7 @@ if (import.meta.main) Deno.serve(async (req) => {
       if (side !== "long" && side !== "short") return json(400, { ok: false, error: "Lado inválido: use long ou short." });
       const rawType = String(body.ordType ?? "market").trim().toLowerCase();
       const ordType = rawType === "" ? "market" : rawType;
-      if (ordType !== "market" && ordType !== "limit") return json(400, { ok: false, error: "Tipo inválido: use market ou limit." });
+      if (ordType !== "market" && ordType !== "limit" && ordType !== "trigger" && ordType !== "chase") return json(400, { ok: false, error: "Tipo inválido: use market, limit, trigger ou chase." });
       let price: number | null = null;
       if (ordType === "limit") {
         price = num(body.price);
@@ -1056,22 +1433,58 @@ if (import.meta.main) Deno.serve(async (req) => {
       }
       const dry = body.dry === true;
       const reduce = body.reduce === true;
+      const sizeMode = String(body.sizeMode ?? "").trim().toLowerCase();
       if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
       orderBusy = true;
       try {
+        if (ordType === "trigger" || ordType === "chase") {
+          const pxRaw = String(body.triggerPxType ?? "last").trim().toLowerCase();
+          if (pxRaw !== "" && pxRaw !== "last" && pxRaw !== "mark") return json(400, { ok: false, error: "Tipo de gatilho inválido: use last ou mark." });
+          const contracts = contractMap(body.contracts);
+          const usd = num(body.usd);
+          const pct = num(body.pct);
+          const risk = num(body.risk);
+          const stop = num(body.stop);
+          let mode: SizeMode = "pct";
+          let amount: number | null = pct;
+          if (reduce && contracts) { mode = "contracts"; amount = null; }
+          else if (sizeMode === "risk" || sizeMode === "risco") { mode = "risk"; amount = risk; }
+          else if (sizeMode === "usd") { mode = "usd"; amount = usd; }
+          else if (sizeMode === "pct" || sizeMode === "%") { mode = "pct"; amount = pct; }
+          else if (contracts) { mode = "contracts"; amount = null; }
+          else if (usd != null && risk == null) { mode = "usd"; amount = usd; }
+          else if (risk != null) { mode = "risk"; amount = risk; }
+          const r = await runAlgo({
+            kind: ordType, side: side as Side, reduce, dry, mode, amount, stop, contracts,
+            triggerPx: num(body.triggerPx ?? body.price),
+            triggerPxType: pxRaw === "mark" ? "mark" : "last",
+            maxChaseUnit: body.maxChaseUnit == null ? null : String(body.maxChaseUnit),
+            maxChase: num(body.maxChase),
+          });
+          console.log(JSON.stringify({ ev: ordType, ip, side, reduce, mode, dry, aborted: r.aborted, acc: (r.accounts || []).map((a: J) => `${a.name}=${a.status}`) }));
+          return json(200, { ok: !r.aborted, ...r });
+        }
         if (reduce) {
           const contracts = contractMap(body.contracts);
           const pct = num(body.pct);
           if (!contracts && (pct == null || !(pct >= 1 && pct <= 100))) return json(400, { ok: false, error: "Percentual inválido: use um valor de 1 a 100." });
-          const r = await runReduce(side, pct ?? 0, ordType, price, dry, contracts);
+          const r = await runReduce(side as "long" | "short", pct ?? 0, ordType, price, dry, contracts);
           console.log(JSON.stringify({ ev: "reduce", ip, side, pct, contracts: !!contracts, dry, ordType, price, aborted: r.aborted, acc: (r.accounts || []).map((a: J) => `${a.name}=${a.status}`) }));
+          return json(200, { ok: !r.aborted, ...r });
+        }
+        if (sizeMode === "usd" || sizeMode === "pct") {
+          const amount = sizeMode === "usd" ? num(body.usd) : num(body.pct);
+          if (amount == null) return json(400, { ok: false, error: sizeMode === "usd" ? "Valor em USD inválido." : "Percentual inválido: use um valor de 1 a 100." });
+          const stop = num(body.stop);
+          const r = await runSized(side as Side, ordType, price, dry, sizeMode, amount, stop);
+          console.log(JSON.stringify({ ev: "sized", ip, side, sizeMode, dry, ordType, aborted: r.aborted, acc: (r.accounts || []).map((a: J) => `${a.name}=${a.status}`) }));
           return json(200, { ok: !r.aborted, ...r });
         }
         const stop = num(body.stop);
         if (stop == null || stop <= 0) return json(400, { ok: false, error: "Stop inválido." });
         const risk = num(body.risk);
         if (risk == null || !(risk > 0 && risk <= 5)) return json(400, { ok: false, error: "Risco inválido: use um valor maior que 0 e no máximo 5%." });
-        const r = await runOrder(side, stop, risk, dry, ordType, price);
+        const r = await runOrder(side as "long" | "short", stop, risk, dry, ordType, price);
         console.log(JSON.stringify({ ev: "order", ip, side, stop, risk, dry, ordType, price, aborted: r.aborted, acc: (r.accounts || []).map((a: J) => `${a.name}=${Math.round(a.size_usd ?? 0)}${a.error ? "(" + a.error + ")" : ""}`) }));
         return json(200, { ok: !r.aborted, ...r });
       } finally { orderBusy = false; }
@@ -1085,6 +1498,18 @@ if (import.meta.main) Deno.serve(async (req) => {
       const n = num(body.n);
       if (from == null || to == null || n == null) return json(400, { ok: false, error: "Preencha os dois preços e a quantidade." });
       const dry = body.dry === true;
+      const sizeMode = String(body.sizeMode ?? "").trim().toLowerCase();
+      if (!body.reduce && (sizeMode === "usd" || sizeMode === "pct")) {
+        const amount = sizeMode === "usd" ? num(body.usd) : num(body.pct);
+        if (amount == null) return json(400, { ok: false, error: sizeMode === "usd" ? "Valor em USD inválido." : "Percentual inválido: use um valor de 1 a 100." });
+        if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
+        orderBusy = true;
+        try {
+          const r = await runScaleAmount(side as Side, from, to, Math.round(n), body.priceSkew === true, body.sizeSkew === true, dry, sizeMode, amount, num(body.stop));
+          console.log(JSON.stringify({ ev: "scale-sized", ip, side, sizeMode, n, dry, aborted: r.aborted }));
+          return json(200, { ok: !r.aborted, ...r });
+        } finally { orderBusy = false; }
+      }
       if (body.reduce === true) {
         const contracts = contractMap(body.contracts);
         const pct = num(body.pct);
@@ -1113,7 +1538,7 @@ if (import.meta.main) Deno.serve(async (req) => {
       let body: J = {};
       try { body = await req.json(); } catch { return json(400, { ok: false, error: "Pedido inválido." }); }
       const kind = String(body.kind ?? "").trim().toLowerCase();
-      if (kind !== "limit" && kind !== "stop") return json(400, { ok: false, error: "Tipo inválido: use limit ou stop." });
+      if (kind !== "limit" && kind !== "stop" && kind !== "trigger") return json(400, { ok: false, error: "Tipo inválido: use limit, stop ou trigger." });
       const prefix = String(body.account ?? body.prefix ?? "").trim();
       const id = String(kind === "limit" ? (body.ordId ?? "") : (body.algoId ?? "")).trim();
       if (!id) return json(400, { ok: false, error: "Falta o id da ordem." });
@@ -1123,8 +1548,22 @@ if (import.meta.main) Deno.serve(async (req) => {
       if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
       orderBusy = true;
       try {
-        const r = await runAmend(kind, prefix, id, newPx, dry);
+        const r = await runAmend(kind as "limit" | "stop" | "trigger", prefix, id, newPx, dry, body.triggerPxType == null ? null : String(body.triggerPxType));
         console.log(JSON.stringify({ ev: "amend", ip, kind, prefix, dry, aborted: r.aborted }));
+        return json(200, { ok: !r.aborted, ...r });
+      } finally { orderBusy = false; }
+    }
+    if (path === "/cancel" && req.method === "POST") {
+      let body: J = {};
+      try { body = await req.json(); } catch { return json(400, { ok: false, error: "Pedido inválido." }); }
+      const prefix = String(body.account ?? body.prefix ?? "").trim();
+      const algoId = String(body.algoId ?? "").trim();
+      const dry = body.dry === true;
+      if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
+      orderBusy = true;
+      try {
+        const r = await runCancel(prefix, algoId, dry);
+        console.log(JSON.stringify({ ev: "cancel", ip, prefix, dry, aborted: r.aborted }));
         return json(200, { ok: !r.aborted, ...r });
       } finally { orderBusy = false; }
     }
@@ -1163,6 +1602,6 @@ if (import.meta.main) Deno.serve(async (req) => {
 export const __test = {
   setReq(fn: typeof req) { req = fn; },
   reset() { orderBusy = false; },
-  ctFromRisk, lossBtc, scalePrices, hedgeNumbers, realizedPnlBtc, allocateReduce, splitLots, contractMap,
-  runOrder, runReduce, runScale, runScaleReduce, runAmend, runHedge, fetchPositions, ACC,
+  ctFromRisk, ctFromEquityPct, lossBtc, scalePrices, hedgeNumbers, realizedPnlBtc, allocateReduce, splitLots, contractMap,
+  runOrder, runReduce, runScale, runScaleReduce, runScaleAmount, runSized, runAlgo, runAmend, runCancel, runHedge, fetchPositions, ACC,
 };

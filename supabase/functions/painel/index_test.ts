@@ -1,6 +1,6 @@
 import { __test } from "./index.ts";
 
-const { setReq, reset, ctFromRisk, lossBtc, hedgeNumbers, realizedPnlBtc, allocateReduce, splitLots, runOrder, runReduce, runScale, runScaleReduce, runAmend, runHedge } = __test;
+const { setReq, reset, ctFromRisk, ctFromEquityPct, lossBtc, hedgeNumbers, realizedPnlBtc, allocateReduce, splitLots, runOrder, runReduce, runScale, runScaleReduce, runScaleAmount, runSized, runAlgo, runAmend, runCancel, runHedge, fetchPositions } = __test;
 
 type Call = { P: string; m: string; p: string; body?: unknown };
 let calls: Call[] = [];
@@ -267,4 +267,152 @@ Deno.test("escala reduce-only: dry não envia, falha desfaz, sem stop não sai",
   if (failed.status !== "falhou") throw new Error("OKX devia falhar " + JSON.stringify(failed));
   if (good.status !== "ok") throw new Error("OKX2 devia entrar " + JSON.stringify(good));
   if (!hit("/api/v5/trade/cancel-batch-orders", "OKX").length) throw new Error("não desfez a escala da OKX");
+});
+
+Deno.test("stop a mercado: trigger com orderPx -1, e reduce-only na perna pedida", async () => {
+  reset(); install();
+  balances = { OKX: 1, OKX2: 1, OKX3: 1, OKX4: 1 };
+  positions = {};
+  algos = {};
+  const open = await runAlgo({
+    kind: "trigger", side: "long", reduce: false, dry: false, mode: "usd", amount: 400,
+    stop: null, contracts: null, triggerPx: 63000, triggerPxType: "last", maxChaseUnit: null, maxChase: null,
+  });
+  if (open.aborted) throw new Error(String(open.abort_msg));
+  const bodies = hit("/api/v5/trade/order-algo").map((c) => c.body as any);
+  if (bodies.length !== 4) throw new Error("contas " + bodies.length);
+  if (bodies.some((b) => b.ordType !== "trigger" || b.orderPx !== "-1" || b.triggerPx !== "63000" || b.triggerPxType !== "last")) throw new Error(JSON.stringify(bodies[0]));
+  if (bodies.some((b) => b.posSide !== "long" || b.side !== "buy" || b.reduceOnly || b.sz !== "1.0")) throw new Error(JSON.stringify(bodies));
+  if (hit("/api/v5/trade/order").length) throw new Error("trigger não pode ir em /order");
+
+  reset(); install();
+  positions = { OKX: [leg("long", "2"), leg("short", "1")] };
+  algos = { OKX: [algo("long", "sl-long", "58000")] };
+  const red = await runAlgo({
+    kind: "trigger", side: "long", reduce: true, dry: false, mode: "pct", amount: 50,
+    stop: null, contracts: null, triggerPx: 61000, triggerPxType: "mark", maxChaseUnit: null, maxChase: null,
+  });
+  if (red.aborted) throw new Error(String(red.abort_msg));
+  const body = hit("/api/v5/trade/order-algo", "OKX")[0].body as any;
+  if (body.posSide !== "long" || body.side !== "sell" || body.reduceOnly !== true || body.sz !== "1.0") throw new Error(JSON.stringify(body));
+  if (body.triggerPxType !== "mark" || body.orderPx !== "-1" || body.triggerPx !== "61000") throw new Error(JSON.stringify(body));
+  const touched = hit("/api/v5/trade/cancel-algos").flatMap((c) => JSON.stringify(c.body));
+  if (touched.some((s) => s.includes("sl-long"))) throw new Error("stop a mercado não devia cancelar o stop");
+});
+
+Deno.test("chase segue o book e o máximo vira maxChase; reduzir manda reduceOnly", async () => {
+  reset(); install();
+  balances = { OKX: 1, OKX2: 1, OKX3: 1, OKX4: 1 };
+  positions = { OKX: [leg("short", "2", "68000")] };
+  algos = { OKX: [algo("short", "sl-short", "70000")] };
+  const open = await runAlgo({
+    kind: "chase", side: "short", reduce: false, dry: false, mode: "pct", amount: 1,
+    stop: 70000, contracts: null, triggerPx: null, triggerPxType: "last", maxChaseUnit: "pct", maxChase: 5,
+  });
+  if (open.aborted) throw new Error(String(open.abort_msg));
+  const body = hit("/api/v5/trade/order-algo", "OKX")[0].body as any;
+  if (body.ordType !== "chase" || body.chaseType !== "distance" || body.chaseVal !== "0") throw new Error(JSON.stringify(body));
+  if (body.maxChaseType !== "ratio" || body.maxChaseVal !== "0.05") throw new Error("max " + JSON.stringify(body));
+  if (body.posSide !== "short" || body.side !== "sell" || body.reduceOnly) throw new Error(JSON.stringify(body));
+  if (body.attachAlgoOrds) throw new Error("chase não anexa stop na ordem");
+
+  reset(); install();
+  positions = { OKX: [leg("long", "2"), leg("short", "1")] };
+  algos = { OKX: [algo("long", "sl-long", "58000"), algo("short", "sl-short", "70000")] };
+  const red = await runAlgo({
+    kind: "chase", side: "short", reduce: true, dry: false, mode: "usd", amount: 100,
+    stop: null, contracts: null, triggerPx: null, triggerPxType: "last", maxChaseUnit: null, maxChase: null,
+  });
+  if (red.aborted) throw new Error(String(red.abort_msg));
+  const buy = hit("/api/v5/trade/order-algo", "OKX")[0].body as any;
+  if (buy.posSide !== "short" || buy.side !== "buy" || buy.reduceOnly !== true || buy.sz !== "1.0") throw new Error(JSON.stringify(buy));
+  if (buy.maxChaseType || buy.maxChaseVal) throw new Error("sem máximo não manda maxChase");
+  if (buy.chaseType !== "distance" || buy.chaseVal !== "0") throw new Error(JSON.stringify(buy));
+});
+
+Deno.test("abre limite por % do saldo e por USD repartido; risco antigo não muda", async () => {
+  if (ctFromEquityPct(1, 64000, 1) !== 6.4) throw new Error("1% de 1 BTC @ 64000 = 6.4 ct, veio " + ctFromEquityPct(1, 64000, 1));
+  reset(); install();
+  balances = { OKX: 2, OKX2: 1, OKX3: 1, OKX4: 1 };
+  positions = {};
+  const usd = await runSized("long", "market", null, false, "usd", 500, null);
+  if (usd.aborted) throw new Error(String(usd.abort_msg) + " " + JSON.stringify(usd.accounts));
+  const sz = Object.fromEntries(hit("/api/v5/trade/order").map((c) => [c.P, (c.body as any).sz]));
+  if (sz.OKX !== "2.0" || sz.OKX2 !== "1.0" || sz.OKX3 !== "1.0" || sz.OKX4 !== "1.0") throw new Error(JSON.stringify(sz));
+  const sample = hit("/api/v5/trade/order", "OKX")[0].body as any;
+  if (sample.ordType !== "market" || sample.posSide !== "long" || sample.side !== "buy" || sample.reduceOnly || sample.px) throw new Error(JSON.stringify(sample));
+
+  reset(); install();
+  balances = { OKX: 1 };
+  positions = { OKX: [leg("long", "1", "64000")] };
+  algos = { OKX: [algo("long", "sl-long", "60000")] };
+  const pct = await runSized("long", "limit", 63000, true, "pct", 1, 60000);
+  if (pct.aborted || posts().length) throw new Error("dry do % enviou " + JSON.stringify(pct));
+  const row = (pct.accounts as any[]).find((a) => a.prefix === "OKX");
+  if (row.ct !== 6.4) throw new Error("prévia % " + row.ct);
+
+  reset(); install();
+  const risk = await runOrder("short", 66000, 1, true, "market", null);
+  if (posts().length) throw new Error("risco dry enviou");
+  if (risk.ordType !== "market" || risk.aborted) throw new Error(String(risk.abort_msg));
+});
+
+Deno.test("altera stop a mercado com newTriggerPx e cancela chase", async () => {
+  reset(); install();
+  setReq(async (P, m, p, body) => {
+    calls.push({ P, m, p, body });
+    if (p.startsWith("/api/v5/public/mark-price")) return { code: "0", data: [{ markPx: "64100" }] };
+    if (p.startsWith("/api/v5/trade/orders-algo-pending") && p.includes("ordType=trigger")) {
+      return { code: "0", data: [{ instId: "BTC-USD-SWAP", algoId: "tg-1", ordType: "trigger", posSide: "long", triggerPx: "60000", triggerPxType: "last", orderPx: "-1", reduceOnly: true, sz: "1" }] };
+    }
+    if (p.startsWith("/api/v5/trade/orders-algo-pending")) return { code: "0", data: algos[P] ?? [] };
+    if (p === "/api/v5/trade/amend-algos") return { code: "0", data: [{ sCode: "0" }] };
+    if (p === "/api/v5/trade/cancel-algos") return { code: "0", data: [{ sCode: "0" }] };
+    if (p.startsWith("/api/v5/account/positions")) return { code: "0", data: positions[P] ?? [] };
+    return { code: "0", data: [] };
+  });
+  const bad = await runAmend("trigger", "OKX", "tg-1", 65000, false);
+  if (!bad.aborted || hit("/api/v5/trade/amend-algos").length) throw new Error("reduce trigger do lado errado saiu");
+  const ok = await runAmend("trigger", "OKX", "tg-1", 62000, false, "mark");
+  if (ok.aborted) throw new Error(String(ok.abort_msg));
+  const body = hit("/api/v5/trade/amend-algos")[0].body as any;
+  if (body.algoId !== "tg-1" || body.newTriggerPx !== "62000" || body.newOrdPx !== "-1" || body.newTriggerPxType !== "mark") throw new Error(JSON.stringify(body));
+  if (body.newSlTriggerPx) throw new Error("trigger não usa slTrigger");
+  const cancel = await runCancel("OKX", "ch-1", false);
+  if (cancel.aborted) throw new Error(String(cancel.abort_msg));
+  const gone = hit("/api/v5/trade/cancel-algos")[0].body as any[];
+  if (gone[0].algoId !== "ch-1" || gone[0].instId !== "BTC-USD-SWAP") throw new Error(JSON.stringify(gone));
+  const dry = await runCancel("OKX", "ch-2", true);
+  if (dry.aborted || hit("/api/v5/trade/cancel-algos").length !== 1) throw new Error("dry cancelou");
+});
+
+Deno.test("escala por USD reparte e não exige risco; posições listam trigger e chase", async () => {
+  reset(); install();
+  balances = { OKX: 1, OKX2: 1, OKX3: 1, OKX4: 1 };
+  positions = {};
+  const sc = await runScaleAmount("short", 66000, 68000, 2, false, false, false, "usd", 400, null);
+  if (sc.aborted) throw new Error(String(sc.abort_msg));
+  const batch = hit("/api/v5/trade/batch-orders", "OKX")[0].body as any[];
+  if (batch.length !== 2 || batch.some((o) => o.reduceOnly || o.posSide !== "short" || o.side !== "sell" || o.ordType !== "limit")) throw new Error(JSON.stringify(batch));
+  const cts = batch.map((o) => Number(o.sz));
+  if (Math.abs(cts[0] + cts[1] - 1) > 1e-9) throw new Error("1 ct na conta " + cts);
+  if (hit("/api/v5/trade/order-algo").length) throw new Error("escala sem stop não coloca stop");
+
+  setReq(async (P, m, p, body) => {
+    calls.push({ P, m, p, body });
+    if (p.startsWith("/api/v5/public/mark-price")) return { code: "0", data: [{ markPx: "64100" }] };
+    if (p.startsWith("/api/v5/account/balance")) return { code: "0", data: [{ details: [{ ccy: "BTC", eq: "1" }] }] };
+    if (p.startsWith("/api/v5/account/positions")) return { code: "0", data: [] };
+    if (p.startsWith("/api/v5/trade/orders-pending")) return { code: "0", data: [] };
+    if (p.includes("ordType=trigger")) return { code: "0", data: P === "OKX" ? [{ instId: "BTC-USD-SWAP", algoId: "tg", ordType: "trigger", posSide: "long", triggerPx: "61000", triggerPxType: "last", sz: "1.5", side: "buy", reduceOnly: false }] : [] };
+    if (p.includes("ordType=chase")) return { code: "0", data: P === "OKX" ? [{ instId: "BTC-USD-SWAP", algoId: "ch", ordType: "chase", posSide: "short", sz: "2", side: "sell", reduceOnly: true, chaseType: "distance", chaseVal: "0" }] : [] };
+    if (p.startsWith("/api/v5/trade/orders-algo-pending")) return { code: "0", data: [] };
+    return { code: "0", data: [] };
+  });
+  const pos = await fetchPositions();
+  const okx = (pos.accounts as any[]).find((a) => a.prefix === "OKX");
+  const kinds = (okx.orders as any[]).map((o) => o.kind).sort();
+  if (kinds.join(",") !== "chase,trigger") throw new Error(kinds.join(","));
+  const tg = okx.orders.find((o: any) => o.kind === "trigger");
+  if (tg.price !== 61000 || tg.algoId !== "tg") throw new Error(JSON.stringify(tg));
 });
