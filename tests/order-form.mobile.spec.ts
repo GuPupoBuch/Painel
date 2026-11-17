@@ -35,9 +35,23 @@ test("mobile 390: reduce verde, 44px e stop a mercado", async ({ page }) => {
   await expect(page.locator("#btn-short .go-sub")).toContainText("4 @");
   await page.screenshot({ path: "/opt/cursor/artifacts/painel-mobile-390-reduce.png", fullPage: true });
   await page.click("#tab-ajustar");
-  await expect(page.locator("#m-adj-leg-note")).toHaveText("Escolha long ou short.");
+  await expect(page.locator("#m-adj-leg")).toHaveCount(0);
+  await expect(page.locator("#m-adj-pct-k")).toHaveText("% da perna");
+  await expect(page.locator("#m-adj-leg-note")).toHaveText("Escolha LONG ou SHORT. O percentual é % da perna.");
+  await expect(page.locator("#m-adj-long")).toBeEnabled();
+  await expect(page.locator("#m-adj-short")).toBeEnabled();
+  await page.click("#m-adj-long");
+  await expect(page.locator("#m-adj-long")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#adj-pnl")).toContainText("SHORT PNL (botão LONG)");
+  await expect(page.locator("#m-adj-long .go-sub")).toContainText("2 @");
+  await expect(page.locator("#m-adj-short .go-sub")).toContainText("4 @");
+  const stack = await page.evaluate(() => {
+    const top = (sel) => document.querySelector(sel).getBoundingClientRect().top + window.scrollY;
+    return { form: top("#tab-ajustar"), pos: top("#positions") };
+  });
+  expect(stack.form).toBeLessThan(stack.pos);
   await page.evaluate(() => {
-    const el = document.querySelector("#tab-ajustar");
+    const el = document.querySelector("#m-adj-long");
     const top = el.getBoundingClientRect().top + window.scrollY - 120;
     window.scrollTo(0, Math.max(0, top));
   });

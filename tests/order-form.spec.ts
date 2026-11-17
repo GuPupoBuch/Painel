@@ -206,33 +206,46 @@ test("reduce fica ligado na sessão", async ({ page }) => {
   await expect(page.locator(id)).toHaveClass(/on/);
 });
 
-test("ajustar escolhe a perna quando as duas estão abertas", async ({ page }) => {
+test("ajustar: LONG reduz a short e SHORT reduz a long", async ({ page }) => {
   await page.click("#d-tabs [data-tab=reduce]");
-  await expect(page.locator("#d-adj-leg-note")).toHaveText("Escolha long ou short.");
-  await expect(page.locator("#d-adj-leg [data-leg=long]")).toHaveAttribute("aria-pressed", "false");
-  await expect(page.locator("#d-adj-leg [data-leg=short]")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("#d-adj-leg")).toHaveCount(0);
+  await expect(page.locator("#d-adj-pct-k")).toHaveText("% da perna");
+  await expect(page.locator("#d-adj-leg-note")).toHaveText("Escolha LONG ou SHORT. O percentual é % da perna.");
+  await expect(page.locator("#d-adj-long")).toBeEnabled();
+  await expect(page.locator("#d-adj-short")).toBeEnabled();
+  await expect(page.locator("#d-adj-long")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("#d-adj-short")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("#d-adj-long .go-sub")).toHaveText(/^2 @ /);
+  await expect(page.locator("#d-adj-short .go-sub")).toHaveText(/^4 @ /);
   await page.click("#d-adj-preview");
-  await expect(page.locator("#adj-banner-err")).toHaveText("Escolha long ou short.");
+  await expect(page.locator("#adj-banner-err")).toHaveText("Escolha LONG ou SHORT.");
   expect(await okxPosts("/api/v5/trade/order")).toHaveLength(0);
 
-  await page.click("#d-adj-leg [data-leg=long]");
+  await page.hover("#d-adj-short");
+  await expect(page.locator("#d-adj-short")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#d-adj-pnl")).toContainText("LONG PNL (botão SHORT)");
+  await expect(page.locator("#d-adj-pnl")).toContainText("4 ct");
+  await page.locator("#desk-order .d-body").evaluate((el) => { el.scrollTop = 0; });
+  await page.screenshot({ path: "/opt/cursor/artifacts/painel-desktop-1440-ajustar.png", fullPage: false });
   await page.click("#d-adj-preview");
   await expect(page.locator("#d-adj-send")).toBeEnabled();
   const sent = page.waitForResponse((r) => r.url().includes(":8000/adjust") && r.request().postData()?.includes('"dry":false'));
   await page.click("#d-adj-send");
   expect((await sent).ok()).toBeTruthy();
   let orders = await okxPosts("/api/v5/trade/order");
-  every(orders, (b) => b.posSide === "long" && b.side === "sell" && b.reduceOnly === true && b.ordType === "market" && b.sz === "1.0", "ajuste long");
+  every(orders, (b) => b.posSide === "long" && b.side === "sell" && b.reduceOnly === true && b.ordType === "market" && b.sz === "1.0", "SHORT reduz a long");
 
   await resetMock();
-  await page.click("#d-adj-leg [data-leg=short]");
+  await page.hover("#d-adj-long");
+  await expect(page.locator("#d-adj-long")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#d-adj-pnl")).toContainText("SHORT PNL (botão LONG)");
+  await expect(page.locator("#d-adj-pnl")).toContainText("2 ct");
   await page.click("#d-adj-preview");
-  const sentShort = page.waitForResponse((r) => r.url().includes(":8000/adjust") && r.request().postData()?.includes('"dry":false'));
+  const sentLong = page.waitForResponse((r) => r.url().includes(":8000/adjust") && r.request().postData()?.includes('"dry":false'));
   await page.click("#d-adj-send");
-  expect((await sentShort).ok()).toBeTruthy();
+  expect((await sentLong).ok()).toBeTruthy();
   orders = await okxPosts("/api/v5/trade/order");
-  every(orders, (b) => b.posSide === "short" && b.side === "buy" && b.reduceOnly === true && b.sz === "0.5", "ajuste short");
-  await page.screenshot({ path: "/opt/cursor/artifacts/painel-desktop-1440-ajustar.png", fullPage: false });
+  every(orders, (b) => b.posSide === "short" && b.side === "buy" && b.reduceOnly === true && b.sz === "0.5", "LONG reduz a short");
 });
 
 test("screenshots desktop e o arquivo guarda o reduce verde", async ({ page }) => {
