@@ -264,7 +264,7 @@ test("toque no celular preenche o limite; pan e pinça não preenchem", async ({
   await installMocks(page);
   await boot(page);
   await expect(page.locator("#chart-hint")).toHaveText("Toque no gráfico: stop");
-  await page.locator("#btn-limit").click();
+  await page.locator("#m-kind").selectOption("limit");
   await expect(page.locator("#chart-hint")).toHaveText("Toque no gráfico: preço");
   await revealChart(page);
   const spot = await pickSpot(page);

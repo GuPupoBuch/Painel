@@ -249,8 +249,8 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
     background:#070809;color:#d7dde3;
     display:grid;
     grid-template-columns:312px minmax(0,1fr) 360px;
-    grid-template-rows:auto minmax(0,1fr);
-    grid-template-areas:"order tools side" "order chart side";
+    grid-template-rows:auto auto minmax(0,1fr);
+    grid-template-areas:"order tools side" "order chips side" "order chart side";
     gap:4px;
     font-variant-numeric:tabular-nums;
   }
@@ -269,18 +269,18 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   html.in-app .tfs{background:transparent;border-bottom:0;padding:0 4px}
   html.in-app .tf{min-width:28px;min-height:26px;padding:0 6px;font-size:11px;letter-spacing:.04em}
   html.in-app .tf:hover{color:#d7dde3}
-  html.in-app .accts{background:transparent;border-bottom:0;padding:0 4px}
+  html.in-app .accts{grid-area:chips;background:#0c0e10;border:1px solid #1f2428;border-top:0;padding:0 4px}
   html.in-app #accts .chip{min-width:0;min-height:26px;padding:0 8px;font-size:11px;letter-spacing:.04em}
   html.in-app #accts .chip:hover{color:#d7dde3}
   html.in-app .chart-wrap{grid-area:chart;min-width:0;min-height:0;background:#0c0e10;border:1px solid #1f2428;border-top:0}
   html.in-app #chart{height:100%;min-height:0;border:0;border-radius:0;background:#0c0e10}
   html.in-app #desk-order{grid-area:order;min-width:0;min-height:0}
   html.in-app #desk-side{grid-area:side;min-width:0;min-height:0;display:flex;flex-direction:column;gap:4px}
-  #desk-order,#d-balances,#d-positions,#d-orders{
+  #desk-order,#d-balances,#d-positions,#d-ord-panel{
     background:#0c0e10;border:1px solid #1f2428;min-width:0;min-height:0;
     display:flex;flex-direction:column;
   }
-  #d-positions,#d-orders{flex:1}
+  #d-positions,#d-ord-panel{flex:1}
   .d-hd{
     display:flex;align-items:center;justify-content:space-between;gap:8px;
     height:28px;padding:0 8px;border-bottom:1px solid #1f2428;flex:0 0 auto;
@@ -300,10 +300,11 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   #desk-order input,#desk-order select.d-in{width:100%;height:28px;min-height:0;padding:0 8px;background:#101214;color:#d7dde3;border:1px solid #1f2428;border-radius:2px;font-size:13px}
   #desk-order .field input{height:22px;min-height:0;padding:0;border:0;background:transparent}
   #desk-order input:focus,#desk-order .field:focus-within{border-color:#00e29a;outline:none}
-  .d-size{font-family:var(--mono);font-size:20px;font-weight:650;letter-spacing:0;font-variant-numeric:tabular-nums;line-height:1.1}
-  .size-box{position:relative;margin-top:8px;padding:16px 36px 6px 8px;background:#101214;border:1px solid #1f2428;min-height:48px}
-  .size-box .field-k{position:absolute;top:4px;left:8px}
-  .size-box .field-u{position:absolute;right:8px;bottom:6px}
+  .d-size{font-family:var(--mono);font-size:15px;font-weight:650;letter-spacing:0;font-variant-numeric:tabular-nums;line-height:1.35}
+  .size-box{position:relative;margin-top:8px;padding:8px;background:#101214;border:1px solid #1f2428;display:flex;flex-direction:column;gap:2px}
+  .size-box .field-k{position:static;display:block;margin:0 0 2px}
+  .size-pair{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+  .size-h{margin-top:6px;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#7d8792}
   .d-size-rows{margin-top:4px;font-size:11px;color:#9aa6b2;font-family:var(--mono);font-variant-numeric:tabular-nums}
   #d-size-rows > div,.h-row{display:flex;justify-content:space-between;gap:8px;padding:3px 0}
   #d-hedge-table .h-row{color:#d7dde3;border-top:1px solid #1f2428}
@@ -323,7 +324,8 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   .d-bars i{display:block;flex:1;background:#00e29a;min-height:2px;opacity:.9}
   .d-bars.short i{background:#e5425c}
   .d-avg{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;color:#d7dde3}
-  .d-sides{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px}
+  .d-dock{flex:0 0 auto;padding:8px;border-top:1px solid #1f2428;background:#0c0e10}
+  .d-sides{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:0}
   .d-sides button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:52px;border:0;border-radius:2px;font-size:13px;font-weight:800;letter-spacing:.08em;line-height:1.1}
   .d-sides button:hover{filter:brightness(1.06)}
   #d-long{background:#00e29a;color:#04140c}
@@ -354,9 +356,26 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
 .unit-row{display:flex;margin-top:8px;border-bottom:1px solid var(--line)}
 .unit-row button{flex:1;min-height:44px;background:transparent;border:0;border-bottom:1px solid transparent;margin-bottom:-1px;border-radius:0;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.08em}
 .unit-row button.on{color:var(--green);border-bottom-color:var(--green)}
-.pnl-prev{margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:2px;font-size:16px;font-weight:650}
+.mode-row{display:flex;gap:0;margin:8px 0 4px;border-bottom:1px solid var(--line)}
+.mode-tog{flex:1;min-height:44px;background:transparent;border:0;border-bottom:1px solid transparent;margin-bottom:-1px;border-radius:0;color:var(--muted);font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.mode-tog.on,.mode-tog.reduce.on{color:var(--green);border-bottom-color:var(--green)}
+.cancel-algo{min-height:44px;padding:0 12px;background:transparent;color:var(--text);border:1px solid var(--line);border-radius:2px;font-size:12px;font-weight:700}
+.ord-card{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:13px}
+@media (min-width:1024px){
+  #desk-order select.kind{height:28px;min-height:0;margin-top:0;padding:0 8px;background:#101214;font-size:12px}
+  #desk-order .mode-tog{min-height:32px;font-size:10px}
+  .d-table .cancel-algo{min-height:28px;padding:0 8px;font-size:10px}
+}
+.pnl-prev{margin-top:6px;padding-top:4px}
+.pnl-line{font-family:var(--mono);font-size:11px;font-weight:650;line-height:1.35;font-variant-numeric:tabular-nums}
 .pnl-k{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .pnl-v{margin-top:2px;font-family:var(--mono);font-size:13px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.3}
+.por-conta{min-height:28px;margin-top:2px;padding:0 8px;background:transparent;border:0;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.04em}
+.por-conta.on{color:var(--green)}
+@media (max-width:959px){
+  .por-conta{min-height:44px}
+}
 .pnl-row{display:grid;grid-template-columns:minmax(0,1.1fr) auto auto;gap:8px;align-items:baseline;padding:3px 0;font-size:11px;font-family:var(--mono);font-variant-numeric:tabular-nums}
 .pnl-row.tot{border-top:1px solid var(--line);margin-top:2px;padding-top:4px;font-weight:700}
 .pnl-up{color:var(--green)}
@@ -422,18 +441,18 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   <button type="button" class="tf" data-bar="1W">1W</button>
   <button type="button" class="tf" data-bar="1M">1M</button>
 </div>
+</div>
+<div class="chart-wrap" id="chart-wrap">
+<div id="chart"><div id="chart-msg">Carregando gráfico…</div></div>
+<div id="chart-hint" class="chart-hint hidden"></div>
+<div id="drag-tag" class="drag-tag hidden"></div>
+</div>
 <div class="accts" id="accts">
   <button type="button" class="chip" data-acct="todas">Todas</button>
   <button type="button" class="chip" data-acct="pupo">pupo</button>
   <button type="button" class="chip" data-acct="pai">pai</button>
   <button type="button" class="chip" data-acct="mãe">mãe</button>
   <button type="button" class="chip" data-acct="tcheco">tcheco</button>
-</div>
-</div>
-<div class="chart-wrap" id="chart-wrap">
-<div id="chart"><div id="chart-msg">Carregando gráfico…</div></div>
-<div id="chart-hint" class="chart-hint hidden"></div>
-<div id="drag-tag" class="drag-tag hidden"></div>
 </div>
 
 <div id="desk" class="desk">
@@ -445,58 +464,50 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
       <select id="d-filter" aria-label="Contas na tela"></select>
     </div>
     <div class="d-k">Tipo</div>
-    <select id="d-kind" class="d-in" aria-label="Tipo de ordem">
+    <select id="d-kind" class="d-in kind" aria-label="Tipo de ordem">
       <option value="limit">LIMITE · ORDEM</option>
       <option value="market">MERCADO</option>
+      <option value="trigger">STOP A MERCADO</option>
+      <option value="chase">CHASE LIMITE</option>
       <option value="scale">LIMITE · ESCALA</option>
       <option value="hedge">HEDGE</option>
     </select>
     <div class="d-tabs" id="d-tabs">
-      <button type="button" class="d-tab on" data-tab="post">Post</button>
-      <button type="button" class="d-tab" data-reduce="1">Reduce</button>
-      <button type="button" class="d-tab" data-tab="tpsl">TP/SL</button>
+      <button type="button" class="d-tab on" data-tab="post">Ordem</button>
       <button type="button" class="d-tab" data-tab="reduce">Ajuste</button>
     </div>
     <div id="d-post">
-      <button type="button" class="d-tog hidden" id="d-reduce-toggle" aria-pressed="false">Reduzir</button>
-      <div id="d-reduce-box" class="hidden">
-        <div class="unit-row" id="d-reduce-units">
-          <button type="button" data-unit="pct" class="on">%</button>
-          <button type="button" data-unit="usd">USD</button>
-          <button type="button" data-unit="ct">ct</button>
-        </div>
+      <div class="unit-row" id="d-size-modes">
+        <button type="button" data-size="usd">USD</button>
+        <button type="button" data-size="pct">%</button>
+        <button type="button" data-size="risco">Risco</button>
+      </div>
+      <label class="field" id="d-qty-box">
+        <span class="field-k" id="d-qty-k">Tamanho</span>
+        <input id="d-qty" type="text" inputmode="decimal" value="1000" aria-label="Tamanho">
+        <span class="field-u" id="d-qty-u">USD</span>
+      </label>
+      <div id="d-risk-box">
+        <div class="d-k"><span>Risco</span><button type="button" id="d-max">Máx. 5%</button></div>
         <label class="field">
-          <span class="field-k" id="d-reduce-k">% da perna</span>
-          <input id="d-reduce-pct" type="text" inputmode="decimal" value="50" aria-label="Quanto reduzir">
-          <span class="field-u reduce-unit">%</span>
+          <span class="field-k">Risco</span>
+          <input id="d-risk" type="text" inputmode="decimal" value="1" aria-label="Risco %">
+          <span class="field-u">%</span>
         </label>
-        <p class="d-note" id="d-reduce-which">Reduz a perna long.</p>
-        <div id="d-pnl" class="pnl-prev">
-          <div class="pnl-k" id="d-pnl-k">LONG PNL</div>
-          <div class="pnl-v" id="d-pnl-v">—</div>
-          <div id="d-pnl-rows"></div>
-        </div>
+        <input id="d-risk-range" class="d-range" type="range" min="0.1" max="5" step="0.1" value="1" aria-label="Risco">
       </div>
-      <div id="d-open-box">
-      <div class="d-k"><span>Risco</span><button type="button" id="d-max">Máx. 5%</button></div>
-      <label class="field">
-        <span class="field-k">Risco</span>
-        <input id="d-risk" type="text" inputmode="decimal" value="1" aria-label="Risco %">
-        <span class="field-u">%</span>
-      </label>
-      <input id="d-risk-range" class="d-range" type="range" min="0.1" max="5" step="0.1" value="1" aria-label="Risco">
-      <label class="field">
-        <span class="field-k">Stop</span>
-        <input id="d-stop" type="text" inputmode="decimal" placeholder="63800" aria-label="Stop">
-        <span class="field-u">USD</span>
-      </label>
-      <div class="size-box">
-        <span class="field-k">Tamanho</span>
+      <div id="d-stop-box">
+        <label class="field">
+          <span class="field-k">Stop</span>
+          <input id="d-stop" type="text" inputmode="decimal" placeholder="63800" aria-label="Stop">
+          <span class="field-u">USD</span>
+        </label>
+      </div>
+      <div class="size-box hidden" id="d-size-box">
+        <span class="field-k" id="d-size-k">Tamanho</span>
         <div id="d-size" class="d-size">—</div>
-        <span class="field-u">USD</span>
       </div>
-      <div id="d-size-rows" class="d-size-rows"></div>
-      </div>
+      <div id="d-size-rows" class="d-size-rows hidden"></div>
       <div id="d-price-box">
         <div class="d-row">
           <label class="field">
@@ -508,6 +519,31 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
           <button type="button" id="d-minus" aria-label="Diminuir preço">−</button>
           <button type="button" id="d-plus" aria-label="Aumentar preço">+</button>
         </div>
+      </div>
+      <div id="d-trigger-box" class="hidden">
+        <div class="d-row">
+          <label class="field">
+            <span class="field-k">Gatilho</span>
+            <input id="d-trigger" type="text" inputmode="decimal" placeholder="63000" aria-label="Preço de gatilho">
+            <span class="field-u">USD</span>
+          </label>
+        </div>
+        <div class="unit-row" id="d-px-type">
+          <button type="button" data-px="last" class="on">Último</button>
+          <button type="button" data-px="mark">Mark</button>
+        </div>
+      </div>
+      <div id="d-chase-box" class="hidden">
+        <label class="field">
+          <span class="field-k">Distância máx.</span>
+          <input id="d-chase" type="text" inputmode="decimal" placeholder="opcional" aria-label="Distância máxima do chase">
+          <span class="field-u" id="d-chase-u">%</span>
+        </label>
+        <div class="unit-row" id="d-chase-unit">
+          <button type="button" data-chase="pct" class="on">%</button>
+          <button type="button" data-chase="usd">USD</button>
+        </div>
+        <p class="d-note">O chase sai no melhor bid/ask e acompanha o book. A distância máxima cancela se o preço andar demais. Vazio = sem máximo.</p>
       </div>
       <div id="d-scale" class="hidden">
         <div class="d-k">Preços da escala</div>
@@ -557,13 +593,26 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
         <button type="button" id="d-hedge-go">Confirmar hedge</button>
         <p class="d-note">Não mexe na long. Os stops ficam como estão e só saem se o short zerar. A ordem vai para as 4 contas.</p>
       </div>
-      <div class="d-sides" id="d-sides">
-        <button type="button" id="d-long"><span class="go-k">LONG</span><span class="go-sub">—</span></button>
-        <button type="button" id="d-short"><span class="go-k">SHORT</span><span class="go-sub">—</span></button>
+      <div class="mode-row" id="d-mode-togs">
+        <button type="button" class="mode-tog" id="d-post-tog">Post</button>
+        <button type="button" class="mode-tog reduce" id="d-reduce-toggle" aria-pressed="false">Reduce</button>
+        <button type="button" class="mode-tog" id="d-tpsl-tog" aria-pressed="false">TP/SL</button>
       </div>
+      <div id="d-pnl" class="pnl-prev hidden">
+        <div id="d-pnl-rows"></div>
+        <button type="button" class="por-conta" id="d-por-conta" aria-expanded="false">por conta</button>
+        <div id="d-pnl-acc" class="hidden"></div>
+      </div>
+      <p class="d-note" id="d-reduce-which"></p>
       <p class="d-note" id="d-size-note">O tamanho sai do risco e da distância até o stop, em cada conta. A ordem vai para as 4 contas.</p>
     </div>
     <div id="d-reduce" class="hidden">
+      <div class="d-togs" id="d-adj-leg" role="group" aria-label="Perna do ajuste">
+        <button type="button" class="d-tog" data-leg="long" aria-pressed="false">Long</button>
+        <button type="button" class="d-tog" data-leg="short" aria-pressed="false">Short</button>
+      </div>
+      <p class="d-note" id="d-adj-leg-note"></p>
+      <div id="d-adj-pnl" class="pnl-line"></div>
       <div class="d-k">Quanto fechar</div>
       <div class="d-togs" id="d-pcts">
         <button type="button" class="d-tog" data-pct="25">25%</button>
@@ -599,12 +648,18 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
     <div id="d-tpsl" class="hidden">
       <div class="d-k">Stop da entrada</div>
       <input id="d-stop-2" type="text" inputmode="decimal" placeholder="63800" aria-label="Stop da entrada">
-      <p class="d-note">Este stop entra junto com a ordem nova. Para mover um stop ou um limite que já está aberto, arraste a linha no gráfico.</p>
+      <p class="d-note">Este stop entra junto com a ordem nova. Para mover um stop, um limite ou um stop a mercado que já está aberto, arraste a linha no gráfico.</p>
       <div id="d-stop-list" class="d-size-rows"></div>
     </div>
     <div id="d-msg" class="err hidden"></div>
     <div id="d-result" class="d-size-rows"></div>
     <div class="d-saldo"><span>Saldo</span><b id="d-equity">—</b></div>
+  </div>
+  <div class="d-dock" id="d-dock">
+    <div class="d-sides" id="d-sides">
+      <button type="button" id="d-long"><span class="go-k">LONG</span><span class="go-sub">—</span></button>
+      <button type="button" id="d-short"><span class="go-k">SHORT</span><span class="go-sub">—</span></button>
+    </div>
   </div>
 </aside>
 <aside id="desk-side">
@@ -616,7 +671,7 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
     <div class="d-hd"><span>Posições</span><select id="d-filter-pos" aria-label="Filtrar posições"></select></div>
     <div class="d-body" id="d-pos-body"></div>
   </section>
-  <section id="d-orders">
+  <section id="d-ord-panel">
     <div class="d-hd"><span>Ordens</span><select id="d-filter-ord" aria-label="Filtrar ordens"></select></div>
     <div class="d-body" id="d-ord-body"></div>
   </section>
@@ -635,12 +690,6 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
 </section>
 
 <section id="app-view" class="hidden">
-  <section id="positions">
-    <div class="pos-head"><h2>Posições</h2><button type="button" class="refresh" id="refresh">Atualizar</button></div>
-    <div class="pos-cols" aria-hidden="true"><span>Conta</span><span>Posição</span><span>Média</span><span>Stop</span><span>Resultado</span></div>
-    <div id="pos-body" class="acct-list"><div class="acct-empty muted">Carregando…</div></div>
-  </section>
-
   <div class="actions">
     <div class="tabs">
       <button type="button" class="tab on" id="tab-entrada" aria-pressed="true">Entrada</button>
@@ -651,35 +700,54 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
         <button type="button" class="side long on" id="btn-long" aria-pressed="true"><span class="go-k">LONG</span><span class="go-sub">—</span></button>
         <button type="button" class="side short" id="btn-short" aria-pressed="false"><span class="go-k">SHORT</span><span class="go-sub">—</span></button>
       </div>
-      <div class="otypes">
-        <button type="button" class="otype on" id="btn-market" aria-pressed="true">Mercado</button>
-        <button type="button" class="otype" id="btn-limit" aria-pressed="false">Limite</button>
-        <button type="button" class="otype" id="btn-scale" aria-pressed="false">Escala</button>
-        <button type="button" class="otype" id="btn-hedge" aria-pressed="false">Hedge</button>
+      <select id="m-kind" class="kind" aria-label="Tipo de ordem">
+        <option value="limit">LIMITE · ORDEM</option>
+        <option value="market">MERCADO</option>
+        <option value="trigger">STOP A MERCADO</option>
+        <option value="chase">CHASE LIMITE</option>
+        <option value="scale">LIMITE · ESCALA</option>
+        <option value="hedge">HEDGE</option>
+      </select>
+      <div class="unit-row" id="m-size-modes">
+        <button type="button" data-size="usd">USD</button>
+        <button type="button" data-size="pct">%</button>
+        <button type="button" data-size="risco">Risco</button>
       </div>
-      <button type="button" class="otype" id="btn-reduce" aria-pressed="false" style="width:100%;margin-top:8px">Reduzir</button>
+      <label class="field" id="m-qty-box">
+        <span class="field-k" id="m-qty-k">Tamanho</span>
+        <input id="m-qty" type="text" inputmode="decimal" autocomplete="off" value="1000" aria-label="Tamanho">
+        <span class="field-u" id="m-qty-u">USD</span>
+      </label>
       <div id="price-row" class="price-row hidden">
         <label class="field" for="price"><span class="field-k">Preço</span><input id="price" type="text" inputmode="decimal" autocomplete="off" placeholder="64000" enterkeyhint="next"><span class="field-u">USD</span></label>
         <button type="button" class="use-mark" id="use-mark">Usar mark</button>
       </div>
-      <div id="m-reduce" class="hidden">
-        <div class="unit-row" id="m-reduce-units">
-          <button type="button" data-unit="pct" class="on">%</button>
-          <button type="button" data-unit="usd">USD</button>
-          <button type="button" data-unit="ct">ct</button>
-        </div>
-        <label class="field" for="m-reduce-pct">
-          <span class="field-k" id="m-reduce-k">% da perna</span>
-          <input id="m-reduce-pct" type="text" inputmode="decimal" autocomplete="off" value="50">
-          <span class="field-u reduce-unit">%</span>
-        </label>
-        <p class="all-note" id="m-reduce-which">Reduz a perna long.</p>
-        <div id="m-pnl" class="pnl-prev">
-          <div class="pnl-k" id="m-pnl-k">LONG PNL</div>
-          <div class="pnl-v" id="m-pnl-v">—</div>
-          <div id="m-pnl-rows"></div>
+      <div id="m-trigger-row" class="hidden">
+        <label class="field" for="m-trigger"><span class="field-k">Gatilho</span><input id="m-trigger" type="text" inputmode="decimal" autocomplete="off" placeholder="63000" aria-label="Preço de gatilho"><span class="field-u">USD</span></label>
+        <div class="unit-row" id="m-px-type">
+          <button type="button" data-px="last" class="on">Último</button>
+          <button type="button" data-px="mark">Mark</button>
         </div>
       </div>
+      <div id="m-chase-row" class="hidden">
+        <label class="field" for="m-chase"><span class="field-k">Distância máx.</span><input id="m-chase" type="text" inputmode="decimal" autocomplete="off" placeholder="opcional" aria-label="Distância máxima do chase"><span class="field-u" id="m-chase-u">%</span></label>
+        <div class="unit-row" id="m-chase-unit">
+          <button type="button" data-chase="pct" class="on">%</button>
+          <button type="button" data-chase="usd">USD</button>
+        </div>
+        <p class="all-note">Sai no melhor bid/ask e acompanha o book. Vazio = sem máximo.</p>
+      </div>
+      <div class="mode-row" id="m-mode-togs">
+        <button type="button" class="mode-tog" id="m-post">Post</button>
+        <button type="button" class="mode-tog reduce" id="m-reduce-toggle" aria-pressed="false">Reduce</button>
+        <button type="button" class="mode-tog" id="m-tpsl-tog" aria-pressed="false">TP/SL</button>
+      </div>
+      <div id="m-pnl" class="pnl-prev hidden">
+        <div id="m-pnl-rows"></div>
+        <button type="button" class="por-conta" id="m-por-conta" aria-expanded="false">por conta</button>
+        <div id="m-pnl-acc" class="hidden"></div>
+      </div>
+      <p class="all-note" id="m-reduce-which"></p>
       <div id="m-scale" class="hidden">
         <div class="row">
           <label class="field"><span class="field-k">De</span><input id="m-from" type="text" inputmode="decimal" autocomplete="off" placeholder="63000"><span class="field-u">USD</span></label>
@@ -709,8 +777,10 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
         </div>
         <p class="all-note">Não mexe na long. Stops só saem se o short zerar.</p>
       </div>
-      <div class="row" id="entry-risk">
+      <div id="m-stop-box">
         <label class="field" for="stop"><span class="field-k">Stop</span><input id="stop" type="text" inputmode="decimal" autocomplete="off" placeholder="63800" enterkeyhint="next"><span class="field-u">USD</span></label>
+      </div>
+      <div id="m-risk-box">
         <label class="field" for="risk"><span class="field-k">Risco</span><input id="risk" type="text" inputmode="decimal" autocomplete="off" value="1" enterkeyhint="go"><span class="field-u">%</span></label>
       </div>
       <div id="result" class="result hidden">
@@ -720,12 +790,18 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
       <div class="action-dock">
         <div id="banner-err" class="err hidden"></div>
         <div id="banner-warn" class="warn hidden"></div>
-        <p class="all-note">A ordem vai para as 4 contas.</p>
+        <p class="all-note" id="m-size-note">A ordem vai para as 4 contas.</p>
         <button type="button" class="send" id="send">LONG A MERCADO</button>
       </div>
     </div>
 
     <div id="pane-ajustar" class="hidden">
+      <div class="otypes" id="m-adj-leg" role="group" aria-label="Perna do ajuste">
+        <button type="button" class="otype" data-leg="long" aria-pressed="false">Long</button>
+        <button type="button" class="otype" data-leg="short" aria-pressed="false">Short</button>
+      </div>
+      <p class="all-note" id="m-adj-leg-note"></p>
+      <div id="adj-pnl" class="pnl-line"></div>
       <div class="offstage" aria-hidden="true">
         <button type="button" class="refresh" id="adj-refresh" tabindex="-1">Atualizar</button>
         <div id="adj-pos-body"></div>
@@ -757,6 +833,16 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
       </div>
     </div>
   </div>
+
+  <section id="positions">
+    <div class="pos-head"><h2>Posições</h2><button type="button" class="refresh" id="refresh">Atualizar</button></div>
+    <div class="pos-cols" aria-hidden="true"><span>Conta</span><span>Posição</span><span>Média</span><span>Stop</span><span>Resultado</span></div>
+    <div id="pos-body" class="acct-list"><div class="acct-empty muted">Carregando…</div></div>
+  </section>
+  <section id="m-ord-panel" class="hidden">
+    <div class="pos-head"><h2>Ordens</h2></div>
+    <div id="m-ord-body"></div>
+  </section>
 </section>
 
 <div id="amend-sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="amend-title">
@@ -786,12 +872,13 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
 </div>
 
 <script>
-const API = "https://krzznjwvcrbuhlfwsdel.supabase.co/functions/v1/painel";
+const API = new URLSearchParams(location.search).get("api") || "https://krzznjwvcrbuhlfwsdel.supabase.co/functions/v1/painel";
 const INST = "BTC-USD-SWAP";
 const TK = "painel_token";
 const $ = (id) => document.getElementById(id);
 let side = "long", sending = false, ordType = "market";
 let adjPct = 50, adjOrdType = "market", adjSending = false, adjPreview = null;
+let adjLeg = null, adjLegTouched = false;
 
 // ---------- formatação ----------
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -836,6 +923,8 @@ function isDesk() { return window.matchMedia("(min-width: 1024px)").matches; }
 let lastCandles = [];
 let deskKind = "market", deskTab = "post", priceEven = true, sizeEven = true, scaleOpen = false;
 let reducing = false, hedgeMode = "short", hedgeOrd = "market";
+let sizeMode = "risco", tpslOn = false, pxType = "last", chaseUnit = "pct";
+try { if (sessionStorage.getItem("painel_reduce") === "1") { reducing = true; sizeMode = "pct"; } } catch (e) {}
 let deskFilter = "todas";
 try { const savedAcct = localStorage.getItem("painel_acct"); if (["todas","pupo","pai","mãe","tcheco"].includes(savedAcct)) deskFilter = savedAcct; } catch (e) {}
 const toT = (ms) => Math.floor(Number(ms) / 1000) - TZ;
@@ -977,11 +1066,11 @@ function dropLine(line) {
   if (!series || !line) return;
   try { series.removePriceLine(line); } catch (e) {}
 }
-function kindTitle(kind) { return kind === "stop" ? "stop" : "limite"; }
-function kindLabel(kind) { return kind === "stop" ? "Stop" : "Limite"; }
+function kindTitle(kind) { return kind === "trigger" ? "stop mkt" : kind === "chase" ? "chase" : kind === "stop" ? "stop" : "limite"; }
+function kindLabel(kind) { return kind === "trigger" ? "Stop mkt" : kind === "chase" ? "Chase" : kind === "stop" ? "Stop" : "Limite"; }
 function orderKind(raw) {
   if (!raw || typeof raw !== "object") return null;
-  if (raw.kind === "stop" || raw.kind === "limit") return raw.kind;
+  if (raw.kind === "stop" || raw.kind === "limit" || raw.kind === "trigger" || raw.kind === "chase") return raw.kind;
   if (raw.algoId || raw.slTriggerPx != null) return "stop";
   if (raw.ordId || raw.px != null) return "limit";
   return null;
@@ -993,12 +1082,22 @@ function accountOrders(a) {
     for (const raw of a.orders) {
       const kind = orderKind(raw);
       const price = Number(raw && (raw.price != null ? raw.price : raw.px != null ? raw.px : raw.slTriggerPx));
-      if ((kind !== "stop" && kind !== "limit") || !(price > 0)) continue;
+      if (kind === "chase") {
+        out.push({
+          account: a.name, prefix: a.prefix || null, kind, price: 0,
+          ordId: null, algoId: raw.algoId || null, side: raw.side || null,
+          posSide: raw.posSide || null, reduceOnly: raw.reduceOnly === true,
+          sz: Number(raw.sz) || 0, triggerPxType: null,
+        });
+        continue;
+      }
+      if ((kind !== "stop" && kind !== "limit" && kind !== "trigger") || !(price > 0)) continue;
       out.push({
         account: a.name, prefix: a.prefix || null, kind, price,
         ordId: raw.ordId || null, algoId: raw.algoId || null,
         side: raw.side || raw.posSide || a.side || null,
-        sz: Number(raw.sz) || 0,
+        posSide: raw.posSide || null, reduceOnly: raw.reduceOnly === true,
+        sz: Number(raw.sz) || 0, triggerPxType: raw.triggerPxType || null,
       });
       if (kind === "stop") seenStop.add(snapPx(price));
     }
@@ -1077,23 +1176,37 @@ function drawOrderLines(accounts) {
       flat.push({ ...o, usd: Number(o.sz) > 0 ? Number(o.sz) * 100 : (leg ? Number(leg.usd) || Number(leg.ct) * 100 : 1) });
     }
   }
-  for (const kind of ["stop", "limit"]) {
+  for (const kind of ["stop", "trigger", "limit"]) {
     for (const g of clusterClose(flat.filter((o) => o.kind === kind))) {
       const names = [...new Set(g.items.map((x) => x.account))];
-      const title = names.length > 1
-        ? (kind === "stop" ? "stop " : "limite ") + names.join("+") + " " + fmtPx(g.price)
-        : (kind === "stop" ? "stop " : "limite ") + names[0];
+      const label = kind === "trigger" ? "stop mkt " : kind === "stop" ? "stop " : "limite ";
+      const title = names.length > 1 ? label + names.join("+") + " " + fmtPx(g.price) : label + names[0];
       const line = series.createPriceLine({
         price: g.price,
-        color: kind === "stop" ? (isDesk() ? "#f6465d" : STOP_COLOR) : (isDesk() ? "#d7dde3" : LIMIT_COLOR),
-        lineWidth: 1,
-        lineStyle: kind === "stop" ? 2 : 0,
+        color: orderLineColor(kind, g.items),
+        lineWidth: orderLineWidth(kind, g.items),
+        lineStyle: kind === "limit" ? 0 : 2,
         axisLabelVisible: true,
         title,
       });
       orderGroups.push({ key: kind, kind, price: g.price, orders: g.items, line, title });
     }
   }
+}
+function adjustingNow() {
+  return deskTab === "reduce" || document.body.classList.contains("tab-ajustar");
+}
+function orderLineColor(kind, items) {
+  const base = kind === "limit" ? (isDesk() ? "#d7dde3" : LIMIT_COLOR) : (isDesk() ? "#f6465d" : STOP_COLOR);
+  if (!adjustingNow() || !adjLeg || kind === "limit") return base;
+  const sides = new Set(items.map((x) => x.posSide).filter(Boolean));
+  if (!sides.size) return base;
+  return sides.has(adjLeg) && ![...sides].some((s) => s !== adjLeg) ? "#f6465d" : "#3a444e";
+}
+function orderLineWidth(kind, items) {
+  if (!adjustingNow() || !adjLeg || kind === "limit") return 1;
+  const sides = new Set(items.map((x) => x.posSide).filter(Boolean));
+  return sides.has(adjLeg) && ![...sides].some((s) => s !== adjLeg) ? 2 : 1;
 }
 function addPreview(price, title, opt) {
   const o = opt || {};
@@ -1122,17 +1235,23 @@ function drawPreviews() {
   if (typeof updateDesk === "function") updateDesk();
   updateChartHint();
 }
+function stopPreviewOn() {
+  return !reducing && deskKind !== "hedge" && (sizeMode === "risco" || tpslOn);
+}
 function drawMobilePreviews() {
   const entradaOn = !$("pane-entrada").classList.contains("hidden");
   if (entradaOn && !entradaPreviewHold) {
     if (reducing && deskKind !== "hedge") paintReduceLines();
     else {
-      if (deskKind === "hedge" && hedgeOrd === "limit") {
+      if (deskKind === "trigger") {
+        const p = triggerValue();
+        if (p > 0) addPreview(p, "STOP", { role: "trigger", lineStyle: 2, color: "#f6465d" });
+      } else if (deskKind === "hedge" && hedgeOrd === "limit") {
         const p = parseNum($("price").value);
         if (p > 0) addPreview(p, "prévia hedge " + fmtPx(p), { role: "hedge" });
-      } else if (ordType === "limit") {
+      } else if (deskKind === "limit" || ordType === "limit") {
         const p = parseNum($("price").value);
-        if (p > 0) addPreview(p, "prévia entrada " + fmtPx(p), { role: "price" });
+        if (p > 0) addPreview(p, "LIMITE", { role: "price", lineStyle: 1, color: side === "short" ? "#e5425c" : "#00e29a" });
       }
       if (deskKind === "scale") {
         const plan = scalePlan();
@@ -1144,18 +1263,26 @@ function drawMobilePreviews() {
         });
       }
       const s = parseNum($("stop").value);
-      if (s > 0 && deskKind !== "hedge") addPreview(s, "prévia stop", { role: "stop" });
+      if (s > 0 && stopPreviewOn()) addPreview(s, "prévia stop", { role: "stop", color: "#ffb0be", lineStyle: 2 });
     }
   }
   const adjOn = !$("pane-ajustar").classList.contains("hidden");
-  if (adjOn && !adjPreviewHold && adjOrdType === "limit") {
+  if (adjOn && adjLeg && !adjPreviewHold && adjOrdType === "limit") {
     const p = parseNum($("adj-price").value);
-    if (p > 0) addPreview(p, "prévia redução " + fmtPx(p), { role: "reduce" });
+    if (p > 0) addPreview(p, "ajuste " + adjLeg + " " + fmtPx(p), { role: "reduce", color: adjLeg === "short" ? "#e5425c" : "#00e29a", lineStyle: 1 });
   }
 }
 function paintReduceLines() {
-  const prev = computeReducePreview(side);
+  const prev = computeReducePreview(legFor(side));
   if (!prev || prev.error || !(prev.totalCt >= 0.1)) return;
+  if (deskKind === "trigger" && prev.exit > 0) {
+    addPreview(prev.exit, "STOP", { role: "trigger", color: "#f6465d", lineStyle: 2, lineWidth: 2 });
+    return;
+  }
+  if (deskKind === "limit" && prev.exit > 0) {
+    addPreview(prev.exit, prev.chartTitle, { role: "limit", color: prev.color, lineStyle: 1, lineWidth: 2 });
+    return;
+  }
   const opt = { color: prev.color, lineStyle: 1, lineWidth: 2 };
   if (prev.ladder && prev.ladder.length) {
     prev.ladder.forEach((leg, i) => {
@@ -1169,15 +1296,15 @@ function paintReduceLines() {
     });
     return;
   }
-  if (prev.exit > 0) addPreview(prev.exit, prev.chartTitle, { ...opt, role: deskKind === "limit" ? "price" : "" });
+  if (prev.exit > 0 && deskKind !== "chase") addPreview(prev.exit, prev.chartTitle, { ...opt, role: deskKind === "limit" ? "price" : deskKind === "trigger" ? "trigger" : "" });
 }
 function drawDeskPreviews() {
   const stop = parseNum($("stop").value);
   const col = side === "short" ? "#e5425c" : "#00e29a";
   if (deskTab === "reduce") {
-    if (!adjPreviewHold && adjOrdType === "limit") {
+    if (adjLeg && !adjPreviewHold && adjOrdType === "limit") {
       const p = parseNum($("adj-price").value);
-      if (p > 0) addPreview(p, "prévia redução " + fmtPx(p), { role: "reduce", color: "#b7c9da", lineStyle: 1 });
+      if (p > 0) addPreview(p, "ajuste " + adjLeg + " " + fmtPx(p), { role: "reduce", color: adjLeg === "short" ? "#e5425c" : "#00e29a", lineStyle: 1 });
     }
     return;
   }
@@ -1185,7 +1312,7 @@ function drawDeskPreviews() {
     paintReduceLines();
     return;
   }
-  if (stop > 0 && !entradaPreviewHold && deskKind !== "hedge") addPreview(stop, "prévia stop", { role: "stop", color: "#ffb0be", lineStyle: 3 });
+  if (stop > 0 && !entradaPreviewHold && stopPreviewOn()) addPreview(stop, "prévia stop", { role: "stop", color: "#ffb0be", lineStyle: 2 });
   if (deskTab !== "post" || entradaPreviewHold) return;
   if (deskKind === "scale") {
     const plan = scalePlan();
@@ -1201,6 +1328,10 @@ function drawDeskPreviews() {
   if (deskKind === "limit") {
     const p = parseNum($("price").value);
     if (p > 0) addPreview(p, "LIMITE", { role: "price", color: col, lineStyle: 1 });
+  }
+  if (deskKind === "trigger") {
+    const p = triggerValue();
+    if (p > 0) addPreview(p, "STOP", { role: "trigger", color: "#f6465d", lineStyle: 2 });
   }
   if (deskKind === "hedge" && hedgeOrd === "limit") {
     const p = parseNum(($("d-hedge-price") && $("d-hedge-price").value) || ($("price") && $("price").value));
@@ -1218,9 +1349,9 @@ function styleOrderLine(group, price) {
   try {
     group.line.applyOptions({
       price,
-      color: group.kind === "stop" ? (isDesk() ? "#f6465d" : STOP_COLOR) : (isDesk() ? "#d7dde3" : LIMIT_COLOR),
+      color: group.kind === "limit" ? (isDesk() ? "#d7dde3" : LIMIT_COLOR) : (isDesk() ? "#f6465d" : STOP_COLOR),
       lineWidth: 1,
-      lineStyle: group.kind === "stop" ? 2 : 0,
+      lineStyle: group.kind === "limit" ? 0 : 2,
       axisLabelVisible: true,
       title: group.title || kindTitle(group.kind),
     });
@@ -1273,7 +1404,8 @@ function paintDrag(price) {
 }
 function beginDrag(ev) {
   if (ev.button != null && ev.button !== 0) return false;
-  const group = hitOrder(chartLocalY(ev));
+  const y = chartLocalY(ev);
+  const group = hitOrder(y);
   if (!group) return false;
   ev.preventDefault();
   ev.stopPropagation();
@@ -1290,7 +1422,7 @@ function beginDrag(ev) {
   paintDrag(group.price);
   return true;
 }
-const PREVIEW_DRAG = { price: 1, stop: 1, from: 1, to: 1, hedge: 1, reduce: 1, tp: 1 };
+const PREVIEW_DRAG = { price: 1, stop: 1, trigger: 1, from: 1, to: 1, hedge: 1, reduce: 1, tp: 1 };
 function hitPreview(y) {
   if (!series) return null;
   let best = null, bestD = HIT_PX + 1;
@@ -1486,6 +1618,7 @@ function fieldVisible(id) {
 }
 function fieldsForRole(role) {
   if (role === "price") return ["d-price", "price"];
+  if (role === "trigger") return ["d-trigger", "m-trigger"];
   if (role === "stop") return ["d-stop", "d-stop-2", "stop"];
   if (role === "from") return ["d-from", "m-from"];
   if (role === "to") return ["d-to", "m-to"];
@@ -1495,6 +1628,7 @@ function fieldsForRole(role) {
 }
 function roleActive(role) { return fieldsForRole(role).some(fieldVisible); }
 function roleFromField(id) {
+  if (id === "d-trigger" || id === "m-trigger") return "trigger";
   if (id === "price" || id === "d-price") return (deskKind === "hedge" && hedgeOrd === "limit") ? "hedge" : "price";
   if (id === "stop" || id === "d-stop" || id === "d-stop-2") return "stop";
   if (id === "d-from" || id === "m-from") return "from";
@@ -1515,6 +1649,7 @@ function defaultClickRole() {
   if (isDesk() && deskTab === "tpsl") return "stop";
   if (deskKind === "hedge") return hedgeOrd === "limit" ? "hedge" : null;
   if (deskKind === "scale") return scaleArm === "to" ? "to" : "from";
+  if (deskKind === "trigger") return "trigger";
   if (reducing && deskKind === "market") return null;
   if (deskKind === "market") return "stop";
   if (deskKind === "limit") return "price";
@@ -1526,7 +1661,7 @@ function clickTarget() {
   return defaultClickRole();
 }
 function hintName(role) {
-  if (role === "stop") return "stop";
+  if (role === "stop" || role === "trigger") return role === "trigger" ? "gatilho" : "stop";
   if (role === "from") return "de";
   if (role === "to") return "até";
   if (role === "price" || role === "hedge" || role === "reduce" || role === "tp") return "preço";
@@ -1557,6 +1692,7 @@ function setRolePrice(role, price) {
     if (el) el.value = text;
   }
   entradaPreviewHold = false;
+  if (typeof updateSendLabel === "function") updateSendLabel();
   if (role === "reduce") { invalidateAdjPreview(); return; }
   drawPreviews();
 }
@@ -1600,10 +1736,12 @@ function closeAmendSheet() {
 // chamando a OKX: limite POST /api/v5/trade/amend-order { instId, ordId, newPx };
 // stop POST /api/v5/trade/amend-algos { instId, algoId, newSlTriggerPx }.
 async function amendOrder(order) {
-  const id = order.kind === "stop" ? order.algoId : order.ordId;
+  const id = order.kind === "limit" ? order.ordId : order.algoId;
   if (!order.prefix || !id) return { ok: false, error: "Ordem sem id. Atualize as posições." };
-  const body = { kind: order.kind === "stop" ? "stop" : "limit", account: order.prefix, newPx: order.newPrice };
-  if (order.kind === "stop") body.algoId = id; else body.ordId = id;
+  const kind = order.kind === "trigger" ? "trigger" : order.kind === "stop" ? "stop" : "limit";
+  const body = { kind, account: order.prefix, newPx: order.newPrice };
+  if (kind === "limit") body.ordId = id; else body.algoId = id;
+  if (kind === "trigger" && order.triggerPxType) body.triggerPxType = order.triggerPxType;
   const { res, data } = await api("/amend", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   if (!res.ok || data.aborted || data.ok === false) return { ok: false, error: data.abort_msg || data.error || "Não alterou a ordem." };
   return { ok: true };
@@ -1677,20 +1815,16 @@ function fillMark() {
 }
 function setOrdType(t) {
   ordType = t;
-  $("btn-market").classList.toggle("on", t === "market"); $("btn-limit").classList.toggle("on", t === "limit");
-  $("btn-market").setAttribute("aria-pressed", t === "market"); $("btn-limit").setAttribute("aria-pressed", t === "limit");
-  show($("price-row"), t === "limit");
-  if (t === "limit") fillMark();
+  if ($("btn-market")) {
+    $("btn-market").classList.toggle("on", t === "market"); $("btn-limit").classList.toggle("on", t === "limit");
+    $("btn-market").setAttribute("aria-pressed", t === "market"); $("btn-limit").setAttribute("aria-pressed", t === "limit");
+  }
+  if (t === "limit" && !(parseNum($("price").value) > 0)) fillMark();
   entradaPreviewHold = false;
   updateSendLabel();
   drawPreviews();
 }
 function updateSendLabel() { paintActions(); }
-$("btn-market").onclick = () => setDeskKind("market");
-$("btn-limit").onclick = () => setDeskKind("limit");
-$("btn-scale").onclick = () => setDeskKind("scale");
-$("btn-hedge").onclick = () => setDeskKind("hedge");
-$("btn-reduce").onclick = () => setReducing(!reducing);
 $("use-mark").onclick = () => { fillMark(); entradaPreviewHold = false; updateSendLabel(); drawPreviews(); };
 $("price").addEventListener("input", () => { entradaPreviewHold = false; updateSendLabel(); drawPreviews(); });
 ["m-from", "m-to", "m-orders"].forEach((id) => { if ($(id)) $(id).addEventListener("input", () => { entradaPreviewHold = false; drawPreviews(); }); });
@@ -1754,6 +1888,7 @@ function renderAllPos() {
   renderPosTable("pos-body", lastAccounts);
   renderPosTable("adj-pos-body", lastAccounts);
   renderDesk();
+  syncAdjLeg();
 }
 async function loadPositions() {
   try {
@@ -1783,36 +1918,51 @@ function renderResult(data) {
   if (data.raw && (data.aborted || !data.ok || data.dry)) { raw.textContent = data.raw; show(raw, true); } else show(raw, false);
 }
 
+function formError(msg) {
+  $("banner-err").textContent = msg;
+  show($("banner-err"), true);
+  if ($("d-msg")) { $("d-msg").textContent = msg; $("d-msg").className = "err"; }
+}
+function optionalStop() {
+  if (reducing || sizeMode === "risco" || !tpslOn) return null;
+  const stop = parseNum($("stop").value);
+  return stop != null && stop > 0 ? stop : null;
+}
+async function postOrder(payload) {
+  entradaPreviewHold = true;
+  drawPreviews();
+  sending = true; $("send").disabled = true; $("send").textContent = "ENVIANDO…";
+  try {
+    const { res, data } = await api("/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    if (res.status === 401) return;
+    if (data.error && !data.accounts) { formError(data.error); return; }
+    renderResult(data);
+    if (data.aborted || data.ok === false) formError(data.abort_msg || data.error || "Ordem bloqueada. Nada enviado.");
+    if (data.warning) { $("banner-warn").textContent = data.warn_msg || "Atenção: exposição acima de 100%."; show($("banner-warn"), true); }
+    loadPositions();
+  } catch (e) { formError("Não consegui falar com o servidor. Confira as posições antes de reenviar."); }
+  finally { sending = false; $("send").disabled = false; updateSendLabel(); }
+}
 $("send").onclick = async () => {
   if (sending) return;
   show($("banner-err"), false); show($("banner-warn"), false);
   if (deskKind === "hedge") { openHedgeSheet(); return; }
   if (deskKind === "scale") { openScaleSheet(); return; }
+  if (deskKind === "trigger" || deskKind === "chase") return sendAlgo(deskKind);
   if (reducing) return sendReduce();
+  if (sizeMode === "usd" || sizeMode === "pct") return sendSized();
   const stop = parseNum($("stop").value), risk = parseNum($("risk").value);
   const price = parseNum($("price").value);
-  if (stop == null || stop <= 0) { $("banner-err").textContent = "Preenche um stop válido."; show($("banner-err"), true); return; }
-  if (risk == null || risk <= 0 || risk > 5) { $("banner-err").textContent = "Risco precisa ser maior que 0 e no máximo 5%."; show($("banner-err"), true); return; }
+  if (stop == null || stop <= 0) { formError("Preenche um stop válido."); return; }
+  if (risk == null || risk <= 0 || risk > 5) { formError("Risco precisa ser maior que 0 e no máximo 5%."); return; }
   if (ordType === "limit") {
-    if (price == null || price <= 0) { $("banner-err").textContent = "Preenche um preço limite válido."; show($("banner-err"), true); return; }
-    if (side === "long" && stop >= price) { $("banner-err").textContent = "No long, o stop precisa ficar abaixo do preço limite."; show($("banner-err"), true); return; }
-    if (side === "short" && stop <= price) { $("banner-err").textContent = "No short, o stop precisa ficar acima do preço limite."; show($("banner-err"), true); return; }
+    if (price == null || price <= 0) { formError("Preenche um preço limite válido."); return; }
+    if (side === "long" && stop >= price) { formError("No long, o stop precisa ficar abaixo do preço limite."); return; }
+    if (side === "short" && stop <= price) { formError("No short, o stop precisa ficar acima do preço limite."); return; }
   }
-  entradaPreviewHold = true;
-  drawPreviews();
-  sending = true; $("send").disabled = true; $("send").textContent = "ENVIANDO…";
-  try {
-    const payload = { side, stop, risk, ordType };
-    if (ordType === "limit") payload.price = price;
-    const { res, data } = await api("/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-    if (res.status === 401) return;
-    if (data.error && !data.accounts) { $("banner-err").textContent = data.error; show($("banner-err"), true); return; }
-    renderResult(data);
-    if (data.aborted || data.ok === false) { $("banner-err").textContent = data.abort_msg || data.error || "Ordem bloqueada. Nada enviado."; show($("banner-err"), true); }
-    if (data.warning) { $("banner-warn").textContent = "Atenção: exposição acima de 100%."; show($("banner-warn"), true); }
-    loadPositions();
-  } catch (e) { $("banner-err").textContent = "Não consegui falar com o servidor. Confira as posições antes de reenviar."; show($("banner-err"), true); }
-  finally { sending = false; $("send").disabled = false; updateSendLabel(); }
+  const payload = { side, stop, risk, ordType, sizeMode: "risk" };
+  if (ordType === "limit") payload.price = price;
+  await postOrder(payload);
 };
 $("refresh").onclick = () => loadPositions();
 $("risk").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); $("send").click(); } });
@@ -1873,12 +2023,70 @@ $("adj-use-mark").onclick = () => { fillAdjMark(); invalidateAdjPreview(); };
 $("adj-price").addEventListener("input", invalidateAdjPreview);
 $("adj-refresh").onclick = () => loadPositions();
 
+function openLegs() {
+  const sides = new Set();
+  for (const a of lastAccounts || []) {
+    const legs = Array.isArray(a.legs) ? a.legs : [];
+    for (const l of legs) if ((Number(l.ct ?? l.pos) || 0) > 0 && (l.posSide === "long" || l.posSide === "short")) sides.add(l.posSide);
+    if (!legs.length && a.net) sides.add(a.net > 0 ? "long" : "short");
+  }
+  return sides;
+}
+function syncAdjLeg() {
+  const sides = openLegs();
+  if (!adjLegTouched) adjLeg = sides.size === 1 ? [...sides][0] : null;
+  else if (adjLeg && !sides.has(adjLeg)) {
+    adjLeg = sides.size === 1 ? [...sides][0] : null;
+    if (!adjLeg) adjLegTouched = false;
+  }
+  paintAdjLeg();
+}
+function setAdjLeg(leg) {
+  adjLegTouched = true;
+  adjLeg = leg === "short" ? "short" : "long";
+  invalidateAdjPreview();
+  paintAdjLeg();
+  drawPreviews();
+  if (lastAccounts) drawOrderLines(lastAccounts);
+}
+function paintAdjLeg() {
+  const sides = openLegs();
+  const note = sides.size > 1 && !adjLeg ? "Escolha long ou short." : adjLeg ? "Ajusta só a perna " + adjLeg + "." : "Sem perna aberta.";
+  for (const id of ["d-adj-leg-note", "m-adj-leg-note"]) if ($(id)) $(id).textContent = note;
+  document.querySelectorAll("#d-adj-leg button, #m-adj-leg button").forEach((b) => {
+    const on = b.dataset.leg === adjLeg;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+  const prev = adjustClosePreview();
+  const text = !prev ? "" : !(prev.totalCt >= 0.1) ? "Tamanho abaixo de 0,1 ct." : `${prev.label} · ${fmtCt(prev.totalCt)} ct` + (prev.exit > 0 ? ` · ${prev.btc >= 0 ? "+" : ""}${fmtBtcPnl(prev.btc)} BTC (~${fmtUsdPnl(prev.usd)})` : "");
+  for (const id of ["d-adj-pnl", "adj-pnl"]) if ($(id)) $(id).textContent = text;
+}
+function adjustClosePreview() {
+  if (!adjLeg || adjPct == null || !(adjPct > 0)) return null;
+  const rows = (lastAccounts || []).filter((a) => !a.error).map((a) => {
+    const leg = legOn(a, adjLeg);
+    if (!leg) return { ct: 0, btc: 0 };
+    const ct = adjPct >= 100 - 1e-9 ? leg.ct : Math.min(leg.ct, floorLot(leg.ct * adjPct / 100));
+    const use = ct >= 0.1 - 1e-9 ? ct : 0;
+    const exit = adjOrdType === "limit" ? parseNum($("adj-price").value) : lastPx;
+    return { ct: use, btc: use > 0 && exit > 0 ? pnlBtc(use, leg.avg, exit, adjLeg) : 0, exit };
+  });
+  const totalCt = rows.reduce((s, r) => s + r.ct, 0);
+  const btc = rows.reduce((s, r) => s + r.btc, 0);
+  const exit = adjOrdType === "limit" ? parseNum($("adj-price").value) : lastPx;
+  return { totalCt, btc, usd: btc * (exit || 0), exit, label: (adjLeg === "short" ? "SHORT" : "LONG") + " PNL" };
+}
 function adjPayload(dry) {
   const payload = { pct: adjPct, ordType: adjOrdType, dry };
+  if (adjLeg) payload.posSide = adjLeg;
   if (adjOrdType === "limit") payload.price = parseNum($("adj-price").value);
   return payload;
 }
 function adjValidate() {
+  const sides = openLegs();
+  if (sides.size > 1 && !adjLeg) return "Escolha long ou short.";
+  if (!sides.size) return "Nenhuma perna aberta.";
   if (adjPct == null || adjPct < 1 || adjPct > 100) return "Percentual inválido: use um valor de 1 a 100.";
   if (adjOrdType === "limit") {
     const pr = parseNum($("adj-price").value);
@@ -2081,11 +2289,74 @@ function splitLots(total, weights) {
   }
   return cts.map((c) => (c >= 0.1 - 1e-9 ? c : 0));
 }
-function reduceRaw() {
+function legFor(buttonSide) {
+  if (!reducing || deskKind === "hedge") return buttonSide;
+  return buttonSide === "long" ? "short" : "long";
+}
+function qtyValue() {
   const active = document.activeElement;
-  if (active && (active.id === "d-reduce-pct" || active.id === "m-reduce-pct")) return parseNum(active.value);
-  const el = isDesk() ? $("d-reduce-pct") : $("m-reduce-pct");
-  return parseNum((el && el.value) || ($("d-reduce-pct") && $("d-reduce-pct").value));
+  if (active && (active.id === "d-qty" || active.id === "m-qty")) return parseNum(active.value);
+  const el = isDesk() ? $("d-qty") : $("m-qty");
+  return parseNum(el && el.value);
+}
+function triggerValue() {
+  const active = document.activeElement;
+  if (active && (active.id === "d-trigger" || active.id === "m-trigger")) return parseNum(active.value);
+  const el = isDesk() ? $("d-trigger") : $("m-trigger");
+  return parseNum(el && el.value);
+}
+function chaseValue() {
+  const active = document.activeElement;
+  if (active && (active.id === "d-chase" || active.id === "m-chase")) return parseNum(active.value);
+  const el = isDesk() ? $("d-chase") : $("m-chase");
+  return parseNum(el && el.value);
+}
+function quotePrice() {
+  if (deskKind === "limit" || (deskKind === "hedge" && hedgeOrd === "limit")) return parseNum($("price").value);
+  if (deskKind === "trigger") return triggerValue();
+  if (deskKind === "scale") {
+    const inp = scaleInputs();
+    if (inp.from > 0 && inp.to > 0) return (inp.from + inp.to) / 2;
+  }
+  return lastPx;
+}
+function ctEquityPct(eq, mark, pct) {
+  if (!(eq > 0) || !(mark > 0) || !(pct > 0)) return 0;
+  return Math.trunc(eq * mark * (pct / 100) / 100 / 0.1 + 1e-9) / 10;
+}
+function openSize() {
+  const accounts = accountsForSize();
+  const mark = lastPx || (accounts[0] && accounts[0].mark) || 0;
+  if (sizeMode === "risco") {
+    const entry = deskKind === "trigger" ? triggerValue() : deskKind === "limit" ? parseNum($("price").value) : mark;
+    const sized = sizesAt(entry);
+    return { ct: sized.totalCt, rows: sized.rows };
+  }
+  if (sizeMode === "pct") {
+    const pct = qtyValue();
+    let ct = 0;
+    const rows = accounts.map((a) => {
+      const one = ctEquityPct(a.eq, lastPx || a.mark || mark, pct);
+      if (one >= 0.1) ct += one;
+      return { name: a.name, sz: one >= 0.1 ? { ct: one, usd: one * 100 } : null };
+    });
+    return { ct, rows };
+  }
+  const weights = accounts.map((a) => {
+    const m = lastPx || a.mark || mark;
+    return a.eq > 0 && m > 0 ? a.eq * m : 0;
+  });
+  const cts = splitLots((qtyValue() || 0) / 100, weights);
+  let ct = 0;
+  const rows = accounts.map((a, i) => {
+    const one = cts[i] || 0;
+    if (one >= 0.1) ct += one;
+    return { name: a.name, sz: one >= 0.1 ? { ct: one, usd: one * 100 } : null };
+  });
+  return { ct, rows };
+}
+function reduceRaw() {
+  return qtyValue();
 }
 function scaleInputs() {
   const fromEl = isDesk() ? $("d-from") : $("m-from");
@@ -2151,10 +2422,10 @@ function computeReducePreview(posSide) {
       exit = sumCt > 0 ? ladder.reduce((s, l) => s + l.price * l.ct, 0) / sumCt : null;
     }
   } else if (!error) {
-    exit = (deskKind === "limit" || ordType === "limit") && deskKind !== "market" ? parseNum($("price").value) : lastPx;
-    if (deskKind === "market" || ordType === "market") exit = lastPx;
-    if (deskKind === "limit") exit = parseNum($("price").value);
-    if (!(exit > 0)) error = deskKind === "market" ? "Sem mark ainda." : "Preenche um preço limite.";
+    if (deskKind === "trigger") exit = triggerValue();
+    else if (deskKind === "limit") exit = parseNum($("price").value);
+    else exit = lastPx;
+    if (!(exit > 0)) error = deskKind === "trigger" ? "Preenche o gatilho." : deskKind === "limit" ? "Preenche um preço limite." : "Sem mark ainda.";
     else sized = sized.map((row) => {
       const btc = row.ct > 0 ? pnlBtc(row.ct, row.avg, exit, which) : 0;
       return { ...row, btc, usd: btc * exit, exit };
@@ -2172,40 +2443,50 @@ function computeReducePreview(posSide) {
     chartTitle: label + " " + fmtBtcChart(btc),
   };
 }
+let porConta = false;
+function pnlLine(prev, buttonName) {
+  if (!prev) return "";
+  if (prev.error && !(prev.totalCt >= 0.1)) return `<div class="pnl-line">${esc(prev.label)} (botão ${esc(buttonName)}) · ${esc(prev.error)}</div>`;
+  const cls = prev.btc >= 0 ? "pnl-up" : "pnl-dn";
+  const sign = prev.btc >= 0 ? "+" : "";
+  const money = prev.exit > 0 ? ` · ${sign}${fmtBtcPnl(prev.btc)} BTC (~${fmtUsdPnl(prev.usd)})` : "";
+  return `<div class="pnl-line ${cls}">${esc(prev.label)} (botão ${esc(buttonName)}) · ${fmtCt(prev.totalCt)} ct${money}</div>`;
+}
+function pnlAccounts(prev) {
+  if (!prev) return "";
+  return prev.rows.map((r) => {
+    const col = r.ct > 0 ? (r.btc >= 0 ? "pnl-up" : "pnl-dn") : "";
+    const pnl = r.ct > 0 && prev.exit > 0 ? fmtBtcPnl(r.btc) + " BTC" : "";
+    return `<div class="pnl-row"><span>${esc(r.name)}</span><span>${r.has ? (r.ct >= 0.1 ? fmtCt(r.ct) + " ct" : "0 ct") : "sem perna"}</span><span class="${col}">${pnl}</span></div>`;
+  }).join("");
+}
 function paintReduce() {
   const on = reducing && deskKind !== "hedge";
-  const prev = on ? computeReducePreview(side) : null;
-  for (const [k, v, rows] of [["d-pnl-k", "d-pnl-v", "d-pnl-rows"], ["m-pnl-k", "m-pnl-v", "m-pnl-rows"]]) {
-    if (!$(k)) continue;
-    if (!prev) { $(k).textContent = "PNL"; $(v).textContent = "—"; $(v).className = "pnl-v"; if ($(rows)) $(rows).innerHTML = ""; continue; }
-    $(k).textContent = prev.label;
-    const cls = prev.error && !(prev.totalCt >= 0.1) ? "" : (prev.btc >= 0 ? "pnl-up" : "pnl-dn");
-    $(v).className = "pnl-v " + cls;
-    $(v).textContent = prev.error && !(prev.exit > 0) ? "—" : `${fmtBtcPnl(prev.btc)} BTC (~${fmtUsdPnl(prev.usd)})`;
-    const body = prev.rows.map((r) => {
-      const col = r.ct > 0 ? (r.btc >= 0 ? "pnl-up" : "pnl-dn") : "";
-      const pnl = r.ct > 0 ? fmtBtcPnl(r.btc) + " BTC" : "—";
-      return `<div class="pnl-row"><span>${esc(r.name)}</span><span>${r.has ? (r.ct > 0 ? fmtCt(r.ct) + " ct" : "0 ct") : "sem perna"}</span><span class="${col}">${pnl}</span></div>`;
-    }).join("");
-    const foot = prev.rows.length ? `<div class="pnl-row tot"><span>Total</span><span>${fmtCt(prev.totalCt)} ct</span><span class="${cls}">${fmtBtcPnl(prev.btc)} BTC</span></div>` : "";
-    const eq = !prev.error && prev.unit !== "pct" && prev.pct != null ? `<div class="d-empty">Mesmo % nas contas: ${fmtPct(prev.pct)}</div>` : "";
-    const err = prev.error ? `<div class="d-empty">${esc(prev.error)}</div>` : "";
-    if ($(rows)) $(rows).innerHTML = body + foot + eq + err;
-  }
+  const longBtn = on ? computeReducePreview("short") : null;
+  const shortBtn = on ? computeReducePreview("long") : null;
+  const lines = on ? pnlLine(longBtn, "LONG") + pnlLine(shortBtn, "SHORT") : "";
+  const acc = on && porConta ? pnlAccounts(longBtn) + pnlAccounts(shortBtn) : "";
+  if ($("d-pnl-rows")) $("d-pnl-rows").innerHTML = lines;
+  if ($("m-pnl-rows")) $("m-pnl-rows").innerHTML = lines;
+  if ($("d-pnl-acc")) { $("d-pnl-acc").innerHTML = acc; show($("d-pnl-acc"), on && porConta); }
+  if ($("m-pnl-acc")) { $("m-pnl-acc").innerHTML = acc; show($("m-pnl-acc"), on && porConta); }
+  document.querySelectorAll(".por-conta").forEach((b) => {
+    b.classList.toggle("on", porConta);
+    b.setAttribute("aria-expanded", porConta ? "true" : "false");
+  });
 }
 function paintActions() {
-  const longPrev = reducing ? computeReducePreview("long") : null;
-  const shortPrev = reducing ? computeReducePreview("short") : null;
+  const longPrev = reducing ? computeReducePreview("short") : null;
+  const shortPrev = reducing ? computeReducePreview("long") : null;
   let ct = 0, px = 0;
-  if (!reducing && deskKind === "scale") {
+  if (!reducing && deskKind === "scale" && sizeMode === "risco") {
     const plan = typeof scalePlan === "function" ? scalePlan() : null;
     ct = plan ? plan.legs.reduce((s, l) => s + l.ct, 0) : 0;
     px = plan ? plan.avg : 0;
   } else if (!reducing) {
-    const entry = deskKind === "limit" ? parseNum($("price").value) : lastPx;
-    const sized = sizesAt(entry);
-    ct = sized.totalCt;
-    px = entry || 0;
+    const sized = openSize();
+    ct = sized.ct;
+    px = quotePrice();
   }
   const subOf = (c, p) => (c > 0 && p > 0) ? `${fmtCt(c)} @ ${fmtPx(p)}` : "—";
   const longSub = reducing && longPrev ? subOf(longPrev.totalCt, longPrev.exit) : subOf(ct, px);
@@ -2225,18 +2506,19 @@ function paintActions() {
   if (deskKind === "hedge") { el.textContent = "CONFIRMAR HEDGE"; el.classList.add("short"); return; }
   el.classList.toggle("short", side === "short");
   const mine = side === "short" ? shortSub : longSub;
-  const verb = reducing ? "REDUZIR" : (deskKind === "scale" ? "ESCALA" : (ordType === "limit" ? "LIMITE" : "MERCADO"));
+  const verb = reducing ? "REDUZIR" : (deskKind === "scale" ? "ESCALA" : deskKind === "trigger" ? "STOP" : deskKind === "chase" ? "CHASE" : (ordType === "limit" ? "LIMITE" : "MERCADO"));
   el.innerHTML = `<span class="go-k">${side === "short" ? "SHORT" : "LONG"}</span><span class="go-sub">${verb} ${mine}</span>`;
 }
-function setReduceUnit(unit) {
-  reduceUnit = unit === "usd" || unit === "ct" ? unit : "pct";
-  const k = reduceUnit === "usd" ? "USD a reduzir" : reduceUnit === "ct" ? "Contratos a reduzir" : "% da perna";
-  const u = reduceUnit === "usd" ? "USD" : reduceUnit === "ct" ? "ct" : "%";
-  if ($("d-reduce-k")) $("d-reduce-k").textContent = k;
-  if ($("m-reduce-k")) $("m-reduce-k").textContent = k;
-  document.querySelectorAll(".reduce-unit").forEach((el) => { el.textContent = u; });
-  document.querySelectorAll("#d-reduce-units button, #m-reduce-units button").forEach((b) => {
-    b.classList.toggle("on", b.dataset.unit === reduceUnit);
+function setSizeMode(mode) {
+  if (mode === "risco" && reducing) mode = "pct";
+  sizeMode = mode === "pct" || mode === "risco" ? mode : "usd";
+  reduceUnit = sizeMode === "pct" ? "pct" : "usd";
+  const u = sizeMode === "pct" ? "%" : "USD";
+  const k = sizeMode === "pct" ? (reducing ? "% da perna" : "% do saldo") : "Tamanho";
+  for (const id of ["d-qty-u", "m-qty-u"]) if ($(id)) $(id).textContent = u;
+  for (const id of ["d-qty-k", "m-qty-k"]) if ($(id)) $(id).textContent = k;
+  document.querySelectorAll("#d-size-modes button, #m-size-modes button").forEach((b) => {
+    b.classList.toggle("on", b.dataset.size === sizeMode);
   });
   paintKind();
   updateSendLabel();
@@ -2254,9 +2536,7 @@ function updateDesk() {
     if (r != null) $("d-risk-range").value = String(Math.min(5, Math.max(0.1, r)));
   }
   if (deskKind === "limit" && document.activeElement !== $("d-price")) $("d-price").value = $("price").value;
-  const entry = deskKind === "market" ? lastPx : parseNum($("price").value);
-  const sized = sizesAt(entry);
-  if (deskKind === "scale") {
+  if (deskKind === "scale" && sizeMode === "risco" && !reducing) {
     const plan = scalePlan();
     $("d-size").textContent = plan && plan.totalUsd > 0 ? fmtUsd(plan.totalUsd) : "—";
     const totals = new Map();
@@ -2267,14 +2547,25 @@ function updateDesk() {
     }
     const rows = accountsForSize().map((a) => ({ name: a.name, sz: totals.get(a.name) && totals.get(a.name).any ? totals.get(a.name) : null }));
     $("d-size-rows").innerHTML = renderSizeRows(rows);
-    $("d-avg").textContent = plan ? fmtPx(plan.avg) : "—";
+    if ($("d-avg")) $("d-avg").textContent = plan ? fmtPx(plan.avg) : "—";
     const bars = $("d-bars");
-    bars.classList.toggle("short", side === "short");
-    const maxW = plan ? Math.max(...plan.legs.map((l) => l.weight)) : 1;
-    bars.innerHTML = plan ? plan.legs.map((l) => `<i style="height:${Math.max(8, Math.round(l.weight / maxW * 36))}px"></i>`).join("") : "";
-  } else {
-    $("d-size").textContent = sized.any ? fmtUsd(sized.totalUsd) : "—";
+    if (bars) {
+      bars.classList.toggle("short", side === "short");
+      const maxW = plan ? Math.max(...plan.legs.map((l) => l.weight)) : 1;
+      bars.innerHTML = plan ? plan.legs.map((l) => `<i style="height:${Math.max(8, Math.round(l.weight / maxW * 36))}px"></i>`).join("") : "";
+    }
+  } else if (!reducing) {
+    const sized = openSize();
+    $("d-size").textContent = sized.ct >= 0.1 ? fmtUsd(sized.ct * 100) : "—";
     $("d-size-rows").innerHTML = renderSizeRows(sized.rows);
+    if (deskKind === "scale" && $("d-bars")) {
+      const plan = scalePlan();
+      if ($("d-avg")) $("d-avg").textContent = plan ? fmtPx(plan.avg) : "—";
+      const bars = $("d-bars");
+      bars.classList.toggle("short", side === "short");
+      const maxW = plan ? Math.max(...plan.legs.map((l) => l.weight)) : 1;
+      bars.innerHTML = plan ? plan.legs.map((l) => `<i style="height:${Math.max(8, Math.round(l.weight / maxW * 36))}px"></i>`).join("") : "";
+    }
   }
   const eqs = accountsForSize();
   const btc = eqs.reduce((s, a) => s + (Number(a.eq) || 0), 0);
@@ -2320,7 +2611,15 @@ function renderDesk() {
   $("d-pos-body").innerHTML = posRows.length ? `<table class="d-table"><thead><tr><th>Símbolo</th><th>Conta</th><th class="r">Entrada</th><th class="r">Tamanho</th><th class="r">Resultado</th></tr></thead><tbody>${posRows.join("")}</tbody></table>` : '<div class="d-empty">Sem posição.</div>';
   const orders = [];
   for (const a of list) for (const o of accountOrders(a)) orders.push(o);
-  $("d-ord-body").innerHTML = orders.length ? `<table class="d-table"><thead><tr><th>Símbolo</th><th>Tipo</th><th>Conta</th><th class="r">Preço</th><th class="r">Tam.</th></tr></thead><tbody>${orders.map((o) => `<tr><td>BTC-USD-SWAP</td><td>${o.kind === "stop" ? "Stop" : "Limite"}</td><td>${esc(o.account)}</td><td class="r">${fmtPx(o.price)}</td><td class="r">${o.sz ? fmtCt(o.sz) + " ct" : "—"}</td></tr>`).join("")}</tbody></table>` : '<div class="d-empty">Nenhuma ordem aberta.</div>';
+  const cancel = (o) => o.kind === "chase" && o.algoId ? `<button type="button" class="cancel-algo" data-cancel-algo="${esc(o.algoId)}" data-account="${esc(o.prefix)}">Cancelar</button>` : "";
+  $("d-ord-body").innerHTML = orders.length ? `<table class="d-table"><thead><tr><th>Símbolo</th><th>Tipo</th><th>Conta</th><th class="r">Preço</th><th class="r">Tam.</th><th></th></tr></thead><tbody>${orders.map((o) => `<tr><td>BTC-USD-SWAP</td><td>${kindLabel(o.kind)}</td><td>${esc(o.account)}</td><td class="r">${o.price > 0 ? fmtPx(o.price) : "book"}</td><td class="r">${o.sz ? fmtCt(o.sz) + " ct" : "—"}</td><td>${cancel(o)}</td></tr>`).join("")}</tbody></table>` : '<div class="d-empty">Nenhuma ordem aberta.</div>';
+  if ($("m-ord-body")) {
+    const live = [];
+    for (const a of (lastAccounts || [])) for (const o of accountOrders(a)) live.push(o);
+    const box = $("m-ord-panel");
+    if (box) show(box, live.length > 0);
+    $("m-ord-body").innerHTML = live.map((o) => `<div class="ord-card"><span>${kindLabel(o.kind)} · ${esc(o.account)} · ${o.price > 0 ? fmtPx(o.price) : "book"} · ${o.sz ? fmtCt(o.sz) + " ct" : ""}</span>${cancel(o)}</div>`).join("");
+  }
   updateDesk();
 }
 function fillFilters() {
@@ -2346,49 +2645,91 @@ function copyField(from, to) {
   $(to).value = $(from).value;
   $(to).dispatchEvent(new Event("input", { bubbles: true }));
 }
+function sizeHint() {
+  if (deskKind === "hedge") return "Não mexe na long. Os stops só saem se o short zerar.";
+  if (reducing && sizeMode === "pct") return "% da perna existente, em cada conta. LONG reduz a short. SHORT reduz a long.";
+  if (reducing) return "O USD se reparte na proporção de cada perna. LONG reduz a short. SHORT reduz a long.";
+  if (sizeMode === "risco") return "O tamanho sai do risco e da distância até o stop, em cada conta.";
+  if (sizeMode === "pct") return "% do saldo disponível de cada conta.";
+  return "O USD se reparte entre as 4 contas na proporção do saldo.";
+}
+function paintQtyLabel() {
+  const k = sizeMode === "pct" ? (reducing ? "% da perna" : "% do saldo") : "Tamanho";
+  const u = sizeMode === "pct" ? "%" : "USD";
+  for (const id of ["d-qty-k", "m-qty-k"]) if ($(id)) $(id).textContent = k;
+  for (const id of ["d-qty-u", "m-qty-u"]) if ($(id)) $(id).textContent = u;
+  for (const id of ["d-qty", "m-qty"]) if ($(id)) $(id).setAttribute("aria-label", k);
+  if ($("d-size-k")) $("d-size-k").textContent = "Tamanho";
+}
 function paintKind() {
-  for (const [id, k] of [["btn-market", "market"], ["btn-limit", "limit"], ["btn-scale", "scale"], ["btn-hedge", "hedge"]]) {
-    if (!$(id)) continue;
-    $(id).classList.toggle("on", deskKind === k);
-    $(id).setAttribute("aria-pressed", deskKind === k);
-  }
   const hedge = deskKind === "hedge";
   const scale = deskKind === "scale";
-  show($("m-hedge"), hedge);
-  show($("m-scale"), scale);
-  show($("m-reduce"), reducing && !hedge);
-  show($("entry-risk"), !hedge && !reducing);
-  show($("d-open-box"), !hedge && !reducing);
-  show($("d-hedge"), hedge);
-  show($("d-reduce-box"), reducing && !hedge);
-  show($("d-sides"), !hedge);
-  show($("m-sides"), !hedge);
-  show($("d-size-note"), !hedge && !reducing);
-  show($("d-reduce-toggle"), false);
-  if ($("btn-reduce")) show($("btn-reduce"), !hedge);
-  show($("d-price-box"), deskKind === "limit");
-  show($("d-scale"), scale);
-  show($("price-row"), deskKind === "limit" || (hedge && hedgeOrd === "limit"));
-  const which = reduceUnit === "pct"
-    ? "Reduz a perna " + side + ", nas 4 contas."
-    : "Reduz a perna " + side + ". O valor entra no mesmo % em cada conta.";
-  if ($("d-reduce-which")) $("d-reduce-which").textContent = which;
-  if ($("m-reduce-which")) $("m-reduce-which").textContent = which;
-  if ($("btn-reduce")) { $("btn-reduce").classList.toggle("on", reducing); $("btn-reduce").setAttribute("aria-pressed", reducing); }
-  if ($("d-reduce-toggle")) { $("d-reduce-toggle").classList.toggle("on", reducing); $("d-reduce-toggle").setAttribute("aria-pressed", reducing); }
-  document.querySelectorAll("#d-tabs .d-tab").forEach((b) => {
-    let on = false;
-    if (b.dataset.reduce) on = deskTab === "post" && reducing;
-    else if (b.dataset.tab === "post") on = deskTab === "post" && !reducing;
-    else on = deskTab === b.dataset.tab;
-    b.classList.toggle("on", on);
-  });
+  const showSize = !hedge;
+  const showQty = showSize && sizeMode !== "risco";
+  const showRisk = showSize && !reducing && sizeMode === "risco";
+  const showStop = showSize && !reducing && (sizeMode === "risco" || tpslOn);
+  if ($("m-hedge")) show($("m-hedge"), hedge);
+  if ($("d-hedge")) show($("d-hedge"), hedge);
+  if ($("m-scale")) show($("m-scale"), scale);
+  if ($("d-scale")) show($("d-scale"), scale);
+  if ($("d-sides")) show($("d-sides"), !hedge);
+  if ($("m-sides")) show($("m-sides"), !hedge);
+  if ($("d-size-modes")) show($("d-size-modes"), showSize);
+  if ($("m-size-modes")) show($("m-size-modes"), showSize);
+  if ($("d-qty-box")) show($("d-qty-box"), showQty);
+  if ($("m-qty-box")) show($("m-qty-box"), showQty);
+  if ($("d-risk-box")) show($("d-risk-box"), showRisk);
+  if ($("m-risk-box")) show($("m-risk-box"), showRisk);
+  if ($("d-stop-box")) show($("d-stop-box"), showStop);
+  if ($("m-stop-box")) show($("m-stop-box"), showStop);
+  if ($("d-size-box")) show($("d-size-box"), false);
+  if ($("d-size-rows")) show($("d-size-rows"), false);
+  if ($("d-dock")) show($("d-dock"), !hedge && deskTab === "post");
+  if ($("d-price-box")) show($("d-price-box"), deskKind === "limit");
+  if ($("price-row")) show($("price-row"), deskKind === "limit" || (hedge && hedgeOrd === "limit"));
+  if ($("d-trigger-box")) show($("d-trigger-box"), deskKind === "trigger");
+  if ($("m-trigger-row")) show($("m-trigger-row"), deskKind === "trigger");
+  if ($("d-chase-box")) show($("d-chase-box"), deskKind === "chase");
+  if ($("m-chase-row")) show($("m-chase-row"), deskKind === "chase");
+  if ($("d-mode-togs")) show($("d-mode-togs"), !hedge);
+  if ($("m-mode-togs")) show($("m-mode-togs"), !hedge);
+  if ($("d-pnl")) show($("d-pnl"), reducing && !hedge);
+  if ($("m-pnl")) show($("m-pnl"), reducing && !hedge);
+  if ($("d-reduce-toggle")) show($("d-reduce-toggle"), !hedge);
+  if ($("m-reduce-toggle")) show($("m-reduce-toggle"), !hedge);
+  paintQtyLabel();
+  const hint = sizeHint();
+  if ($("d-size-note")) { show($("d-size-note"), !hedge); $("d-size-note").textContent = hint; }
+  if ($("m-size-note")) $("m-size-note").textContent = hedge ? "Não mexe na long." : hint;
+  if ($("d-reduce-which")) $("d-reduce-which").textContent = "";
+  if ($("m-reduce-which")) $("m-reduce-which").textContent = "";
+  for (const id of ["d-reduce-toggle", "m-reduce-toggle"]) {
+    const el = $(id);
+    if (!el) continue;
+    el.classList.toggle("on", reducing);
+    el.setAttribute("aria-pressed", reducing ? "true" : "false");
+  }
+  for (const id of ["d-tpsl-tog", "m-tpsl-tog"]) {
+    const el = $(id);
+    if (!el) continue;
+    el.classList.toggle("on", tpslOn);
+    el.setAttribute("aria-pressed", tpslOn ? "true" : "false");
+  }
+  document.querySelectorAll("#d-tabs .d-tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === deskTab));
+  document.querySelectorAll("#d-size-modes button, #m-size-modes button").forEach((b) => b.classList.toggle("on", b.dataset.size === (reducing && sizeMode === "risco" ? "pct" : sizeMode)));
+  document.querySelectorAll("#d-px-type button, #m-px-type button").forEach((b) => b.classList.toggle("on", b.dataset.px === pxType));
+  document.querySelectorAll("#d-chase-unit button, #m-chase-unit button").forEach((b) => b.classList.toggle("on", b.dataset.chase === chaseUnit));
+  for (const id of ["d-chase-u", "m-chase-u"]) if ($(id)) $(id).textContent = chaseUnit === "pct" ? "%" : "USD";
   if (typeof updateChartHint === "function") updateChartHint();
 }
 function setReducing(on) {
-  reducing = !!on;
-  if (reducing && deskKind === "hedge") deskKind = ordType === "limit" ? "limit" : "market";
+  const next = !!on;
+  if (next && deskKind === "hedge") return;
+  if (next && !reducing && sizeMode === "risco") sizeMode = "pct";
+  reducing = next;
+  try { sessionStorage.setItem("painel_reduce", reducing ? "1" : "0"); } catch (e) {}
   if (reducing) deskTab = "post";
+  reduceUnit = sizeMode === "pct" ? "pct" : "usd";
   paintKind();
   updateSendLabel();
   drawPreviews();
@@ -2397,12 +2738,13 @@ function setDeskKind(kind) {
   if (kind === "scale" && deskKind !== "scale") scaleArm = "from";
   deskKind = kind;
   if ($("d-kind")) $("d-kind").value = kind;
-  if (kind === "hedge") reducing = false;
-  if (kind === "market") setOrdType("market");
-  else if (kind === "limit") setOrdType("limit");
-  else { entradaPreviewHold = false; drawPreviews(); }
+  if ($("m-kind")) $("m-kind").value = kind;
+  if (kind === "market") ordType = "market";
+  else if (kind === "limit") { ordType = "limit"; if (!(parseNum($("price").value) > 0)) fillMark(); }
+  entradaPreviewHold = false;
   paintKind();
   updateSendLabel();
+  drawPreviews();
 }
 function setDeskTab(name) {
   deskTab = name;
@@ -2412,6 +2754,7 @@ function setDeskTab(name) {
   show($("d-tpsl"), name === "tpsl");
   if (name === "reduce") setTab("ajustar");
   else if (name === "post") setTab("entrada");
+  paintKind();
   drawPreviews();
 }
 function hedgePctValue() {
@@ -2503,8 +2846,8 @@ async function sendHedge() {
     $("scale-ok").disabled = false;
   }
 }
-function reducePayload(prev) {
-  const payload = { side };
+function reducePayload(prev, leg) {
+  const payload = { side: leg, sizeMode: reduceUnit === "pct" ? "pct" : "usd" };
   if (reduceUnit === "pct") payload.pct = prev.pct;
   else payload.contracts = prev.rows.filter((r) => r.ct >= 0.1).map((r) => ({ name: r.name, ct: roundLot(r.ct) }));
   return payload;
@@ -2517,28 +2860,70 @@ function reduceRejected(data) {
 }
 async function sendReduce() {
   if (deskKind === "scale") { openScaleSheet(); return; }
-  const prev = computeReducePreview(side);
+  const leg = legFor(side);
+  const prev = computeReducePreview(leg);
   if (!prev || prev.error || !(prev.totalCt >= 0.1)) {
-    $("banner-err").textContent = (prev && prev.error) || "Nada para reduzir.";
-    show($("banner-err"), true);
+    formError((prev && prev.error) || "Nada para reduzir.");
     return;
   }
   const useLimit = deskKind === "limit";
-  sending = true; $("send").disabled = true; $("send").textContent = "ENVIANDO…";
-  try {
-    const payload = { ...reducePayload(prev), reduce: true, ordType: useLimit ? "limit" : "market" };
-    if (useLimit) payload.price = prev.exit;
-    const { res, data } = await api("/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-    if (res.status === 401) return;
-    if (data.error && !data.accounts) { $("banner-err").textContent = reduceRejected(data); show($("banner-err"), true); return; }
-    renderResult(data);
-    if (data.aborted || data.ok === false) { $("banner-err").textContent = data.abort_msg || data.error || "Redução bloqueada."; show($("banner-err"), true); }
-    loadPositions();
-  } catch (e) { $("banner-err").textContent = "Não consegui falar com o servidor."; show($("banner-err"), true); }
-  finally { sending = false; $("send").disabled = false; updateSendLabel(); }
+  const payload = { ...reducePayload(prev, leg), reduce: true, ordType: useLimit ? "limit" : "market" };
+  if (useLimit) payload.price = prev.exit;
+  await postOrder(payload);
+}
+async function sendSized() {
+  const amount = qtyValue();
+  if (sizeMode === "usd" && !(amount > 0)) return formError("Valor em USD inválido.");
+  if (sizeMode === "pct" && !(amount >= 1 && amount <= 100)) return formError("Percentual inválido: use um valor de 1 a 100.");
+  const payload = { side, ordType: deskKind === "limit" ? "limit" : "market", sizeMode };
+  if (sizeMode === "usd") payload.usd = amount; else payload.pct = amount;
+  if (deskKind === "limit") {
+    const price = parseNum($("price").value);
+    if (!(price > 0)) return formError("Preenche um preço limite válido.");
+    payload.price = price;
+  }
+  const stop = optionalStop();
+  if (stop) payload.stop = stop;
+  await postOrder(payload);
+}
+async function sendAlgo(kind) {
+  const leg = reducing ? legFor(side) : side;
+  const payload = { side: leg, ordType: kind, triggerPxType: pxType };
+  if (kind === "trigger") {
+    const px = triggerValue();
+    if (!(px > 0)) return formError("Preenche o gatilho.");
+    payload.triggerPx = px;
+  }
+  if (reducing) {
+    const prev = computeReducePreview(leg);
+    if (!prev || prev.error || !(prev.totalCt >= 0.1)) return formError((prev && prev.error) || "Nada para reduzir.");
+    Object.assign(payload, reducePayload(prev, leg));
+    payload.reduce = true;
+    payload.ordType = kind;
+  } else if (sizeMode === "risco") {
+    const stop = parseNum($("stop").value), risk = parseNum($("risk").value);
+    if (!(stop > 0)) return formError("Preenche um stop válido.");
+    if (!(risk > 0 && risk <= 5)) return formError("Risco precisa ser maior que 0 e no máximo 5%.");
+    payload.sizeMode = "risk"; payload.stop = stop; payload.risk = risk;
+  } else if (sizeMode === "pct") {
+    const pct = qtyValue();
+    if (!(pct >= 1 && pct <= 100)) return formError("Percentual inválido: use um valor de 1 a 100.");
+    payload.sizeMode = "pct"; payload.pct = pct;
+    const stop = optionalStop(); if (stop) payload.stop = stop;
+  } else {
+    const usd = qtyValue();
+    if (!(usd > 0)) return formError("Valor em USD inválido.");
+    payload.sizeMode = "usd"; payload.usd = usd;
+    const stop = optionalStop(); if (stop) payload.stop = stop;
+  }
+  if (kind === "chase") {
+    const max = chaseValue();
+    if (max != null && max > 0) { payload.maxChase = max; payload.maxChaseUnit = chaseUnit; }
+  }
+  await postOrder(payload);
 }
 function openScaleReduceSheet() {
-  const prev = computeReducePreview(side);
+  const prev = computeReducePreview(legFor(side));
   if (!prev || prev.error || !(prev.totalCt >= 0.1)) {
     const msg = (prev && prev.error) || "Nada para reduzir.";
     $("banner-err").textContent = msg;
@@ -2561,7 +2946,7 @@ function openScaleReduceSheet() {
   try { $("scale-cancel").focus(); } catch (e) {}
 }
 async function submitScaleReduce() {
-  const prev = computeReducePreview(side);
+  const prev = computeReducePreview(legFor(side));
   const inp = scaleInputs();
   if (!prev || prev.error) {
     $("scale-msg").textContent = (prev && prev.error) || "Nada para reduzir.";
@@ -2570,7 +2955,7 @@ async function submitScaleReduce() {
   }
   $("scale-ok").disabled = true;
   try {
-    const payload = { ...reducePayload(prev), reduce: true, from: inp.from, to: inp.to, n: inp.n, priceSkew: !priceEven, sizeSkew: !sizeEven };
+    const payload = { ...reducePayload(prev, legFor(side)), reduce: true, from: inp.from, to: inp.to, n: inp.n, priceSkew: !priceEven, sizeSkew: !sizeEven };
     const { res, data } = await api("/scale", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok || data.aborted || data.ok === false) {
       $("scale-msg").textContent = reduceRejected(data) || "Redução bloqueada. Nada enviado.";
@@ -2591,10 +2976,25 @@ function openScaleSheet() {
   sheetKind = "scale";
   $("scale-title").textContent = "Escala";
   $("scale-note").textContent = "Confirmar manda as ordens limite para as 4 contas.";
+  const inp = scaleInputs();
+  if (!(inp.from > 0) || !(inp.to > 0) || inp.from === inp.to || !(inp.n >= 2)) {
+    formError("Preencha os dois preços e a quantidade de ordens.");
+    return;
+  }
+  if (sizeMode !== "risco") {
+    const sized = openSize();
+    if (!(sized.ct >= 0.1)) { formError("Tamanho abaixo de 0,1 ct."); return; }
+    $("scale-list").innerHTML = `<li>${fmtCt(sized.ct)} ct · ${fmtUsd(sized.ct * 100)}</li><li>${fmtPx(inp.from)} → ${fmtPx(inp.to)} · ${inp.n} ordens</li>`;
+    $("scale-msg").textContent = "";
+    show($("scale-msg"), false);
+    $("scale-ok").disabled = false;
+    scaleOpen = true;
+    show($("scale-sheet"), true);
+    return;
+  }
   const plan = scalePlan();
   if (!plan) {
-    $("d-msg").textContent = "Preencha os dois preços, o stop e o risco.";
-    $("d-msg").className = "err";
+    formError("Preencha os dois preços, o stop e o risco.");
     return;
   }
   const byName = new Map();
@@ -2620,11 +3020,20 @@ function closeScaleSheet() {
 async function submitScale() {
   if (sheetKind === "hedge") return sendHedge();
   if (sheetKind === "scale-reduce" || reducing) return submitScaleReduce();
-  const plan = scalePlan();
-  if (!plan) return;
+  const inp = scaleInputs();
+  const plan = sizeMode === "risco" ? scalePlan() : null;
+  if (sizeMode === "risco" && !plan) return;
   $("scale-ok").disabled = true;
   try {
-    const payload = { side, stop: plan.stop, risk: plan.risk, from: plan.from, to: plan.to, n: plan.n, priceSkew: !priceEven, sizeSkew: !sizeEven };
+    const payload = { side, from: inp.from, to: inp.to, n: inp.n, priceSkew: !priceEven, sizeSkew: !sizeEven };
+    if (sizeMode === "usd" || sizeMode === "pct") {
+      payload.sizeMode = sizeMode;
+      if (sizeMode === "usd") payload.usd = qtyValue(); else payload.pct = qtyValue();
+      const stop = parseNum($("stop").value);
+      if (stop > 0) payload.stop = stop;
+    } else {
+      payload.stop = plan.stop; payload.risk = plan.risk;
+    }
     const { res, data } = await api("/scale", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok || data.aborted || data.ok === false) {
       $("scale-msg").textContent = data.abort_msg || data.error || "Escala bloqueada. Nada enviado.";
@@ -2649,11 +3058,10 @@ function initDesk() {
   $("d-filter-ord").onchange = () => setDeskFilter($("d-filter-ord").value);
   $("d-tabs").onclick = (ev) => {
     const b = ev.target.closest(".d-tab");
-    if (!b) return;
-    if (b.dataset.reduce) { setDeskTab("post"); setReducing(true); return; }
-    if (b.dataset.tab === "post") { setReducing(false); setDeskTab("post"); return; }
+    if (!b || !b.dataset.tab) return;
     setDeskTab(b.dataset.tab);
   };
+  if ($("m-kind")) $("m-kind").onchange = () => setDeskKind($("m-kind").value);
   $("d-risk").addEventListener("input", () => copyField("d-risk", "risk"));
   $("d-risk-range").addEventListener("input", () => { $("d-risk").value = $("d-risk-range").value; copyField("d-risk", "risk"); });
   $("d-max").onclick = () => { $("d-risk").value = "5"; $("d-risk-range").value = "5"; copyField("d-risk", "risk"); };
@@ -2677,12 +3085,45 @@ function initDesk() {
   $("d-size-even").onclick = () => { sizeEven = !sizeEven; $("d-size-even").classList.toggle("on", sizeEven); $("d-size-even").setAttribute("aria-pressed", sizeEven); $("d-size-even").textContent = sizeEven ? "Tamanho igual" : "Tamanho crescente"; touchScale(); };
     $("d-long").onclick = () => { setSide("long"); if (deskKind === "scale") { openScaleSheet(); return; } $("send").click(); };
   $("d-short").onclick = () => { setSide("short"); if (deskKind === "scale") { openScaleSheet(); return; } $("send").click(); };
-  $("d-reduce-toggle").onclick = () => setReducing(!reducing);
-  $("d-reduce-pct").addEventListener("input", () => { if ($("m-reduce-pct")) $("m-reduce-pct").value = $("d-reduce-pct").value; drawPreviews(); });
-  $("m-reduce-pct").addEventListener("input", () => { if ($("d-reduce-pct")) $("d-reduce-pct").value = $("m-reduce-pct").value; drawPreviews(); });
-  const onUnit = (ev) => { const b = ev.target.closest("[data-unit]"); if (b) setReduceUnit(b.dataset.unit); };
-  if ($("d-reduce-units")) $("d-reduce-units").onclick = onUnit;
-  if ($("m-reduce-units")) $("m-reduce-units").onclick = onUnit;
+  const onReduce = () => setReducing(!reducing);
+  $("d-reduce-toggle").onclick = onReduce;
+  if ($("m-reduce-toggle")) $("m-reduce-toggle").onclick = onReduce;
+  const onPor = () => { porConta = !porConta; paintReduce(); };
+  if ($("d-por-conta")) $("d-por-conta").onclick = onPor;
+  if ($("m-por-conta")) $("m-por-conta").onclick = onPor;
+  if ($("d-post-tog")) $("d-post-tog").onclick = () => { setReducing(false); setDeskTab("post"); };
+  if ($("m-post")) $("m-post").onclick = () => setReducing(false);
+  const onTpsl = () => { tpslOn = !tpslOn; paintKind(); drawPreviews(); };
+  if ($("d-tpsl-tog")) $("d-tpsl-tog").onclick = onTpsl;
+  if ($("m-tpsl-tog")) $("m-tpsl-tog").onclick = onTpsl;
+  const onSize = (ev) => { const b = ev.target.closest("[data-size]"); if (b) setSizeMode(b.dataset.size); };
+  if ($("d-size-modes")) $("d-size-modes").onclick = onSize;
+  if ($("m-size-modes")) $("m-size-modes").onclick = onSize;
+  const syncQty = (from, to) => { if ($(to) && document.activeElement !== $(to)) $(to).value = $(from).value; drawPreviews(); updateSendLabel(); };
+  if ($("d-qty")) $("d-qty").addEventListener("input", () => syncQty("d-qty", "m-qty"));
+  if ($("m-qty")) $("m-qty").addEventListener("input", () => syncQty("m-qty", "d-qty"));
+  const onPx = (ev) => {
+    const b = ev.target.closest("[data-px]");
+    if (!b) return;
+    pxType = b.dataset.px === "mark" ? "mark" : "last";
+    paintKind();
+  };
+  if ($("d-px-type")) $("d-px-type").onclick = onPx;
+  if ($("m-px-type")) $("m-px-type").onclick = onPx;
+  const syncTrigger = (from, to) => { if ($(to)) $(to).value = $(from).value; entradaPreviewHold = false; drawPreviews(); updateSendLabel(); };
+  if ($("d-trigger")) $("d-trigger").addEventListener("input", () => syncTrigger("d-trigger", "m-trigger"));
+  if ($("m-trigger")) $("m-trigger").addEventListener("input", () => syncTrigger("m-trigger", "d-trigger"));
+  const onChaseUnit = (ev) => {
+    const b = ev.target.closest("[data-chase]");
+    if (!b) return;
+    chaseUnit = b.dataset.chase === "usd" ? "usd" : "pct";
+    paintKind();
+  };
+  if ($("d-chase-unit")) $("d-chase-unit").onclick = onChaseUnit;
+  if ($("m-chase-unit")) $("m-chase-unit").onclick = onChaseUnit;
+  const syncChase = (from, to) => { if ($(to)) $(to).value = $(from).value; };
+  if ($("d-chase")) $("d-chase").addEventListener("input", () => syncChase("d-chase", "m-chase"));
+  if ($("m-chase")) $("m-chase").addEventListener("input", () => syncChase("m-chase", "d-chase"));
   const setHedgeMode = (mode) => {
     hedgeMode = mode;
     $("d-mode-short").classList.toggle("on", mode === "short");
@@ -2717,6 +3158,9 @@ function initDesk() {
   $("m-hedge-lmt").onclick = () => { hedgeOrd = "limit"; $("m-hedge-lmt").classList.add("on"); $("m-hedge-mkt").classList.remove("on"); paintKind(); if (lastPx && !$("price").value) $("price").value = String(Math.round(lastPx * 10) / 10); drawPreviews(); };
   $("accts").onclick = (ev) => { const b = ev.target.closest(".chip"); if (b) setDeskFilter(b.dataset.acct); };
   setDeskFilter(deskFilter);
+  const onAdjLeg = (ev) => { const b = ev.target.closest("[data-leg]"); if (b) setAdjLeg(b.dataset.leg); };
+  if ($("d-adj-leg")) $("d-adj-leg").onclick = onAdjLeg;
+  if ($("m-adj-leg")) $("m-adj-leg").onclick = onAdjLeg;
   $("d-pcts").onclick = (ev) => {
     const b = ev.target.closest("[data-pct]"); if (!b) return;
     setAdjPct(Number(b.dataset.pct));
@@ -2735,9 +3179,20 @@ function initDesk() {
   $("scale-ok").onclick = () => submitScale();
   $("scale-sheet").addEventListener("click", (ev) => { if (ev.target === $("scale-sheet")) closeScaleSheet(); });
   document.querySelectorAll("#d-pcts .d-tog").forEach((b) => b.classList.toggle("on", Number(b.dataset.pct) === adjPct));
-  if (isDesk()) setDeskKind("limit");
+  if (isDesk()) setDeskKind("limit"); else setDeskKind("market");
+  document.body.addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-cancel-algo]");
+    if (!b || sending) return;
+    sending = true;
+    try {
+      const { res, data } = await api("/cancel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account: b.dataset.account, algoId: b.dataset.cancelAlgo }) });
+      if (!res.ok || data.aborted || data.ok === false) formError(data.abort_msg || data.error || "Não cancelou.");
+      else loadPositions();
+    } catch (e) { formError("Não consegui falar com o servidor."); }
+    finally { sending = false; }
+  });
   const mq = window.matchMedia("(min-width: 1024px)");
-  const onDesk = () => { syncVolume(); if (deskKind !== "scale") setDeskKind(ordType === "limit" ? "limit" : "market"); redrawChartLines(); };
+  const onDesk = () => { syncVolume(); paintKind(); redrawChartLines(); };
   if (mq.addEventListener) mq.addEventListener("change", onDesk); else mq.addListener(onDesk);
 }
 $("risk").addEventListener("input", () => { if (typeof updateDesk === "function") updateDesk(); });

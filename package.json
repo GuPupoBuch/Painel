@@ -2,9 +2,10 @@
   "name": "painel",
   "private": true,
   "scripts": {
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:deno": "deno test -A supabase/functions/painel/index_test.ts"
   },
   "devDependencies": {
-    "@playwright/test": "^1.49.1"
+    "@playwright/test": "1.65.1"
   }
 }
