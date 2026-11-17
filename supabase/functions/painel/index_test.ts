@@ -95,18 +95,26 @@ Deno.test("escala de 10 pernas: perda no stop cabe no risco, e uma perna ruim de
   balances = { OKX: 1, OKX2: 1 };
   positions = {};
   algos = {};
-  const prices = __test.scalePrices(63000, 64800, 10, false);
+  const prices = __test.scalePrices(63000, 64800, 10, false).map((p) => Math.round(p * 10) / 10);
   const stop = 60000;
+  const sized = __test.scaleRiskLots(1, prices, stop, 1, false);
+  const cts = sized.cts.filter((c) => c >= 0.1);
+  if (new Set(cts).size > 2) throw new Error("tamanho igual não ficou igual: " + cts.join(","));
+  const mid = (prices[0] + prices[prices.length - 1]) / 2;
+  if (Math.abs(sized.avg - mid) > mid * 0.01) throw new Error("média longe do centro " + sized.avg);
   let expect = 0;
-  for (const price of prices) {
-    const ct = ctFromRisk(1, price, stop, 1 / 10);
-    if (ct >= 0.1) expect += lossBtc(ct, price, stop);
-  }
+  sized.cts.forEach((ct, i) => { if (ct >= 0.1) expect += lossBtc(ct, prices[i], stop); });
+  const target = ctFromRisk(1, sized.avg, stop, 1);
+  const targetLoss = lossBtc(target, sized.avg, stop);
+  if (Math.abs(expect - targetLoss) > targetLoss * 0.08) throw new Error(`perda ${expect} != média ${targetLoss}`);
   const dry = await runScale("long", stop, 1, 63000, 64800, 10, false, false, true);
   if (posts().length) throw new Error("dry enviou");
-  const loss = (dry.accounts as any[]).find((a) => a.prefix === "OKX").loss_btc as number;
-  if (Math.abs(loss - expect) > 1e-9) throw new Error(`perda ${loss} != ${expect}`);
-  if (loss > 1 * 0.01 + 1e-8) throw new Error("perda passou do risco");
+  const row = (dry.accounts as any[]).find((a) => a.prefix === "OKX");
+  const loss = row.loss_btc as number;
+  if (Math.abs(loss - expect) > 1e-6) throw new Error(`perda ${loss} != ${expect}`);
+  const legCts = (row.legs as any[]).map((l) => l.ct);
+  if (new Set(legCts).size > 2) throw new Error("pernas desiguais " + legCts.join(","));
+  if (loss > 1 * 0.01 + 1e-6) throw new Error("perda passou do risco");
   if (loss < 1 * 0.01 * 0.5) throw new Error("perda ficou longe do risco");
 
   failBatch = true;
@@ -119,6 +127,23 @@ Deno.test("escala de 10 pernas: perda no stop cabe no risco, e uma perna ruim de
   const cancelled = hit("/api/v5/trade/cancel-batch-orders", "OKX").flatMap((c) => c.body as any[]);
   if (!cancelled.length || cancelled.some((x) => !x.ordId)) throw new Error("não desfez as pernas da OKX");
   if (hit("/api/v5/trade/cancel-batch-orders", "OKX2").length) throw new Error("desfez a conta que deu certo");
+});
+
+Deno.test("escala de hedge acumula a % vendida", async () => {
+  reset(); install();
+  balances = { OKX: 1 };
+  positions = { OKX: [leg("short", "64.1", "68000", "64100")] };
+  const dry = await __test.runHedgeScale(40, "short", 65000, 68000, 4, false, false, true, false);
+  if (dry.aborted) throw new Error(String(dry.abort_msg));
+  const legs = ((dry.accounts as any[])[0].legs) as { pct: number; ct: number }[];
+  if (legs.length !== 4) throw new Error(JSON.stringify(legs));
+  if (!(legs[0].pct < legs[1].pct && legs[2].pct < legs[3].pct)) throw new Error(JSON.stringify(legs));
+  if (!(legs[0].pct > 10)) throw new Error("começou do zero " + JSON.stringify(legs));
+  if (legs[3].pct !== 40) throw new Error("final " + legs[3].pct);
+  const live = await __test.runHedgeScale(40, "short", 65000, 68000, 4, false, false, false, false);
+  if (live.aborted) throw new Error(String(live.abort_msg));
+  const rows = hit("/api/v5/trade/batch-orders", "OKX").flatMap((c) => c.body as any[]);
+  if (rows.length !== 4 || rows.some((b) => b.posSide !== "short" || b.side !== "sell" || b.reduceOnly)) throw new Error(JSON.stringify(rows[0]));
 });
 
 Deno.test("altera limite e stop; stop do lado errado não sai", async () => {
