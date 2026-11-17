@@ -36,7 +36,11 @@ test("mobile 390: reduce verde, 44px e stop a mercado", async ({ page }) => {
   await page.screenshot({ path: "/opt/cursor/artifacts/painel-mobile-390-reduce.png", fullPage: true });
   await page.click("#tab-ajustar");
   await expect(page.locator("#m-adj-leg-note")).toHaveText("Escolha long ou short.");
-  await page.locator("#m-adj-leg").scrollIntoViewIfNeeded();
+  await page.evaluate(() => {
+    const el = document.querySelector("#tab-ajustar");
+    const top = el.getBoundingClientRect().top + window.scrollY - 120;
+    window.scrollTo(0, Math.max(0, top));
+  });
   await page.screenshot({ path: "/opt/cursor/artifacts/painel-mobile-390-ajustar.png", fullPage: false });
   await expect(page.locator("#btn-reduce")).toHaveCount(0);
 });
