@@ -80,6 +80,84 @@ const pyG = (x: number) => String(parseFloat(x.toPrecision(6)));
 type Side = "long" | "short";
 type Leg = { posSide: Side; pos: number; avg: number; mark: number; upl: number };
 const floor01 = (x: number) => Math.trunc(x / 0.1 + 1e-9) / 10;
+function roundLot(ct: number): number {
+  return Math.round(ct * 10 + 1e-9) / 10;
+}
+function clampLot(requested: number, pos: number): number {
+  if (!(requested > 0) || !(pos >= 0.1)) return 0;
+  const ct = Math.min(pos, roundLot(requested));
+  return ct >= 0.1 - 1e-9 ? ct : 0;
+}
+// PnL realizado de contrato inverso (ctVal 100 USD). USD ≈ BTC * preço de saída.
+function realizedPnlBtc(ct: number, entry: number, exit: number, side: Side): number {
+  if (!(ct > 0) || !(entry > 0) || !(exit > 0)) return 0;
+  const inv = side === "long" ? (1 / entry - 1 / exit) : (1 / exit - 1 / entry);
+  return ct * 100 * inv;
+}
+// Mesmo % da perna em cada conta. Arredonda no lote 0,1 e não passa da perna nem do total pedido.
+function allocateReduce(legs: { key: string; pos: number }[], totalCt: number): { key: string; ct: number }[] {
+  const usable = legs.map((l) => ({ key: l.key, pos: l.pos > 0 ? l.pos : 0 }));
+  const sum = usable.reduce((s, l) => s + l.pos, 0);
+  if (!(sum > 0) || !(totalCt > 0)) return usable.map((l) => ({ key: l.key, ct: 0 }));
+  const pct = Math.min(100, (totalCt / sum) * 100);
+  const cts = usable.map((l) => {
+    if (pct >= 100 - 1e-9) return { key: l.key, ct: roundLot(l.pos) };
+    const ct = Math.min(l.pos, roundLot(l.pos * pct / 100));
+    return { key: l.key, ct: ct >= 0.1 - 1e-9 ? ct : 0 };
+  });
+  const cap = pct >= 100 - 1e-9 ? roundLot(sum) : roundLot(sum * pct / 100);
+  let extra = roundLot(cts.reduce((s, r) => s + r.ct, 0) - cap);
+  let guard = 0;
+  while (extra >= 0.1 - 1e-9 && guard++ < 1000) {
+    const idx = (guard - 1) % cts.length;
+    if (cts[idx].ct >= 0.1 - 1e-9) {
+      cts[idx].ct = roundLot(cts[idx].ct - 0.1);
+      if (cts[idx].ct < 0.1 - 1e-9) cts[idx].ct = 0;
+      extra = roundLot(extra - 0.1);
+    }
+  }
+  return cts.map((r) => ({ key: r.key, ct: r.ct >= 0.1 - 1e-9 ? r.ct : 0 }));
+}
+function splitLots(total: number, weights: number[]): number[] {
+  if (!weights.length || !(total > 0)) return weights.map(() => 0);
+  const capped = roundLot(total);
+  const wsum = weights.reduce((s, w) => s + (w > 0 ? w : 0), 0) || 1;
+  const cts = weights.map((w) => {
+    const ct = roundLot(capped * (w > 0 ? w : 0) / wsum);
+    return ct >= 0.1 - 1e-9 ? ct : 0;
+  });
+  let extra = roundLot(cts.reduce((s, c) => s + c, 0) - capped);
+  let i = cts.length - 1;
+  let guard = 0;
+  while (Math.abs(extra) >= 0.1 - 1e-9 && guard++ < 1000) {
+    const step = extra > 0 ? -0.1 : 0.1;
+    const next = roundLot(cts[i] + step);
+    if (next >= -1e-9 && (step > 0 || cts[i] >= 0.1 - 1e-9)) {
+      cts[i] = next >= 0.1 - 1e-9 ? next : 0;
+      extra = roundLot(extra + step);
+    }
+    i = (i - 1 + cts.length) % cts.length;
+  }
+  return cts.map((c) => (c >= 0.1 - 1e-9 ? c : 0));
+}
+function contractMap(raw: unknown): Record<string, number> | null {
+  if (raw == null) return null;
+  const out: Record<string, number> = {};
+  const put = (key: string, v: unknown) => {
+    const ct = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(",", "."));
+    if (key && Number.isFinite(ct) && ct > 0) out[key] = ct;
+  };
+  if (Array.isArray(raw)) {
+    for (const row of raw) {
+      if (!row || typeof row !== "object") continue;
+      const rec = row as J;
+      put(String(rec.name ?? rec.prefix ?? "").trim(), rec.ct);
+    }
+  } else if (typeof raw === "object") {
+    for (const [k, v] of Object.entries(raw as J)) put(String(k).trim(), v);
+  }
+  return Object.keys(out).length ? out : null;
+}
 const isCf1 = (x: J) => { const c = String(x.closeFraction ?? ""); return c === "1" || parseFloat(c) === 1; };
 function ctFromRisk(eq: number, entry: number, stop: number, riskPct: number): number {
   if (!(eq > 0) || !(entry > 0) || !(stop > 0) || !(riskPct > 0)) return 0;
@@ -454,29 +532,36 @@ async function ensureCf1(P: string, posSide: Side, trigger: number): Promise<{ e
   return { err: null };
 }
 
-async function runReduce(legSide: Side, pct: number, ordType: "market" | "limit", price: number | null, dry: boolean) {
+async function runReduce(legSide: Side, pct: number, ordType: "market" | "limit", price: number | null, dry: boolean, contracts: Record<string, number> | null = null) {
   const t0 = Date.now();
   const lines: string[] = [];
-  const out: J = { reduce: true, side: legSide, pct, ordType, price: ordType === "limit" ? price : null, dry, aborted: false, abort_msg: null, accounts: [], warning: false };
+  const out: J = { reduce: true, side: legSide, pct, contracts: contracts || null, ordType, price: ordType === "limit" ? price : null, dry, aborted: false, abort_msg: null, accounts: [], warning: false };
   const mark = await markPx();
   out.mark = mark;
   if (ordType === "limit" && !(price != null && price > 0)) return { ...out, aborted: true, abort_msg: "ABORT preço inválido" };
   const R = await Promise.all(ACC.map(async ([P, n]) => {
+    const emptyStop = { cf1: null as J | null, others: [] as J[], trigger: null as number | null };
     try {
       const [eq, legs, cs] = await Promise.all([eq_of(P), legsOf(P), conds(P)]);
       const leg = legs.find((l) => l.posSide === legSide && l.pos > 0) ?? null;
       const mk = leg?.mark || mark;
-      if (!leg) return { P, n, eq, mk, pos: 0, avg: 0, ct: 0, st: pickStop(algosFor(cs, legSide), legSide), fillWarn: false, err: `sem perna ${legSide}`, skip: true };
-      const ct = pct >= 100 - 1e-9 ? leg.pos : Math.min(leg.pos, floor01(leg.pos * pct / 100));
+      if (!leg) return { P, n, eq, mk, pos: 0, avg: 0, ct: 0, st: pickStop(algosFor(cs, legSide), legSide), fillWarn: false, err: `sem perna ${legSide}`, skip: true, absent: false };
+      if (contracts && (contracts[n] ?? contracts[P]) == null) {
+        return { P, n, eq, mk, pos: leg.pos, avg: leg.avg, ct: 0, st: pickStop(algosFor(cs, legSide), legSide), fillWarn: false, err: null as string | null, skip: true, absent: true };
+      }
+      const ct = contracts
+        ? clampLot(contracts[n] ?? contracts[P], leg.pos)
+        : (pct >= 100 - 1e-9 ? leg.pos : Math.min(leg.pos, floor01(leg.pos * pct / 100)));
       const st = pickStop(algosFor(cs, legSide), legSide);
-      const needsStop = !(pct >= 100 - 1e-9 && ordType === "market");
+      const closingAll = ct >= leg.pos - 1e-9;
+      const needsStop = !(closingAll && ordType === "market");
       let err: string | null = null;
       if (ct < 0.1) err = "tamanho < 0.1 ct";
       else if (needsStop && st.trigger == null) err = "sem stop existente; não reduzo pra não deixar desprotegido";
       const fillWarn = ordType === "limit" && price != null && ((legSide === "long" && price <= mk) || (legSide === "short" && price >= mk));
-      return { P, n, eq, mk, pos: leg.pos, avg: leg.avg, ct, st, fillWarn, err, skip: false };
+      return { P, n, eq, mk, pos: leg.pos, avg: leg.avg, ct, st, fillWarn, err, skip: false, absent: false };
     } catch (e) {
-      return { P, n, eq: 0, mk: mark, pos: 0, avg: 0, ct: 0, st: { cf1: null, others: [], trigger: null }, fillWarn: false, err: "falha ao ler conta: " + String((e as Error).message || e).slice(0, 120), skip: false };
+      return { P, n, eq: 0, mk: mark, pos: 0, avg: 0, ct: 0, st: emptyStop, fillWarn: false, err: "falha ao ler conta: " + String((e as Error).message || e).slice(0, 120), skip: false, absent: false };
     }
   }));
   lines.push(`reduz ${legSide} ${pct}% ${ordType} ${ordType === "limit" ? pyG(price!) : "mercado"}  mark ${mark.toFixed(1)}`);
@@ -485,15 +570,20 @@ async function runReduce(legSide: Side, pct: number, ordType: "market" | "limit"
     pos_before: r.pos, close_ct: r.ct, close_usd: r.ct * 100, size_usd: r.ct * 100,
     pos_after: r.skip ? r.pos : Math.max(0, Math.round((r.pos - r.ct) * 10) / 10),
     stop: r.st.trigger, fill_warn: r.fillWarn,
-    status: r.skip ? "sem perna" : r.err ? "bloqueado" : "ok",
-    error: r.skip ? `sem perna ${legSide}` : r.err,
+    status: r.absent ? "fora" : r.skip ? "sem perna" : r.err ? "bloqueado" : "ok",
+    error: r.absent ? null : r.skip ? `sem perna ${legSide}` : r.err,
     ...extra,
   });
   out.accounts = R.map((r) => rowOf(r));
-  for (const r of R) lines.push(` ${r.P.padEnd(6)} ${legSide} ${r.pos.toFixed(1)} fecha ${r.ct.toFixed(1)} ${r.skip ? "sem perna" : r.err ?? "ok"}`);
+  for (const r of R) lines.push(` ${r.P.padEnd(6)} ${legSide} ${r.pos.toFixed(1)} fecha ${r.ct.toFixed(1)} ${r.absent ? "fora" : r.skip ? "sem perna" : r.err ?? "ok"}`);
   out.warning = R.some((r) => r.fillWarn);
   if (out.warning) out.warn_msg = "Preço limite cruzaria o mark e pode preencher na hora.";
-  if (!R.some((r) => !r.skip)) { lines.push("ABORT: nenhuma conta com essa perna"); out.raw = lines.join("\n"); return { ...out, aborted: true, abort_msg: `Nenhuma conta com perna ${legSide}.` }; }
+  if (!R.some((r) => !r.skip)) {
+    lines.push("ABORT: nenhuma conta com essa perna");
+    out.raw = lines.join("\n");
+    const msg = R.some((r) => r.absent) && !R.some((r) => !r.absent) ? "Nenhum tamanho para reduzir." : `Nenhuma conta com perna ${legSide}.`;
+    return { ...out, aborted: true, abort_msg: msg };
+  }
   if (dry) { lines.push("DRY: nada enviado"); out.raw = lines.join("\n"); return out; }
   const sendable = R.filter((r) => !r.skip && !r.err);
   if (!sendable.length) { out.raw = lines.join("\n"); return { ...out, aborted: true, abort_msg: "ABORT: nenhuma ordem enviada" }; }
@@ -501,7 +591,7 @@ async function runReduce(legSide: Side, pct: number, ordType: "market" | "limit"
   const O = await Promise.all(R.map(async (r) => {
     if (r.skip || r.err) return { code: null as string | null, sCode: null as string | null, sMsg: null as string | null, stopErr: null as string | null };
     try {
-      const full = pct >= 100 - 1e-9 && ordType === "market";
+      const full = r.ct >= r.pos - 1e-9 && ordType === "market";
       if (!full && r.st.cf1?.algoId) {
         const leftovers = r.st.others.filter((x) => x.algoId).map((x) => ({ algoId: x.algoId, instId: INST }));
         if (leftovers.length) await req(r.P, "POST", "/api/v5/trade/cancel-algos", leftovers);
@@ -651,6 +741,109 @@ async function runScale(side: Side, stop: number, riskPct: number, from: number,
   return out;
 }
 
+// Escala reduce-only. Sem `reduce` no /scale, runScale segue igual. Sem stop e sem risco.
+async function runScaleReduce(side: Side, from: number, to: number, n: number, priceSkew: boolean, sizeSkew: boolean, pct: number | null, contracts: Record<string, number> | null, dry: boolean) {
+  const out: J = { reduce: true, scale: true, side, from, to, n, priceSkew, sizeSkew, pct, dry, aborted: false, abort_msg: null, accounts: [], warning: false };
+  if (!(n >= 2 && n <= 50)) return { ...out, aborted: true, abort_msg: "A escala precisa de 2 a 50 ordens." };
+  if (!(from > 0) || !(to > 0) || from === to) return { ...out, aborted: true, abort_msg: "ABORT preço inválido" };
+  const prices = scalePrices(from, to, n, priceSkew);
+  const weights = prices.map((_, i) => (sizeSkew ? i + 1 : 1));
+  const mark = await markPx();
+  out.mark = mark;
+  const osSide = side === "long" ? "sell" : "buy";
+  const R = await Promise.all(ACC.map(async ([P, name]) => {
+    const emptyStop = { cf1: null as J | null, others: [] as J[], trigger: null as number | null };
+    try {
+      const [legs, cs] = await Promise.all([legsOf(P), conds(P)]);
+      const leg = legs.find((l) => l.posSide === side && l.pos > 0) ?? null;
+      const st = leg ? pickStop(algosFor(cs, side), side) : emptyStop;
+      if (!leg) return { P, name, pos: 0, avg: 0, ct: 0, parts: [] as { price: number; ct: number }[], st, err: `sem perna ${side}`, skip: true, absent: false, fillWarn: false };
+      if (contracts && (contracts[name] ?? contracts[P]) == null) {
+        return { P, name, pos: leg.pos, avg: leg.avg, ct: 0, parts: [] as { price: number; ct: number }[], st, err: null as string | null, skip: true, absent: true, fillWarn: false };
+      }
+      const total = contracts
+        ? clampLot(contracts[name] ?? contracts[P], leg.pos)
+        : (pct != null && pct >= 100 - 1e-9 ? leg.pos : Math.min(leg.pos, floor01(leg.pos * (pct || 0) / 100)));
+      const parts = splitLots(total, weights).map((ct, i) => ({ price: prices[i], ct })).filter((p) => p.ct >= 0.1);
+      const ct = roundLot(parts.reduce((s, p) => s + p.ct, 0));
+      let err: string | null = null;
+      if (ct < 0.1) err = "tamanho < 0.1 ct";
+      else if (st.trigger == null) err = "sem stop existente; não reduzo pra não deixar desprotegido";
+      const mk = leg.mark || mark;
+      const fillWarn = parts.some((p) => (side === "long" && p.price <= mk) || (side === "short" && p.price >= mk));
+      return { P, name, pos: leg.pos, avg: leg.avg, ct, parts, st, err, skip: false, absent: false, fillWarn };
+    } catch (e) {
+      return { P, name, pos: 0, avg: 0, ct: 0, parts: [] as { price: number; ct: number }[], st: emptyStop, err: "falha ao ler conta: " + String((e as Error).message || e).slice(0, 120), skip: false, absent: false, fillWarn: false };
+    }
+  }));
+  out.accounts = R.map((r) => ({
+    prefix: r.P, name: r.name, side, avg: r.avg || null, pos_before: r.pos,
+    close_ct: r.ct, close_usd: r.ct * 100, size_usd: r.ct * 100,
+    legs: r.parts.map((p) => ({ price: p.price, ct: p.ct, usd: p.ct * 100 })),
+    status: r.absent ? "fora" : r.skip ? "sem perna" : r.err ? "bloqueado" : "ok",
+    error: r.absent ? null : r.skip ? r.err : r.err,
+    fill_warn: r.fillWarn,
+  }));
+  out.warning = R.some((r) => r.fillWarn);
+  if (out.warning) out.warn_msg = "Preço limite cruzaria o mark e pode preencher na hora.";
+  if (!R.some((r) => !r.skip)) {
+    out.raw = "ABORT";
+    const msg = R.every((r) => r.absent || r.skip) && R.some((r) => r.absent) && !R.some((r) => !r.absent && r.skip)
+      ? "Nenhum tamanho para reduzir."
+      : `Nenhuma conta com perna ${side}.`;
+    return { ...out, aborted: true, abort_msg: R.some((r) => !r.absent) ? `Nenhuma conta com perna ${side}.` : msg };
+  }
+  if (dry) { out.raw = "DRY: nada enviado"; return out; }
+  const sendable = R.filter((r) => !r.skip && !r.err);
+  if (!sendable.length) { out.raw = "ABORT"; return { ...out, aborted: true, abort_msg: "ABORT: nenhuma ordem enviada" }; }
+  const O = await Promise.all(R.map(async (r) => {
+    if (r.skip || r.err) return { ok: false, skipped: true, msg: r.err, placed: [] as string[] };
+    if (r.st.trigger != null && !r.st.cf1) {
+      const placedStop = await ensureCf1(r.P, side, r.st.trigger);
+      if (placedStop.err) return { ok: false, skipped: false, msg: placedStop.err, placed: [] as string[] };
+    } else if (r.st.cf1?.algoId && r.st.others.length) {
+      const leftovers = r.st.others.filter((x) => x.algoId).map((x) => ({ algoId: x.algoId, instId: INST }));
+      if (leftovers.length) await req(r.P, "POST", "/api/v5/trade/cancel-algos", leftovers);
+    }
+    const placed: string[] = [];
+    let fail = "";
+    for (let i = 0; i < r.parts.length; i += 20) {
+      const chunk = r.parts.slice(i, i + 20).map((l) => ({
+        instId: INST, tdMode: "cross", side: osSide, posSide: side, ordType: "limit",
+        reduceOnly: true, sz: l.ct.toFixed(1), px: pyG(l.price),
+      }));
+      const e = await req(r.P, "POST", "/api/v5/trade/batch-orders", chunk);
+      const data = Array.isArray(e.data) ? e.data : [];
+      let bad = e.code !== "0" && e.code !== "2";
+      data.forEach((d: J) => {
+        if (d && d.sCode === "0" && d.ordId) placed.push(String(d.ordId));
+        else { bad = true; fail = fail || d?.sMsg || e.msg || "perna recusada"; }
+      });
+      if (!data.length && e.code !== "0") { bad = true; fail = fail || e.msg || "batch recusado"; }
+      if (bad) {
+        if (placed.length) await cancelBatch(r.P, placed);
+        return { ok: false, skipped: false, msg: fail || "perna recusada", placed: [] as string[] };
+      }
+    }
+    return { ok: true, skipped: false, msg: null as string | null, placed };
+  }));
+  out.accounts = R.map((r, i) => {
+    const base = out.accounts[i];
+    const o = O[i];
+    if (r.skip || r.err) return base;
+    base.status = o.ok ? "ok" : "falhou";
+    base.error = o.ok ? null : o.msg;
+    base.ordIds = o.placed;
+    return base;
+  });
+  out.raw = dry ? "DRY: nada enviado" : "enviado";
+  if (out.accounts.some((a: J) => a.status === "falhou")) {
+    out.aborted = true;
+    out.abort_msg = "Alguma conta não reduziu na escala. O que tinha sido enviado nessa conta foi cancelado.";
+  }
+  return out;
+}
+
 async function runAmend(kind: "limit" | "stop", prefix: string, id: string, newPx: number, dry: boolean) {
   const acc = ACC.find(([P]) => P === prefix);
   const out: J = { kind, account: prefix, id, newPx, dry, aborted: false, abort_msg: null };
@@ -689,9 +882,6 @@ async function runAmend(kind: "limit" | "stop", prefix: string, id: string, newP
 }
 
 const CT_VAL = 100;
-function roundLot(ct: number): number {
-  return Math.round(ct * 10 + 1e-9) / 10;
-}
 function hedgeNumbers(eq: number, mark: number, longCt: number, shortCt: number, targetPct: number, mode: "short" | "net") {
   const valor = eq * mark;
   const longUsd = longCt * CT_VAL;
@@ -870,10 +1060,11 @@ if (import.meta.main) Deno.serve(async (req) => {
       orderBusy = true;
       try {
         if (reduce) {
+          const contracts = contractMap(body.contracts);
           const pct = num(body.pct);
-          if (pct == null || !(pct >= 1 && pct <= 100)) return json(400, { ok: false, error: "Percentual inválido: use um valor de 1 a 100." });
-          const r = await runReduce(side, pct, ordType, price, dry);
-          console.log(JSON.stringify({ ev: "reduce", ip, side, pct, dry, ordType, price, aborted: r.aborted, acc: (r.accounts || []).map((a: J) => `${a.name}=${a.status}`) }));
+          if (!contracts && (pct == null || !(pct >= 1 && pct <= 100))) return json(400, { ok: false, error: "Percentual inválido: use um valor de 1 a 100." });
+          const r = await runReduce(side, pct ?? 0, ordType, price, dry, contracts);
+          console.log(JSON.stringify({ ev: "reduce", ip, side, pct, contracts: !!contracts, dry, ordType, price, aborted: r.aborted, acc: (r.accounts || []).map((a: J) => `${a.name}=${a.status}`) }));
           return json(200, { ok: !r.aborted, ...r });
         }
         const stop = num(body.stop);
@@ -890,14 +1081,26 @@ if (import.meta.main) Deno.serve(async (req) => {
       try { body = await req.json(); } catch { return json(400, { ok: false, error: "Pedido inválido." }); }
       const side = String(body.side ?? "").trim().toLowerCase();
       if (side !== "long" && side !== "short") return json(400, { ok: false, error: "Lado inválido: use long ou short." });
-      const stop = num(body.stop);
-      if (stop == null || stop <= 0) return json(400, { ok: false, error: "Stop inválido." });
-      const risk = num(body.risk);
-      if (risk == null || !(risk > 0 && risk <= 5)) return json(400, { ok: false, error: "Risco inválido: use um valor maior que 0 e no máximo 5%." });
       const from = num(body.from), to = num(body.to);
       const n = num(body.n);
       if (from == null || to == null || n == null) return json(400, { ok: false, error: "Preencha os dois preços e a quantidade." });
       const dry = body.dry === true;
+      if (body.reduce === true) {
+        const contracts = contractMap(body.contracts);
+        const pct = num(body.pct);
+        if (!contracts && (pct == null || !(pct >= 1 && pct <= 100))) return json(400, { ok: false, error: "Percentual inválido: use um valor de 1 a 100." });
+        if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
+        orderBusy = true;
+        try {
+          const r = await runScaleReduce(side, from, to, Math.round(n), body.priceSkew === true, body.sizeSkew === true, pct, contracts, dry);
+          console.log(JSON.stringify({ ev: "scale-reduce", ip, side, n, dry, aborted: r.aborted, acc: (r.accounts || []).map((a: J) => `${a.name}=${a.status}`) }));
+          return json(200, { ok: !r.aborted, ...r });
+        } finally { orderBusy = false; }
+      }
+      const stop = num(body.stop);
+      if (stop == null || stop <= 0) return json(400, { ok: false, error: "Stop inválido." });
+      const risk = num(body.risk);
+      if (risk == null || !(risk > 0 && risk <= 5)) return json(400, { ok: false, error: "Risco inválido: use um valor maior que 0 e no máximo 5%." });
       if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
       orderBusy = true;
       try {
@@ -960,5 +1163,6 @@ if (import.meta.main) Deno.serve(async (req) => {
 export const __test = {
   setReq(fn: typeof req) { req = fn; },
   reset() { orderBusy = false; },
-  ctFromRisk, lossBtc, scalePrices, hedgeNumbers, runOrder, runReduce, runScale, runAmend, runHedge, fetchPositions, ACC,
+  ctFromRisk, lossBtc, scalePrices, hedgeNumbers, realizedPnlBtc, allocateReduce, splitLots, contractMap,
+  runOrder, runReduce, runScale, runScaleReduce, runAmend, runHedge, fetchPositions, ACC,
 };

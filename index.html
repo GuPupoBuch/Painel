@@ -17,8 +17,9 @@
 <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js" defer></script>
 <style>
 :root{
-  --bg:#0c0e11;--surface:#13171c;--line:#2c333c;--text:#e7e9ec;--muted:#8b949e;
-  --accent:#d6b25e;--green:#22c55e;--green-dim:#13281c;--red:#ef4444;--red-dim:#2a1516;--err:#f0a39a;
+  --bg:#070809;--surface:#101214;--line:#1f2428;--text:#d7dde3;--muted:#7d8792;
+  --accent:#00e29a;--green:#00e29a;--green-dim:#0c2420;--red:#e5425c;--red-dim:#2a1218;--err:#f0a39a;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html{background:var(--bg);color-scheme:dark;-webkit-text-size-adjust:100%;text-size-adjust:100%}
@@ -102,7 +103,7 @@ html[data-tf="1D"] .tf[data-bar="1D"],
 html[data-tf="1W"] .tf[data-bar="1W"],
 html[data-tf="1M"] .tf[data-bar="1M"]{color:var(--text);border-bottom-color:var(--accent)}
 .chart-wrap{position:relative;min-width:0;max-width:100%}
-#chart{width:100%;height:58vh;min-height:360px;border-radius:8px;overflow:hidden;background:var(--surface);border:1px solid var(--line);overscroll-behavior:contain;scroll-margin-top:calc(132px + env(safe-area-inset-top));touch-action:pan-y}
+#chart{width:100%;height:58vh;min-height:360px;border-radius:0;overflow:hidden;background:var(--bg);border:1px solid var(--line);overscroll-behavior:contain;scroll-margin-top:calc(132px + env(safe-area-inset-top));touch-action:pan-y}
 #chart.dragging{touch-action:none;cursor:ns-resize}
 body.dragging-order{overflow:hidden;touch-action:none}
 .drag-tag{
@@ -115,8 +116,9 @@ body.dragging-order{overflow:hidden;touch-action:none}
 
 label{display:block;margin:12px 0 6px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
 input{
-  width:100%;min-height:48px;padding:12px;background:var(--surface);color:var(--text);
-  border:1px solid var(--line);border-radius:8px;font-size:16px;outline:none;
+  width:100%;min-height:44px;padding:10px 12px;background:var(--surface);color:var(--text);
+  border:1px solid var(--line);border-radius:2px;font-size:16px;outline:none;
+  font-family:var(--mono);font-variant-numeric:tabular-nums;
 }
 input::placeholder{color:#5c6570}
 input:focus{border-color:var(--accent)}
@@ -126,25 +128,32 @@ input:-webkit-autofill{-webkit-text-fill-color:var(--text);caret-color:var(--tex
 .row>*,.price-row>*{min-width:0}
 .row{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,.8fr);gap:8px}
 .price-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
-.use-mark{min-height:48px;padding:0 14px;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:8px;font-size:14px;font-weight:650;white-space:nowrap}
+.use-mark{min-height:44px;padding:0 12px;background:transparent;color:var(--text);border:1px solid var(--line);border-radius:2px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.use-mark:hover,.otype:hover,.pct:hover,.d-tab:hover,.d-tog:hover{color:var(--text)}
 
-.sides,.otypes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
-.side,.otype,.pct{background:var(--surface);border:1px solid var(--line);border-radius:8px;color:var(--muted);min-height:48px}
-.side{color:var(--text);font-size:15px;font-weight:700;letter-spacing:.08em}
-.side.long.on{background:var(--green-dim);border-color:var(--green);color:var(--green)}
-.side.short.on{background:var(--red-dim);border-color:var(--red);color:var(--red)}
-.otype,.pct{font-size:15px;font-weight:700}
-.otype.on,.pct.on{color:var(--text);border-color:var(--accent);background:transparent}
-.pcts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
+.sides,.otypes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.side,.otype,.pct{background:transparent;border:1px solid var(--line);border-radius:2px;color:var(--muted);min-height:44px}
+.side{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:13px;font-weight:800;letter-spacing:.08em}
+.side.long{color:var(--green)}
+.side.short{color:var(--red)}
+.side.long.on{background:var(--green);border-color:var(--green);color:#04140c}
+.side.short.on{background:var(--red);border-color:var(--red);color:#fff}
+.side .go-sub{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:0;opacity:.85}
+.otype,.pct{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.otype.on,.pct.on{color:var(--green);border-color:transparent;border-bottom:1px solid var(--green);background:transparent}
+.pcts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin-top:8px}
 
 .tabs{display:grid;grid-template-columns:1fr 1fr;margin:4px 0 2px;border-bottom:1px solid var(--line)}
-.tab{min-height:48px;background:transparent;border:0;border-bottom:2px solid transparent;border-radius:0;color:var(--muted);font-size:14px;font-weight:700;letter-spacing:.06em;margin-bottom:-1px}
-.tab.on{color:var(--text);border-bottom-color:var(--accent)}
+.tab{min-height:44px;background:transparent;border:0;border-bottom:1px solid transparent;border-radius:0;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:-1px}
+.tab.on{color:var(--green);border-bottom-color:var(--green)}
 
 .send{
-  width:100%;min-height:48px;padding:12px 10px;border:0;border-radius:8px;
-  background:var(--green);color:#04140c;font-size:15px;font-weight:700;letter-spacing:.03em;line-height:1.2;
+  width:100%;min-height:48px;padding:8px 10px;border:0;border-radius:2px;
+  background:var(--green);color:#04140c;font-size:14px;font-weight:800;letter-spacing:.06em;line-height:1.15;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
 }
+.send .go-sub{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:0;color:#04140c}
+.send.short .go-sub{color:#fff}
 .send.short{background:var(--red);color:#fff}
 .send.preview{background:transparent;color:var(--text);border:1px solid var(--line)}
 .send.adj{background:transparent;color:var(--accent);border:1px solid var(--accent)}
@@ -153,7 +162,7 @@ input:-webkit-autofill{-webkit-text-fill-color:var(--text);caret-color:var(--tex
 .action-dock{display:flex;flex-direction:column;gap:8px}
 .action-dock .err,.action-dock .warn{margin:0}
 
-.err,.warn{margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:13px;line-height:1.35}
+.err,.warn{margin-top:8px;padding:8px 10px;border:1px solid var(--line);border-radius:2px;background:var(--surface);font-size:12px;line-height:1.35}
 .err{border-color:#6a3030;color:var(--err);white-space:pre-wrap;overflow-wrap:anywhere}
 .warn{border-color:#5c4e2a;color:var(--accent)}
 .login-box{margin-top:18px}
@@ -167,7 +176,7 @@ input:-webkit-autofill{-webkit-text-fill-color:var(--text);caret-color:var(--tex
 
 .pos-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:10px 0 0}
 .pos-head h2{margin:0;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(--text);border:1px solid var(--line);border-radius:8px;font-size:13px;font-weight:650}
+button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(--text);border:1px solid var(--line);border-radius:2px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
 .pos-cols{display:none}
 .acct-list,.res-list{min-width:0}
 .acct{
@@ -226,90 +235,127 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   html:not(.in-app) #chart{height:58vh;min-height:360px}
   html.in-app,html.in-app body{height:100%}
   html.in-app body{
-    max-width:none;height:100vh;overflow:hidden;margin:0;padding:6px;
+    max-width:none;height:100vh;overflow:hidden;margin:0;padding:4px;
     background:#070809;color:#d7dde3;
     display:grid;
-    grid-template-columns:300px minmax(0,1fr) 332px;
+    grid-template-columns:312px minmax(0,1fr) 360px;
     grid-template-rows:auto minmax(0,1fr);
     grid-template-areas:"order tools side" "order chart side";
-    gap:6px;
+    gap:4px;
+    font-variant-numeric:tabular-nums;
   }
   html.in-app .desk{display:contents}
   html.in-app #app-view{display:none!important}
   html.in-app .top{display:none}
   html.in-app .chrome{
     grid-area:tools;display:flex;flex-direction:column;min-width:0;
-    background:#0e1114;border:1px solid #1c2228;border-bottom:0;
+    background:#0c0e10;border:1px solid #1f2428;border-bottom:0;
   }
   html.in-app #ohlc{
-    display:block;padding:6px 8px 0;font-size:11px;letter-spacing:.01em;
+    display:block;padding:6px 8px 0;font-size:11px;letter-spacing:.02em;
     color:#8b97a3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-    font-variant-numeric:tabular-nums;
+    font-family:var(--mono);font-variant-numeric:tabular-nums;
   }
   html.in-app .tfs{background:transparent;border-bottom:0;padding:0 4px}
-  html.in-app .tf{min-width:32px;min-height:26px;padding:0 6px;font-size:11px}
+  html.in-app .tf{min-width:28px;min-height:26px;padding:0 6px;font-size:11px;letter-spacing:.04em}
+  html.in-app .tf:hover{color:#d7dde3}
   html.in-app .accts{background:transparent;border-bottom:0;padding:0 4px}
-  html.in-app #accts .chip{min-width:0;min-height:26px;padding:0 8px;font-size:11px}
-  html.in-app .chart-wrap{grid-area:chart;min-width:0;min-height:0;background:#0e1114;border:1px solid #1c2228;border-top:0}
-  html.in-app #chart{height:100%;min-height:0;border:0;border-radius:0;background:#0e1114}
+  html.in-app #accts .chip{min-width:0;min-height:26px;padding:0 8px;font-size:11px;letter-spacing:.04em}
+  html.in-app #accts .chip:hover{color:#d7dde3}
+  html.in-app .chart-wrap{grid-area:chart;min-width:0;min-height:0;background:#0c0e10;border:1px solid #1f2428;border-top:0}
+  html.in-app #chart{height:100%;min-height:0;border:0;border-radius:0;background:#0c0e10}
   html.in-app #desk-order{grid-area:order;min-width:0;min-height:0}
-  html.in-app #desk-side{grid-area:side;min-width:0;min-height:0;display:flex;flex-direction:column;gap:6px}
+  html.in-app #desk-side{grid-area:side;min-width:0;min-height:0;display:flex;flex-direction:column;gap:4px}
   #desk-order,#d-balances,#d-positions,#d-orders{
-    background:#0e1114;border:1px solid #1c2228;min-width:0;min-height:0;
+    background:#0c0e10;border:1px solid #1f2428;min-width:0;min-height:0;
     display:flex;flex-direction:column;
   }
   #d-positions,#d-orders{flex:1}
   .d-hd{
     display:flex;align-items:center;justify-content:space-between;gap:8px;
-    height:28px;padding:0 8px;border-bottom:1px solid #1c2228;flex:0 0 auto;
-    font-size:11px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:#8b97a3;
+    height:28px;padding:0 8px;border-bottom:1px solid #1f2428;flex:0 0 auto;
+    font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#7d8792;
   }
-  .d-hd select,.d-tool select{height:22px;background:#0e1114;color:#d7dde3;border:1px solid #2a323a;border-radius:3px;font-size:11px;padding:0 4px}
+  .d-hd select,.d-tool select{height:22px;background:#0c0e10;color:#d7dde3;border:1px solid #1f2428;border-radius:2px;font-size:11px;padding:0 4px}
   .d-body{overflow:auto;min-height:0;padding:8px}
-  .d-top{display:flex;gap:6px}
-  .d-top select{flex:1;min-width:0;height:28px;background:#101418;color:#d7dde3;border:1px solid #2a323a;border-radius:3px;font-size:12px;font-weight:650}
-  .d-tabs{display:grid;grid-template-columns:1fr 1fr 1fr;margin:8px 0;border-bottom:1px solid #1c2228}
-  .d-tab{min-height:28px;background:transparent;border:0;border-bottom:2px solid transparent;color:#7d8792;font-size:11px;font-weight:700;letter-spacing:.04em}
-  .d-tab.on{color:#d7dde3;border-bottom-color:#0ecb81}
-  .d-k{display:flex;justify-content:space-between;align-items:baseline;margin:8px 0 4px;font-size:10px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;color:#7d8792}
-  .d-k button{background:transparent;border:0;color:#9aa6b2;font-size:10px;font-weight:700;letter-spacing:.06em}
-  #desk-order input,#desk-order select.d-in{width:100%;height:30px;padding:0 8px;background:#101418;color:#d7dde3;border:1px solid #2a323a;border-radius:3px;font-size:13px}
-  #desk-order input:focus{border-color:#0ecb81;outline:none}
-  .d-size{font-size:20px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-  .d-size-rows{margin-top:4px;font-size:11px;color:#9aa6b2;font-variant-numeric:tabular-nums}
-  #d-size-rows > div{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
-  #d-hedge-table .h-row{color:#d7dde3;border-top-color:#1c2228}
-  .d-row{display:flex;gap:4px;align-items:center}
-  .d-row input{flex:1;min-width:0}
-  .d-row button,.d-mini{height:30px;padding:0 8px;background:#101418;color:#d7dde3;border:1px solid #2a323a;border-radius:3px;font-size:12px;font-weight:700}
-  .d-two{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-  .d-range{width:100%;margin:4px 0;accent-color:#0ecb81}
-  .d-togs{display:flex;gap:6px}
-  .d-tog{flex:1;min-height:26px;background:#101418;color:#7d8792;border:1px solid #2a323a;border-radius:3px;font-size:11px;font-weight:700}
-  .d-tog.on{color:#d7dde3;border-color:#0ecb81}
-  .d-bars{display:flex;align-items:flex-end;gap:2px;height:36px;margin:6px 0}
-  .d-bars i{display:block;flex:1;background:#0ecb81;min-height:2px;opacity:.85}
-  .d-bars.short i{background:#f6465d}
-  .d-avg{font-size:12px;font-variant-numeric:tabular-nums;color:#d7dde3}
-  .d-sides{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
-  .d-sides button{min-height:46px;border:0;border-radius:3px;font-size:13px;font-weight:800;letter-spacing:.02em;line-height:1.15}
-  #d-long{background:#0ecb81;color:#04140c}
-  #d-short{background:#f6465d;color:#fff}
-  .d-note{margin-top:8px;font-size:11px;line-height:1.35;color:#7d8792}
-  .d-saldo{display:flex;justify-content:space-between;margin-top:8px;font-size:12px;font-variant-numeric:tabular-nums}
+  .d-top{display:flex;gap:4px}
+  .d-top select{flex:1;min-width:0;height:28px;background:#101214;color:#d7dde3;border:1px solid #1f2428;border-radius:2px;font-size:12px;font-weight:650}
+  .d-tabs{display:flex;gap:0;margin:8px 0 4px;border-bottom:1px solid #1f2428}
+  .d-tab{flex:1;min-height:28px;background:transparent;border:0;border-bottom:1px solid transparent;border-radius:0;margin-bottom:-1px;color:#7d8792;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  .d-tab.on{color:#00e29a;border-bottom-color:#00e29a}
+  .d-tab:hover{color:#d7dde3}
+  .d-k{display:flex;justify-content:space-between;align-items:baseline;margin:8px 0 4px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7d8792}
+  .d-k button{background:transparent;border:0;color:#9aa6b2;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .d-k button:hover{color:#d7dde3}
+  #desk-order input,#desk-order select.d-in{width:100%;height:28px;min-height:0;padding:0 8px;background:#101214;color:#d7dde3;border:1px solid #1f2428;border-radius:2px;font-size:13px}
+  #desk-order .field input{height:22px;min-height:0;padding:0;border:0;background:transparent}
+  #desk-order input:focus,#desk-order .field:focus-within{border-color:#00e29a;outline:none}
+  .d-size{font-family:var(--mono);font-size:20px;font-weight:650;letter-spacing:0;font-variant-numeric:tabular-nums;line-height:1.1}
+  .size-box{position:relative;margin-top:8px;padding:16px 36px 6px 8px;background:#101214;border:1px solid #1f2428;min-height:48px}
+  .size-box .field-k{position:absolute;top:4px;left:8px}
+  .size-box .field-u{position:absolute;right:8px;bottom:6px}
+  .d-size-rows{margin-top:4px;font-size:11px;color:#9aa6b2;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  #d-size-rows > div,.h-row{display:flex;justify-content:space-between;gap:8px;padding:3px 0}
+  #d-hedge-table .h-row{color:#d7dde3;border-top:1px solid #1f2428}
+  #d-hedge-table .h-row b{font-weight:650}
+  .d-row{display:flex;gap:4px;align-items:stretch;margin-top:4px}
+  .d-row .field{flex:1;margin-top:0}
+  .d-row button,.d-mini{height:auto;min-height:44px;align-self:stretch;padding:0 8px;background:transparent;color:#d7dde3;border:1px solid #1f2428;border-radius:2px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  html.in-app .field{min-height:44px;padding:15px 34px 4px 8px}
+  .d-row button:hover,.d-mini:hover{border-color:#3a444e;color:#fff}
+  .d-two{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+  .d-two .field{margin-top:0}
+  .d-range{width:100%;margin:4px 0;accent-color:#00e29a}
+  .d-togs,.unit-row{display:flex;gap:0;border-bottom:1px solid #1f2428}
+  .d-tog,.unit-row button{flex:1;min-height:28px;background:transparent;color:#7d8792;border:0;border-bottom:1px solid transparent;border-radius:0;margin-bottom:-1px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .d-tog.on,.unit-row button.on{color:#00e29a;border-bottom-color:#00e29a;background:transparent}
+  .d-bars{display:flex;align-items:flex-end;gap:2px;height:36px;margin:8px 0 4px}
+  .d-bars i{display:block;flex:1;background:#00e29a;min-height:2px;opacity:.9}
+  .d-bars.short i{background:#e5425c}
+  .d-avg{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;color:#d7dde3}
+  .d-sides{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px}
+  .d-sides button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:52px;border:0;border-radius:2px;font-size:13px;font-weight:800;letter-spacing:.08em;line-height:1.1}
+  .d-sides button:hover{filter:brightness(1.06)}
+  #d-long{background:#00e29a;color:#04140c}
+  #d-short{background:#e5425c;color:#fff}
+  #d-long .go-sub{color:#04140c}
+  #d-short .go-sub{color:#fff}
+  .go-k{font-size:13px;font-weight:800;letter-spacing:.08em}
+  .go-sub{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:0}
+  .d-note{margin:8px 0 0;font-size:11px;line-height:1.35;color:#7d8792}
+  .d-saldo{display:flex;justify-content:space-between;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid #1f2428;font-size:12px;font-family:var(--mono);font-variant-numeric:tabular-nums}
   #d-msg{margin-top:8px}
-  .d-table{width:100%;border-collapse:collapse;font-size:11px;font-variant-numeric:tabular-nums}
-  .d-table th{text-align:left;color:#7d8792;font-size:10px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;padding:0 4px 4px}
-  .d-table td{padding:4px;border-top:1px solid #1c2228;vertical-align:top}
+  .d-table{width:100%;border-collapse:collapse;font-size:11px;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .d-table th{text-align:left;color:#7d8792;font-family:ui-sans-serif,system-ui,sans-serif;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:0 8px 6px 0;white-space:nowrap}
+  .d-table td{padding:5px 8px 5px 0;border-top:1px solid #1f2428;vertical-align:middle;white-space:nowrap}
   .d-table td.r,.d-table th.r{text-align:right}
-  .d-up{color:#0ecb81}.d-dn{color:#f6465d}
+  .d-table tbody tr:hover td{background:#14181c}
+  .d-up{color:#00e29a}.d-dn{color:#e5425c}
   .d-empty{color:#7d8792;font-size:12px;padding:6px 0}
+  #d-hedge-go{width:100%;margin-top:8px;min-height:44px;border:0;border-radius:2px;background:#e5425c;color:#fff;font-weight:800;letter-spacing:.06em}
+  #d-adj-preview,#d-adj-send{border-radius:2px;min-height:44px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
 }
+.field{position:relative;display:block;margin:8px 0 0;background:var(--surface);border:1px solid var(--line);min-height:52px;padding:18px 40px 6px 8px}
+.field .field-k{position:absolute;top:4px;left:8px;margin:0;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.field input{width:100%;height:24px;min-height:0;padding:0;border:0;background:transparent;border-radius:0;font-size:16px}
+.field input:focus{outline:none}
+.field:focus-within{border-color:var(--green)}
+.field-u{position:absolute;right:8px;bottom:6px;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#5c6770;pointer-events:none}
+.unit-row{display:flex;margin-top:8px;border-bottom:1px solid var(--line)}
+.unit-row button{flex:1;min-height:44px;background:transparent;border:0;border-bottom:1px solid transparent;margin-bottom:-1px;border-radius:0;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.08em}
+.unit-row button.on{color:var(--green);border-bottom-color:var(--green)}
+.pnl-prev{margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+.pnl-k{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.pnl-v{margin-top:2px;font-family:var(--mono);font-size:13px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.3}
+.pnl-row{display:grid;grid-template-columns:minmax(0,1.1fr) auto auto;gap:8px;align-items:baseline;padding:3px 0;font-size:11px;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.pnl-row.tot{border-top:1px solid var(--line);margin-top:2px;padding-top:4px;font-weight:700}
+.pnl-up{color:var(--green)}
+.pnl-dn{color:var(--red)}
 .sheet{
   position:fixed;inset:0;z-index:40;display:flex;align-items:flex-end;justify-content:center;
   background:rgba(6,8,10,.62);padding:12px 12px calc(12px + env(safe-area-inset-bottom));
 }
-.sheet-card{width:min(440px,100%);max-width:100%;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 16px 14px}
+.sheet-card{width:min(440px,100%);max-width:100%;background:#101214;border:1px solid var(--line);border-radius:2px;padding:16px 16px 14px}
 .sheet-card h2{margin:0 0 8px;font-size:18px;font-weight:650;letter-spacing:-.02em}
 .amend-list{list-style:none;margin:0;padding:0}
 .amend-list li{padding:8px 0;border-top:1px solid var(--line);font-size:15px}
@@ -395,31 +441,59 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
       <option value="hedge">HEDGE</option>
     </select>
     <div class="d-tabs" id="d-tabs">
-      <button type="button" class="d-tab on" data-tab="post">Entrar</button>
-      <button type="button" class="d-tab" data-tab="reduce">Reduzir</button>
-      <button type="button" class="d-tab" data-tab="tpsl">Stop</button>
+      <button type="button" class="d-tab on" data-tab="post">Post</button>
+      <button type="button" class="d-tab" data-reduce="1">Reduce</button>
+      <button type="button" class="d-tab" data-tab="tpsl">TP/SL</button>
+      <button type="button" class="d-tab" data-tab="reduce">Ajuste</button>
     </div>
     <div id="d-post">
-      <button type="button" class="d-tog" id="d-reduce-toggle" aria-pressed="false" style="width:100%;margin-top:8px">Reduzir</button>
+      <button type="button" class="d-tog hidden" id="d-reduce-toggle" aria-pressed="false">Reduzir</button>
       <div id="d-reduce-box" class="hidden">
-        <div class="d-k">% da posição</div>
-        <input id="d-reduce-pct" type="text" inputmode="decimal" value="50" aria-label="Percentual da perna">
+        <div class="unit-row" id="d-reduce-units">
+          <button type="button" data-unit="pct" class="on">%</button>
+          <button type="button" data-unit="usd">USD</button>
+          <button type="button" data-unit="ct">ct</button>
+        </div>
+        <label class="field">
+          <span class="field-k" id="d-reduce-k">% da perna</span>
+          <input id="d-reduce-pct" type="text" inputmode="decimal" value="50" aria-label="Quanto reduzir">
+          <span class="field-u reduce-unit">%</span>
+        </label>
         <p class="d-note" id="d-reduce-which">Reduz a perna long.</p>
+        <div id="d-pnl" class="pnl-prev">
+          <div class="pnl-k" id="d-pnl-k">LONG PNL</div>
+          <div class="pnl-v" id="d-pnl-v">—</div>
+          <div id="d-pnl-rows"></div>
+        </div>
       </div>
       <div id="d-open-box">
-      <div class="d-k"><span>Risco %</span><button type="button" id="d-max">Máx. 5%</button></div>
-      <input id="d-risk" type="text" inputmode="decimal" value="1" aria-label="Risco %">
+      <div class="d-k"><span>Risco</span><button type="button" id="d-max">Máx. 5%</button></div>
+      <label class="field">
+        <span class="field-k">Risco</span>
+        <input id="d-risk" type="text" inputmode="decimal" value="1" aria-label="Risco %">
+        <span class="field-u">%</span>
+      </label>
       <input id="d-risk-range" class="d-range" type="range" min="0.1" max="5" step="0.1" value="1" aria-label="Risco">
-      <div class="d-k">Stop</div>
-      <input id="d-stop" type="text" inputmode="decimal" placeholder="63800" aria-label="Stop">
-      <div class="d-k"><span>Tamanho</span><span>calculado</span></div>
-      <div id="d-size" class="d-size">—</div>
+      <label class="field">
+        <span class="field-k">Stop</span>
+        <input id="d-stop" type="text" inputmode="decimal" placeholder="63800" aria-label="Stop">
+        <span class="field-u">USD</span>
+      </label>
+      <div class="size-box">
+        <span class="field-k">Tamanho</span>
+        <div id="d-size" class="d-size">—</div>
+        <span class="field-u">USD</span>
+      </div>
       <div id="d-size-rows" class="d-size-rows"></div>
+      </div>
       <div id="d-price-box">
-        <div class="d-k">Preço</div>
         <div class="d-row">
-          <input id="d-price" type="text" inputmode="decimal" placeholder="64000" aria-label="Preço limite">
-          <button type="button" id="d-best">Mark</button>
+          <label class="field">
+            <span class="field-k">Preço</span>
+            <input id="d-price" type="text" inputmode="decimal" placeholder="64000" aria-label="Preço limite">
+            <span class="field-u">USD</span>
+          </label>
+          <button type="button" id="d-best">Best</button>
           <button type="button" id="d-minus" aria-label="Diminuir preço">−</button>
           <button type="button" id="d-plus" aria-label="Aumentar preço">+</button>
         </div>
@@ -427,8 +501,8 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
       <div id="d-scale" class="hidden">
         <div class="d-k">Preços da escala</div>
         <div class="d-two">
-          <input id="d-from" type="text" inputmode="decimal" placeholder="De" aria-label="Preço inicial">
-          <input id="d-to" type="text" inputmode="decimal" placeholder="Até" aria-label="Preço final">
+          <label class="field"><span class="field-k">De</span><input id="d-from" type="text" inputmode="decimal" placeholder="63000" aria-label="Preço inicial"><span class="field-u">USD</span></label>
+          <label class="field"><span class="field-k">Até</span><input id="d-to" type="text" inputmode="decimal" placeholder="65000" aria-label="Preço final"><span class="field-u">USD</span></label>
         </div>
         <div class="d-k">Ordens <span id="d-orders-n">8</span></div>
         <input id="d-orders" class="d-range" type="range" min="2" max="50" value="8" aria-label="Quantidade de ordens">
@@ -439,7 +513,6 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
         <div id="d-bars" class="d-bars"></div>
         <div class="d-avg">Média <b id="d-avg">—</b></div>
       </div>
-      </div>
       <div id="d-hedge" class="hidden">
         <div class="d-k" id="d-hedge-k">Quanto % vendido</div>
         <div class="d-togs" id="d-hedge-quick">
@@ -449,7 +522,11 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
           <button type="button" class="d-tog" data-h="75">75</button>
           <button type="button" class="d-tog" data-h="100">100</button>
         </div>
-        <input id="d-hedge-pct" type="text" inputmode="decimal" value="50" aria-label="Alvo do hedge">
+        <label class="field">
+          <span class="field-k">Alvo</span>
+          <input id="d-hedge-pct" type="text" inputmode="decimal" value="50" aria-label="Alvo do hedge">
+          <span class="field-u">%</span>
+        </label>
         <div class="d-togs" style="margin-top:8px">
           <button type="button" class="d-tog on" id="d-mode-short">% vendido</button>
           <button type="button" class="d-tog" id="d-mode-net">% comprado</button>
@@ -459,16 +536,19 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
           <button type="button" class="d-tog" id="d-hedge-lmt">Limite</button>
         </div>
         <div id="d-hedge-px" class="hidden">
-          <div class="d-k">Preço</div>
-          <input id="d-hedge-price" type="text" inputmode="decimal" placeholder="64000" aria-label="Preço do hedge">
+          <label class="field">
+            <span class="field-k">Preço</span>
+            <input id="d-hedge-price" type="text" inputmode="decimal" placeholder="64000" aria-label="Preço do hedge">
+            <span class="field-u">USD</span>
+          </label>
         </div>
         <div id="d-hedge-table" class="d-size-rows"></div>
-        <button type="button" id="d-hedge-go" style="width:100%;margin-top:8px;min-height:46px;border:0;border-radius:3px;background:#f6465d;color:#fff;font-weight:800">Confirmar hedge</button>
-        <p class="d-note">Não mexe na long. Os stops ficam como estão, só saem se o short zerar. A ordem vai para as 4 contas.</p>
+        <button type="button" id="d-hedge-go">Confirmar hedge</button>
+        <p class="d-note">Não mexe na long. Os stops ficam como estão e só saem se o short zerar. A ordem vai para as 4 contas.</p>
       </div>
       <div class="d-sides" id="d-sides">
-        <button type="button" id="d-long">LONG</button>
-        <button type="button" id="d-short">SHORT</button>
+        <button type="button" id="d-long"><span class="go-k">LONG</span><span class="go-sub">—</span></button>
+        <button type="button" id="d-short"><span class="go-k">SHORT</span><span class="go-sub">—</span></button>
       </div>
       <p class="d-note" id="d-size-note">O tamanho sai do risco e da distância até o stop, em cada conta. A ordem vai para as 4 contas.</p>
     </div>
@@ -480,29 +560,35 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
         <button type="button" class="d-tog" data-pct="75">75%</button>
         <button type="button" class="d-tog" data-pct="100">100%</button>
       </div>
-      <div class="d-k">% personalizado</div>
-      <input id="d-adj-pct" type="text" inputmode="decimal" value="50" aria-label="Percentual">
+      <label class="field">
+        <span class="field-k">% personalizado</span>
+        <input id="d-adj-pct" type="text" inputmode="decimal" value="50" aria-label="Percentual">
+        <span class="field-u">%</span>
+      </label>
       <div class="d-togs" style="margin-top:8px">
         <button type="button" class="d-tog on" id="d-adj-market">Mercado</button>
         <button type="button" class="d-tog" id="d-adj-limit">Limite</button>
       </div>
       <div id="d-adj-price-box" class="hidden">
-        <div class="d-k">Preço</div>
         <div class="d-row">
-          <input id="d-adj-price" type="text" inputmode="decimal" placeholder="64000" aria-label="Preço da redução">
-          <button type="button" id="d-adj-best">Mark</button>
+          <label class="field">
+            <span class="field-k">Preço</span>
+            <input id="d-adj-price" type="text" inputmode="decimal" placeholder="64000" aria-label="Preço da redução">
+            <span class="field-u">USD</span>
+          </label>
+          <button type="button" id="d-adj-best">Best</button>
         </div>
       </div>
       <div class="d-sides">
-        <button type="button" id="d-adj-preview" style="background:#101418;color:#d7dde3;border:1px solid #2a323a">Ver prévia</button>
-        <button type="button" id="d-adj-send" style="background:transparent;color:#d6b25e;border:1px solid #d6b25e">Reduzir</button>
+        <button type="button" id="d-adj-preview" style="background:transparent;color:#d7dde3;border:1px solid #1f2428">Ver prévia</button>
+        <button type="button" id="d-adj-send" style="background:#e5425c;color:#fff;border:0">Reduzir</button>
       </div>
       <p class="d-note">A prévia e a redução usam o mesmo pedido de hoje.</p>
     </div>
     <div id="d-tpsl" class="hidden">
       <div class="d-k">Stop da entrada</div>
       <input id="d-stop-2" type="text" inputmode="decimal" placeholder="63800" aria-label="Stop da entrada">
-      <p class="d-note">Este stop entra junto com a ordem nova. Para mover um stop que já está aberto, arraste a linha no gráfico. O servidor ainda não troca o preço sozinho, e não há como cancelar daqui.</p>
+      <p class="d-note">Este stop entra junto com a ordem nova. Para mover um stop ou um limite que já está aberto, arraste a linha no gráfico.</p>
       <div id="d-stop-list" class="d-size-rows"></div>
     </div>
     <div id="d-msg" class="err hidden"></div>
@@ -551,8 +637,8 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
     </div>
     <div id="pane-entrada">
       <div class="sides" id="m-sides">
-        <button type="button" class="side long on" id="btn-long" aria-pressed="true">LONG</button>
-        <button type="button" class="side short" id="btn-short" aria-pressed="false">SHORT</button>
+        <button type="button" class="side long on" id="btn-long" aria-pressed="true"><span class="go-k">LONG</span><span class="go-sub">—</span></button>
+        <button type="button" class="side short" id="btn-short" aria-pressed="false"><span class="go-k">SHORT</span><span class="go-sub">—</span></button>
       </div>
       <div class="otypes">
         <button type="button" class="otype on" id="btn-market" aria-pressed="true">Mercado</button>
@@ -562,18 +648,31 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
       </div>
       <button type="button" class="otype" id="btn-reduce" aria-pressed="false" style="width:100%;margin-top:8px">Reduzir</button>
       <div id="price-row" class="price-row hidden">
-        <div><label for="price">Preço</label><input id="price" type="text" inputmode="decimal" autocomplete="off" placeholder="64000" enterkeyhint="next"></div>
+        <label class="field" for="price"><span class="field-k">Preço</span><input id="price" type="text" inputmode="decimal" autocomplete="off" placeholder="64000" enterkeyhint="next"><span class="field-u">USD</span></label>
         <button type="button" class="use-mark" id="use-mark">Usar mark</button>
       </div>
       <div id="m-reduce" class="hidden">
-        <label for="m-reduce-pct">% da posição</label>
-        <input id="m-reduce-pct" type="text" inputmode="decimal" autocomplete="off" value="50">
+        <div class="unit-row" id="m-reduce-units">
+          <button type="button" data-unit="pct" class="on">%</button>
+          <button type="button" data-unit="usd">USD</button>
+          <button type="button" data-unit="ct">ct</button>
+        </div>
+        <label class="field" for="m-reduce-pct">
+          <span class="field-k" id="m-reduce-k">% da perna</span>
+          <input id="m-reduce-pct" type="text" inputmode="decimal" autocomplete="off" value="50">
+          <span class="field-u reduce-unit">%</span>
+        </label>
         <p class="all-note" id="m-reduce-which">Reduz a perna long.</p>
+        <div id="m-pnl" class="pnl-prev">
+          <div class="pnl-k" id="m-pnl-k">LONG PNL</div>
+          <div class="pnl-v" id="m-pnl-v">—</div>
+          <div id="m-pnl-rows"></div>
+        </div>
       </div>
       <div id="m-scale" class="hidden">
         <div class="row">
-          <div><label for="m-from">De</label><input id="m-from" type="text" inputmode="decimal" autocomplete="off" placeholder="63000"></div>
-          <div><label for="m-to">Até</label><input id="m-to" type="text" inputmode="decimal" autocomplete="off" placeholder="65000"></div>
+          <label class="field"><span class="field-k">De</span><input id="m-from" type="text" inputmode="decimal" autocomplete="off" placeholder="63000"><span class="field-u">USD</span></label>
+          <label class="field"><span class="field-k">Até</span><input id="m-to" type="text" inputmode="decimal" autocomplete="off" placeholder="65000"><span class="field-u">USD</span></label>
         </div>
         <label for="m-orders">Ordens</label>
         <input id="m-orders" type="text" inputmode="numeric" autocomplete="off" value="8">
@@ -600,8 +699,8 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
         <p class="all-note">Não mexe na long. Stops só saem se o short zerar.</p>
       </div>
       <div class="row" id="entry-risk">
-        <div><label for="stop">Stop</label><input id="stop" type="text" inputmode="decimal" autocomplete="off" placeholder="63800" enterkeyhint="next"></div>
-        <div><label for="risk">Risco %</label><input id="risk" type="text" inputmode="decimal" autocomplete="off" value="1" enterkeyhint="go"></div>
+        <label class="field" for="stop"><span class="field-k">Stop</span><input id="stop" type="text" inputmode="decimal" autocomplete="off" placeholder="63800" enterkeyhint="next"><span class="field-u">USD</span></label>
+        <label class="field" for="risk"><span class="field-k">Risco</span><input id="risk" type="text" inputmode="decimal" autocomplete="off" value="1" enterkeyhint="go"><span class="field-u">%</span></label>
       </div>
       <div id="result" class="result hidden">
         <div id="result-body" class="res-list"></div>
@@ -632,7 +731,7 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
         <button type="button" class="otype" id="adj-btn-limit" aria-pressed="false">Limite</button>
       </div>
       <div id="adj-price-row" class="price-row hidden">
-        <div><label for="adj-price">Preço</label><input id="adj-price" type="text" inputmode="decimal" autocomplete="off" placeholder="64000" enterkeyhint="next"></div>
+        <label class="field" for="adj-price"><span class="field-k">Preço</span><input id="adj-price" type="text" inputmode="decimal" autocomplete="off" placeholder="64000" enterkeyhint="next"><span class="field-u">USD</span></label>
         <button type="button" class="use-mark" id="adj-use-mark">Usar mark</button>
       </div>
       <div id="adj-result" class="result hidden">
@@ -685,7 +784,7 @@ let adjPct = 50, adjOrdType = "market", adjSending = false, adjPreview = null;
 
 // ---------- formatação ----------
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const fmtUsd = (n) => n == null || Number.isNaN(n) ? "—" : "US$ " + Math.round(n).toLocaleString("pt-BR");
+const fmtUsd = (n) => n == null || Number.isNaN(n) ? "—" : "US$\u00a0" + Math.round(n).toLocaleString("pt-BR");
 const fmtPx = (n) => n == null || n === 0 || Number.isNaN(n) ? "—" : Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 const fmtPct = (n) => n == null || Number.isNaN(n) ? "—" : Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + "%";
 const parseNum = (s) => { const n = Number(String(s || "").trim().replace(/\s/g, "").replace(",", ".")); return Number.isFinite(n) && String(s || "").trim() !== "" ? n : null; };
@@ -713,43 +812,32 @@ function snapPx(p) {
   return Math.round(n * (1 / TICK)) / (1 / TICK);
 }
 function isDesk() { return window.matchMedia("(min-width: 1024px)").matches; }
-let volSeries = null, lastCandles = [];
+let lastCandles = [];
 let deskKind = "market", deskTab = "post", priceEven = true, sizeEven = true, scaleOpen = false;
 let reducing = false, hedgeMode = "short", hedgeOrd = "market";
 let deskFilter = "todas";
 try { const savedAcct = localStorage.getItem("painel_acct"); if (["todas","pupo","pai","mãe","tcheco"].includes(savedAcct)) deskFilter = savedAcct; } catch (e) {}
 const toT = (ms) => Math.floor(Number(ms) / 1000) - TZ;
 const toBar = (a) => ({ time: toT(a[0]), open: +a[1], high: +a[2], low: +a[3], close: +a[4], volume: +a[5] || 0 });
-function volPoint(d) {
-  return { time: d.time, value: d.volume || 0, color: d.close >= d.open ? "rgba(14,203,129,0.5)" : "rgba(246,70,93,0.45)" };
-}
 function paintLegend(d) {
   const el = $("ohlc");
   if (!el || !d) return;
   const n = (v) => v == null || Number.isNaN(v) ? "—" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
-  const vol = d.volume == null ? "—" : Number(d.volume).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
-  el.textContent = `OKX · ${bar} · BTC-USD-SWAP   O ${n(d.open)}  H ${n(d.high)}  L ${n(d.low)}  C ${n(d.close)}  V ${vol}`;
+  el.textContent = `OKX · ${bar} · BTC-USD-SWAP   O ${n(d.open)}  H ${n(d.high)}  L ${n(d.low)}  C ${n(d.close)}`;
 }
 function paintCandles(data) {
   lastCandles = data || [];
   if (series) series.setData(lastCandles.map((d) => ({ time: d.time, open: d.open, high: d.high, low: d.low, close: d.close })));
-  if (volSeries) volSeries.setData(lastCandles.map(volPoint));
   if (lastCandles.length) paintLegend(lastCandles[lastCandles.length - 1]);
 }
 function syncVolume() {
   if (!chart || !series) return;
   const want = isDesk();
-  chart.applyOptions({ layout: { background: { color: want ? "#0e1114" : "#13171c" }, textColor: "#8b949e", fontSize: 11 } });
-  if (want && !volSeries) {
-    volSeries = chart.addHistogramSeries({ priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
-    chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-    series.priceScale().applyOptions({ scaleMargins: { top: 0.08, bottom: 0.22 } });
-    if (lastCandles.length) volSeries.setData(lastCandles.map(volPoint));
-  } else if (!want && volSeries) {
-    chart.removeSeries(volSeries);
-    volSeries = null;
-    series.priceScale().applyOptions({ scaleMargins: { top: 0.1, bottom: 0.05 } });
-  }
+  chart.applyOptions({
+    layout: { background: { color: want ? "#0c0e10" : "#070809" }, textColor: "#7d8792", fontSize: 11 },
+    grid: { vertLines: { visible: false }, horzLines: { visible: false } },
+  });
+  series.priceScale().applyOptions({ scaleMargins: { top: 0.08, bottom: 0.06 } });
 }
 
 function initChart() {
@@ -757,15 +845,15 @@ function initChart() {
   $("chart").innerHTML = "";
   chart = LightweightCharts.createChart($("chart"), {
     autoSize: true,
-    layout: { background: { color: "#13171c" }, textColor: "#8b949e", fontSize: 11 },
-    grid: { vertLines: { color: "#1b2027" }, horzLines: { color: "#1b2027" } },
-    rightPriceScale: { borderColor: "#2c333c" },
-    timeScale: { borderColor: "#2c333c", timeVisible: true, secondsVisible: false, rightOffset: 4 },
+    layout: { background: { color: "#070809" }, textColor: "#7d8792", fontSize: 11 },
+    grid: { vertLines: { visible: false }, horzLines: { visible: false } },
+    rightPriceScale: { borderColor: "#1f2428" },
+    timeScale: { borderColor: "#1f2428", timeVisible: true, secondsVisible: false, rightOffset: 4 },
     crosshair: { mode: 0 },
     handleScale: { axisPressedMouseMove: true }, handleScroll: { vertTouchDrag: false },
   });
   series = chart.addCandlestickSeries({
-    upColor: "#22c55e", downColor: "#ef4444", borderVisible: false, wickUpColor: "#22c55e", wickDownColor: "#ef4444",
+    upColor: "#00e29a", downColor: "#e5425c", borderVisible: false, wickUpColor: "#00e29a", wickDownColor: "#e5425c",
     priceFormat: { type: "price", precision: 1, minMove: 0.1 },
   });
   chart.subscribeCrosshairMove((param) => {
@@ -820,7 +908,7 @@ function setPx(p) {
   el.textContent = Number(p).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   if (lastPx != null && p !== lastPx) el.className = "px " + (p > lastPx ? "up" : "down");
   lastPx = p;
-  if (lastAccounts && !pnlTimer) pnlTimer = setTimeout(() => { pnlTimer = null; renderAllPos(); }, 500);
+  if (lastAccounts && !pnlTimer) pnlTimer = setTimeout(() => { pnlTimer = null; renderAllPos(); drawPreviews(); }, 500);
 }
 function startStreams() {
   wsCandle = socket("wss://ws.okx.com/ws/v5/business", candleArgs, (m) => {
@@ -829,7 +917,6 @@ function startStreams() {
       try {
         const bar = toBar(raw);
         series.update({ time: bar.time, open: bar.open, high: bar.high, low: bar.low, close: bar.close });
-        if (volSeries) volSeries.update(volPoint(bar));
         const i = lastCandles.findIndex((c) => c.time === bar.time);
         if (i >= 0) lastCandles[i] = bar; else lastCandles.push(bar);
       } catch (e) {}
@@ -890,6 +977,7 @@ function accountOrders(a) {
         account: a.name, prefix: a.prefix || null, kind, price,
         ordId: raw.ordId || null, algoId: raw.algoId || null,
         side: raw.side || raw.posSide || a.side || null,
+        sz: Number(raw.sz) || 0,
       });
       if (kind === "stop") seenStop.add(snapPx(price));
     }
@@ -897,7 +985,7 @@ function accountOrders(a) {
   for (const s of a.stops || []) {
     const price = Number(s);
     if (!(price > 0) || seenStop.has(snapPx(price))) continue;
-    out.push({ account: a.name, prefix: a.prefix || null, kind: "stop", price, ordId: null, algoId: null, side: a.side || null });
+    out.push({ account: a.name, prefix: a.prefix || null, kind: "stop", price, ordId: null, algoId: null, side: a.side || null, sz: 0 });
   }
   return out;
 }
@@ -951,7 +1039,7 @@ function drawPositionLines(accounts) {
     else if (isDesk()) title = names[0] + (long ? " CRS/M LONG" : " CRS/M SHORT");
     else title = names[0] + (long ? " long " : " short ") + fmtK(g.usd);
     posLines.push(series.createPriceLine({
-      price: g.price, color: long ? "#22c55e" : "#ef4444",
+      price: g.price, color: long ? "#00e29a" : "#e5425c",
       lineWidth: isDesk() ? 2 : 1, lineStyle: 0, axisLabelVisible: true, title,
     }));
   }
@@ -1008,12 +1096,23 @@ function drawPreviews() {
 function drawMobilePreviews() {
   const entradaOn = !$("pane-entrada").classList.contains("hidden");
   if (entradaOn && !entradaPreviewHold) {
-    if (ordType === "limit") {
-      const p = parseNum($("price").value);
-      if (p > 0) addPreview(p, "prévia entrada " + fmtPx(p));
+    if (reducing && deskKind !== "hedge") paintReduceLines();
+    else {
+      if (ordType === "limit") {
+        const p = parseNum($("price").value);
+        if (p > 0) addPreview(p, "prévia entrada " + fmtPx(p));
+      }
+      if (deskKind === "scale") {
+        const plan = scalePlan();
+        const col = side === "short" ? "#e5425c" : "#00e29a";
+        if (plan) plan.legs.forEach((leg, i) => {
+          const end = i === 0 || i === plan.legs.length - 1;
+          addPreview(leg.price, end ? "ESCALA" : "", { color: col, lineStyle: 1, lineWidth: end ? 2 : 1, axisLabelVisible: end });
+        });
+      }
+      const s = parseNum($("stop").value);
+      if (s > 0 && deskKind !== "hedge") addPreview(s, "prévia stop");
     }
-    const s = parseNum($("stop").value);
-    if (s > 0) addPreview(s, "prévia stop");
   }
   const adjOn = !$("pane-ajustar").classList.contains("hidden");
   if (adjOn && !adjPreviewHold && adjOrdType === "limit") {
@@ -1021,14 +1120,35 @@ function drawMobilePreviews() {
     if (p > 0) addPreview(p, "prévia redução " + fmtPx(p));
   }
 }
+function paintReduceLines() {
+  const prev = computeReducePreview(side);
+  if (!prev || prev.error || !(prev.totalCt >= 0.1)) return;
+  const opt = { color: prev.color, lineStyle: 1, lineWidth: 2 };
+  if (prev.ladder && prev.ladder.length) {
+    prev.ladder.forEach((leg, i) => {
+      if (!(leg.ct >= 0.1) && i !== 0 && i !== prev.ladder.length - 1) {
+        addPreview(leg.price, "", { color: prev.color, lineStyle: 1, lineWidth: 1, axisLabelVisible: false });
+        return;
+      }
+      const end = i === 0 || i === prev.ladder.length - 1;
+      addPreview(leg.price, end ? prev.chartTitle : "", { color: prev.color, lineStyle: 1, lineWidth: end ? 2 : 1, axisLabelVisible: end });
+    });
+    return;
+  }
+  if (prev.exit > 0) addPreview(prev.exit, prev.chartTitle, opt);
+}
 function drawDeskPreviews() {
   const stop = parseNum($("stop").value);
-  const col = side === "short" ? "#f6465d" : "#0ecb81";
+  const col = side === "short" ? "#e5425c" : "#00e29a";
   if (deskTab === "reduce") {
     if (!adjPreviewHold && adjOrdType === "limit") {
       const p = parseNum($("adj-price").value);
       if (p > 0) addPreview(p, "prévia redução " + fmtPx(p), { color: "#b7c9da", lineStyle: 1 });
     }
+    return;
+  }
+  if (deskTab === "post" && reducing && deskKind !== "hedge" && !entradaPreviewHold) {
+    paintReduceLines();
     return;
   }
   if (stop > 0 && !entradaPreviewHold && deskKind !== "hedge") addPreview(stop, "prévia stop", { color: "#ffb0be", lineStyle: 3 });
@@ -1049,7 +1169,7 @@ function drawDeskPreviews() {
   }
   if (deskKind === "hedge" && hedgeOrd === "limit") {
     const p = parseNum(($("d-hedge-price") && $("d-hedge-price").value) || ($("price") && $("price").value));
-    if (p > 0) addPreview(p, "hedge", { color: "#f6465d", lineStyle: 1 });
+    if (p > 0) addPreview(p, "hedge", { color: "#e5425c", lineStyle: 1 });
   }
 }
 function redrawChartLines() {
@@ -1295,24 +1415,7 @@ function setOrdType(t) {
   updateSendLabel();
   drawPreviews();
 }
-function updateSendLabel() {
-  if (sending) return;
-  if (deskKind === "hedge") { $("send").textContent = "CONFIRMAR HEDGE"; $("send").classList.add("short"); return; }
-  if (deskKind === "scale") { $("send").textContent = side === "short" ? "ESCALA SHORT" : "ESCALA LONG"; $("send").classList.toggle("short", side === "short"); return; }
-  if (reducing) {
-    const pct = parseNum(($("m-reduce-pct") && $("m-reduce-pct").value) || ($("d-reduce-pct") && $("d-reduce-pct").value)) || 50;
-    $("send").textContent = `REDUZIR ${side === "short" ? "SHORT" : "LONG"} ${pct}%`;
-    $("send").classList.toggle("short", side === "short");
-    return;
-  }
-  const label = side === "short" ? "SHORT" : "LONG";
-  if (ordType === "limit") {
-    const p = parseNum($("price").value);
-    $("send").textContent = p && p > 0 ? `${label} LIMITE @ ${fmtPx(p)}` : `${label} LIMITE`;
-  } else {
-    $("send").textContent = `${label} A MERCADO`;
-  }
-}
+function updateSendLabel() { paintActions(); }
 $("btn-market").onclick = () => setDeskKind("market");
 $("btn-limit").onclick = () => setDeskKind("limit");
 $("btn-scale").onclick = () => setDeskKind("scale");
@@ -1320,6 +1423,7 @@ $("btn-hedge").onclick = () => setDeskKind("hedge");
 $("btn-reduce").onclick = () => setReducing(!reducing);
 $("use-mark").onclick = () => { fillMark(); entradaPreviewHold = false; updateSendLabel(); drawPreviews(); };
 $("price").addEventListener("input", () => { entradaPreviewHold = false; updateSendLabel(); drawPreviews(); });
+["m-from", "m-to", "m-orders"].forEach((id) => { if ($(id)) $(id).addEventListener("input", () => { entradaPreviewHold = false; drawPreviews(); }); });
 
 $("login-form").onsubmit = async (ev) => {
   ev.preventDefault(); show($("login-err"), false); $("login-btn").disabled = true;
@@ -1627,6 +1731,247 @@ function fmtCt(n) { return Number(n).toLocaleString("pt-BR", { maximumFractionDi
 function renderSizeRows(rows) {
   return rows.map((r) => `<div><span>${esc(r.name)}</span><span>${fmtSize(r.sz)}</span></div>`).join("");
 }
+let reduceUnit = "pct";
+function roundLot(x) { return Math.round(x * 10 + 1e-9) / 10; }
+function floorLot(x) { return Math.trunc(x / 0.1 + 1e-9) / 10; }
+function pnlBtc(ct, entry, exit, posSide) {
+  if (!(ct > 0) || !(entry > 0) || !(exit > 0)) return 0;
+  return ct * 100 * (posSide === "long" ? (1 / entry - 1 / exit) : (1 / exit - 1 / entry));
+}
+function fmtBtcPnl(n) {
+  if (n == null || Number.isNaN(n)) return "—";
+  const abs = Math.abs(n).toLocaleString("pt-BR", { minimumFractionDigits: 8, maximumFractionDigits: 8 });
+  return (n < 0 ? "−" : "") + abs;
+}
+function fmtUsdPnl(n) {
+  if (n == null || Number.isNaN(n)) return "—";
+  const abs = Math.abs(n).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (n < 0 ? "−US$ " : "US$ ") + abs;
+}
+function fmtBtcChart(n) {
+  const abs = Math.abs(n);
+  const digits = abs >= 0.01 ? 4 : 8;
+  const s = abs.toLocaleString("pt-BR", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return (n < 0 ? "−" : "") + s + " BTC";
+}
+function legOn(a, posSide) {
+  const legs = Array.isArray(a.legs) ? a.legs : [];
+  const found = legs.find((l) => l.posSide === posSide);
+  if (found) {
+    const ct = Number(found.ct ?? found.pos) || 0;
+    const avg = Number(found.avg) || 0;
+    return ct > 0 && avg > 0 ? { ct, avg } : null;
+  }
+  if (posSide === "long" && a.net > 0 && a.avg) return { ct: Math.abs(Number(a.net)), avg: Number(a.avg) };
+  if (posSide === "short" && a.net < 0 && a.avg) return { ct: Math.abs(Number(a.net)), avg: Number(a.avg) };
+  return null;
+}
+function allocateReduceJs(legs, totalCt) {
+  const usable = legs.map((l) => ({ ...l, pos: l.pos > 0 ? l.pos : 0 }));
+  const sum = usable.reduce((s, l) => s + l.pos, 0);
+  if (!(sum > 0) || !(totalCt > 0)) return usable.map((l) => ({ ...l, ct: 0 }));
+  const pct = Math.min(100, (totalCt / sum) * 100);
+  const cts = usable.map((l) => {
+    if (pct >= 100 - 1e-9) return { ...l, ct: roundLot(l.pos) };
+    const ct = Math.min(l.pos, roundLot(l.pos * pct / 100));
+    return { ...l, ct: ct >= 0.1 - 1e-9 ? ct : 0 };
+  });
+  const cap = pct >= 100 - 1e-9 ? roundLot(sum) : roundLot(sum * pct / 100);
+  let extra = roundLot(cts.reduce((s, r) => s + r.ct, 0) - cap);
+  let guard = 0;
+  while (extra >= 0.1 - 1e-9 && guard++ < 1000) {
+    const idx = (guard - 1) % cts.length;
+    if (cts[idx].ct >= 0.1 - 1e-9) {
+      cts[idx].ct = roundLot(cts[idx].ct - 0.1);
+      if (cts[idx].ct < 0.1 - 1e-9) cts[idx].ct = 0;
+      extra = roundLot(extra - 0.1);
+    }
+  }
+  return cts.map((r) => ({ ...r, ct: r.ct >= 0.1 - 1e-9 ? r.ct : 0 }));
+}
+function splitLots(total, weights) {
+  if (!weights.length || !(total > 0)) return weights.map(() => 0);
+  const capped = roundLot(total);
+  const wsum = weights.reduce((s, w) => s + (w > 0 ? w : 0), 0) || 1;
+  const cts = weights.map((w) => {
+    const ct = roundLot(capped * (w > 0 ? w : 0) / wsum);
+    return ct >= 0.1 - 1e-9 ? ct : 0;
+  });
+  let extra = roundLot(cts.reduce((s, c) => s + c, 0) - capped);
+  let i = cts.length - 1;
+  let guard = 0;
+  while (Math.abs(extra) >= 0.1 - 1e-9 && guard++ < 1000) {
+    const step = extra > 0 ? -0.1 : 0.1;
+    const next = roundLot(cts[i] + step);
+    if (next >= -1e-9 && (step > 0 || cts[i] >= 0.1 - 1e-9)) {
+      cts[i] = next >= 0.1 - 1e-9 ? next : 0;
+      extra = roundLot(extra + step);
+    }
+    i = (i - 1 + cts.length) % cts.length;
+  }
+  return cts.map((c) => (c >= 0.1 - 1e-9 ? c : 0));
+}
+function reduceRaw() {
+  const active = document.activeElement;
+  if (active && (active.id === "d-reduce-pct" || active.id === "m-reduce-pct")) return parseNum(active.value);
+  const el = isDesk() ? $("d-reduce-pct") : $("m-reduce-pct");
+  return parseNum((el && el.value) || ($("d-reduce-pct") && $("d-reduce-pct").value));
+}
+function scaleInputs() {
+  const fromEl = isDesk() ? $("d-from") : $("m-from");
+  const toEl = isDesk() ? $("d-to") : $("m-to");
+  const nEl = isDesk() ? $("d-orders") : $("m-orders");
+  return { from: parseNum(fromEl && fromEl.value), to: parseNum(toEl && toEl.value), n: Math.round(Number(nEl && nEl.value)) };
+}
+function computeReducePreview(posSide) {
+  const which = posSide || side;
+  const accounts = (lastAccounts || []).filter((a) => !a.error);
+  const base = accounts.map((a) => {
+    const leg = legOn(a, which);
+    return { name: a.name, prefix: a.prefix, pos: leg ? leg.ct : 0, avg: leg ? leg.avg : 0, has: !!leg, ct: 0, btc: 0, usd: 0 };
+  });
+  const withLeg = base.filter((l) => l.has);
+  const totalPos = withLeg.reduce((s, l) => s + l.pos, 0);
+  const raw = reduceRaw();
+  let error = null;
+  let pct = null;
+  let sized = base;
+  if (!withLeg.length) error = "Sem perna " + which + ".";
+  else if (raw == null || !(raw > 0)) error = reduceUnit === "pct" ? "Percentual inválido." : reduceUnit === "usd" ? "Valor em USD inválido." : "Quantidade inválida.";
+  else if (reduceUnit === "pct" && (raw < 1 || raw > 100)) error = "Percentual inválido: use um valor de 1 a 100.";
+  else if (reduceUnit === "pct") {
+    pct = raw;
+    sized = base.map((l) => {
+      if (!l.has) return l;
+      const ct = pct >= 100 - 1e-9 ? l.pos : Math.min(l.pos, floorLot(l.pos * pct / 100));
+      return { ...l, ct: ct >= 0.1 - 1e-9 ? ct : 0 };
+    });
+  } else {
+    const totalCt = reduceUnit === "usd" ? raw / 100 : raw;
+    pct = Math.min(100, totalCt / totalPos * 100);
+    const alloc = allocateReduceJs(withLeg, totalCt);
+    const by = new Map(alloc.map((a) => [a.name, a.ct]));
+    sized = base.map((l) => ({ ...l, ct: by.get(l.name) || 0 }));
+  }
+  let ladder = null;
+  let exit = null;
+  if (!error && deskKind === "scale") {
+    const inp = scaleInputs();
+    if (!(inp.from > 0) || !(inp.to > 0) || inp.from === inp.to || inp.n < 2 || inp.n > 50) error = "Preencha a escala (de, até, ordens).";
+    else {
+      const prices = [];
+      for (let i = 0; i < inp.n; i++) {
+        const t = inp.n === 1 ? 0 : i / (inp.n - 1);
+        const u = priceEven ? t : t * t;
+        prices.push(inp.from + (inp.to - inp.from) * u);
+      }
+      const weights = prices.map((_, i) => (sizeEven ? 1 : i + 1));
+      ladder = prices.map((price) => ({ price, ct: 0, btc: 0, usd: 0 }));
+      sized = sized.map((row) => {
+        if (!(row.ct > 0)) return row;
+        const parts = splitLots(row.ct, weights).map((ct, i) => {
+          const btc = pnlBtc(ct, row.avg, prices[i], which);
+          return { price: prices[i], ct, btc, usd: btc * prices[i] };
+        });
+        parts.forEach((p, i) => { ladder[i].ct += p.ct; ladder[i].btc += p.btc; ladder[i].usd += p.usd; });
+        const btc = parts.reduce((s, p) => s + p.btc, 0);
+        return { ...row, parts, btc, usd: parts.reduce((s, p) => s + p.usd, 0), ct: roundLot(parts.reduce((s, p) => s + p.ct, 0)) };
+      });
+      const sumCt = ladder.reduce((s, l) => s + l.ct, 0);
+      exit = sumCt > 0 ? ladder.reduce((s, l) => s + l.price * l.ct, 0) / sumCt : null;
+    }
+  } else if (!error) {
+    exit = (deskKind === "limit" || ordType === "limit") && deskKind !== "market" ? parseNum($("price").value) : lastPx;
+    if (deskKind === "market" || ordType === "market") exit = lastPx;
+    if (deskKind === "limit") exit = parseNum($("price").value);
+    if (!(exit > 0)) error = deskKind === "market" ? "Sem mark ainda." : "Preenche um preço limite.";
+    else sized = sized.map((row) => {
+      const btc = row.ct > 0 ? pnlBtc(row.ct, row.avg, exit, which) : 0;
+      return { ...row, btc, usd: btc * exit, exit };
+    });
+  }
+  const rows = sized;
+  const btc = rows.reduce((s, r) => s + (r.btc || 0), 0);
+  const usd = rows.reduce((s, r) => s + (r.usd || 0), 0);
+  const totalCt = rows.reduce((s, r) => s + (r.ct || 0), 0);
+  if (!error && !(totalCt >= 0.1)) error = "Tamanho abaixo de 0,1 ct.";
+  const label = (which === "short" ? "SHORT" : "LONG") + " PNL";
+  return {
+    unit: reduceUnit, pct, rows, btc, usd, totalCt, exit, ladder, error, label,
+    color: btc >= 0 ? "#00e29a" : "#e5425c",
+    chartTitle: label + " " + fmtBtcChart(btc),
+  };
+}
+function paintReduce() {
+  const on = reducing && deskKind !== "hedge";
+  const prev = on ? computeReducePreview(side) : null;
+  for (const [k, v, rows] of [["d-pnl-k", "d-pnl-v", "d-pnl-rows"], ["m-pnl-k", "m-pnl-v", "m-pnl-rows"]]) {
+    if (!$(k)) continue;
+    if (!prev) { $(k).textContent = "PNL"; $(v).textContent = "—"; $(v).className = "pnl-v"; if ($(rows)) $(rows).innerHTML = ""; continue; }
+    $(k).textContent = prev.label;
+    const cls = prev.error && !(prev.totalCt >= 0.1) ? "" : (prev.btc >= 0 ? "pnl-up" : "pnl-dn");
+    $(v).className = "pnl-v " + cls;
+    $(v).textContent = prev.error && !(prev.exit > 0) ? "—" : `${fmtBtcPnl(prev.btc)} BTC (~${fmtUsdPnl(prev.usd)})`;
+    const body = prev.rows.map((r) => {
+      const col = r.ct > 0 ? (r.btc >= 0 ? "pnl-up" : "pnl-dn") : "";
+      const pnl = r.ct > 0 ? fmtBtcPnl(r.btc) + " BTC" : "—";
+      return `<div class="pnl-row"><span>${esc(r.name)}</span><span>${r.has ? (r.ct > 0 ? fmtCt(r.ct) + " ct" : "0 ct") : "sem perna"}</span><span class="${col}">${pnl}</span></div>`;
+    }).join("");
+    const foot = prev.rows.length ? `<div class="pnl-row tot"><span>Total</span><span>${fmtCt(prev.totalCt)} ct</span><span class="${cls}">${fmtBtcPnl(prev.btc)} BTC</span></div>` : "";
+    const eq = !prev.error && prev.unit !== "pct" && prev.pct != null ? `<div class="d-empty">Mesmo % nas contas: ${fmtPct(prev.pct)}</div>` : "";
+    const err = prev.error ? `<div class="d-empty">${esc(prev.error)}</div>` : "";
+    if ($(rows)) $(rows).innerHTML = body + foot + eq + err;
+  }
+}
+function paintActions() {
+  const longPrev = reducing ? computeReducePreview("long") : null;
+  const shortPrev = reducing ? computeReducePreview("short") : null;
+  let ct = 0, px = 0;
+  if (!reducing && deskKind === "scale") {
+    const plan = typeof scalePlan === "function" ? scalePlan() : null;
+    ct = plan ? plan.legs.reduce((s, l) => s + l.ct, 0) : 0;
+    px = plan ? plan.avg : 0;
+  } else if (!reducing) {
+    const entry = deskKind === "limit" ? parseNum($("price").value) : lastPx;
+    const sized = sizesAt(entry);
+    ct = sized.totalCt;
+    px = entry || 0;
+  }
+  const subOf = (c, p) => (c > 0 && p > 0) ? `${fmtCt(c)} @ ${fmtPx(p)}` : "—";
+  const longSub = reducing && longPrev ? subOf(longPrev.totalCt, longPrev.exit) : subOf(ct, px);
+  const shortSub = reducing && shortPrev ? subOf(shortPrev.totalCt, shortPrev.exit) : subOf(ct, px);
+  const setBtn = (id, label, sub) => {
+    const el = $(id);
+    if (!el) return;
+    el.innerHTML = `<span class="go-k">${label}</span><span class="go-sub">${sub}</span>`;
+  };
+  setBtn("d-long", "LONG", longSub);
+  setBtn("d-short", "SHORT", shortSub);
+  setBtn("btn-long", "LONG", longSub);
+  setBtn("btn-short", "SHORT", shortSub);
+  if (sending) return;
+  const el = $("send");
+  if (!el) return;
+  if (deskKind === "hedge") { el.textContent = "CONFIRMAR HEDGE"; el.classList.add("short"); return; }
+  el.classList.toggle("short", side === "short");
+  const mine = side === "short" ? shortSub : longSub;
+  const verb = reducing ? "REDUZIR" : (deskKind === "scale" ? "ESCALA" : (ordType === "limit" ? "LIMITE" : "MERCADO"));
+  el.innerHTML = `<span class="go-k">${side === "short" ? "SHORT" : "LONG"}</span><span class="go-sub">${verb} ${mine}</span>`;
+}
+function setReduceUnit(unit) {
+  reduceUnit = unit === "usd" || unit === "ct" ? unit : "pct";
+  const k = reduceUnit === "usd" ? "USD a reduzir" : reduceUnit === "ct" ? "Contratos a reduzir" : "% da perna";
+  const u = reduceUnit === "usd" ? "USD" : reduceUnit === "ct" ? "ct" : "%";
+  if ($("d-reduce-k")) $("d-reduce-k").textContent = k;
+  if ($("m-reduce-k")) $("m-reduce-k").textContent = k;
+  document.querySelectorAll(".reduce-unit").forEach((el) => { el.textContent = u; });
+  document.querySelectorAll("#d-reduce-units button, #m-reduce-units button").forEach((b) => {
+    b.classList.toggle("on", b.dataset.unit === reduceUnit);
+  });
+  paintKind();
+  updateSendLabel();
+  drawPreviews();
+}
 function updateDesk() {
   if (!$("d-size")) return;
   const ws = $("d-ws");
@@ -1657,19 +2002,9 @@ function updateDesk() {
     bars.classList.toggle("short", side === "short");
     const maxW = plan ? Math.max(...plan.legs.map((l) => l.weight)) : 1;
     bars.innerHTML = plan ? plan.legs.map((l) => `<i style="height:${Math.max(8, Math.round(l.weight / maxW * 36))}px"></i>`).join("") : "";
-    const usd = plan && plan.totalUsd > 0 ? Math.round(plan.totalUsd).toLocaleString("pt-BR") : "—";
-    const px = plan ? fmtPx(plan.avg) : "—";
-    $("d-long").textContent = "LONG " + usd + " @ " + px;
-    $("d-short").textContent = "SHORT " + usd + " @ " + px;
   } else {
     $("d-size").textContent = sized.any ? fmtUsd(sized.totalUsd) : "—";
     $("d-size-rows").innerHTML = renderSizeRows(sized.rows);
-    const usd = sized.any ? Math.round(sized.totalUsd).toLocaleString("pt-BR") : "—";
-    const px = entry > 0 ? fmtPx(entry) : "—";
-    const kind = deskKind === "limit" ? "limite" : "mercado";
-    $("d-long").textContent = "LONG " + usd + " @ " + px;
-    $("d-short").textContent = "SHORT " + usd + " @ " + px;
-    void kind;
   }
   const eqs = accountsForSize();
   const btc = eqs.reduce((s, a) => s + (Number(a.eq) || 0), 0);
@@ -1685,6 +2020,8 @@ function updateDesk() {
     : !$("adj-banner-warn").classList.contains("hidden") ? $("adj-banner-warn").textContent : "";
   $("d-msg").textContent = err || warn || "";
   $("d-msg").className = err ? "err" : warn ? "warn" : "err hidden";
+  paintReduce();
+  paintActions();
 }
 function fmtBtc(n) { return Number(n).toLocaleString("pt-BR", { minimumFractionDigits: 4, maximumFractionDigits: 6 }); }
 function renderDesk() {
@@ -1713,7 +2050,7 @@ function renderDesk() {
   $("d-pos-body").innerHTML = posRows.length ? `<table class="d-table"><thead><tr><th>Símbolo</th><th>Conta</th><th class="r">Entrada</th><th class="r">Tamanho</th><th class="r">Resultado</th></tr></thead><tbody>${posRows.join("")}</tbody></table>` : '<div class="d-empty">Sem posição.</div>';
   const orders = [];
   for (const a of list) for (const o of accountOrders(a)) orders.push(o);
-  $("d-ord-body").innerHTML = orders.length ? `<table class="d-table"><thead><tr><th>Símbolo</th><th>Tipo</th><th>Conta</th><th class="r">Preço</th></tr></thead><tbody>${orders.map((o) => `<tr><td>BTC-USD-SWAP</td><td>${o.kind === "stop" ? "Stop" : "Limite"}</td><td>${esc(o.account)}</td><td class="r">${fmtPx(o.price)}</td></tr>`).join("")}</tbody></table>` : '<div class="d-empty">Nenhuma ordem aberta.</div>';
+  $("d-ord-body").innerHTML = orders.length ? `<table class="d-table"><thead><tr><th>Símbolo</th><th>Tipo</th><th>Conta</th><th class="r">Preço</th><th class="r">Tam.</th></tr></thead><tbody>${orders.map((o) => `<tr><td>BTC-USD-SWAP</td><td>${o.kind === "stop" ? "Stop" : "Limite"}</td><td>${esc(o.account)}</td><td class="r">${fmtPx(o.price)}</td><td class="r">${o.sz ? fmtCt(o.sz) + " ct" : "—"}</td></tr>`).join("")}</tbody></table>` : '<div class="d-empty">Nenhuma ordem aberta.</div>';
   updateDesk();
 }
 function fillFilters() {
@@ -1749,27 +2086,38 @@ function paintKind() {
   const scale = deskKind === "scale";
   show($("m-hedge"), hedge);
   show($("m-scale"), scale);
-  show($("m-reduce"), reducing && !hedge && !scale);
+  show($("m-reduce"), reducing && !hedge);
   show($("entry-risk"), !hedge && !reducing);
   show($("d-open-box"), !hedge && !reducing);
   show($("d-hedge"), hedge);
-  show($("d-reduce-box"), reducing && !hedge && !scale);
+  show($("d-reduce-box"), reducing && !hedge);
   show($("d-sides"), !hedge);
   show($("m-sides"), !hedge);
-  show($("d-size-note"), !hedge);
-  show($("d-reduce-toggle"), !hedge && !scale);
-  if ($("btn-reduce")) show($("btn-reduce"), !hedge && !scale);
+  show($("d-size-note"), !hedge && !reducing);
+  show($("d-reduce-toggle"), false);
+  if ($("btn-reduce")) show($("btn-reduce"), !hedge);
   show($("d-price-box"), deskKind === "limit");
   show($("d-scale"), scale);
   show($("price-row"), deskKind === "limit" || (hedge && hedgeOrd === "limit"));
-  if ($("d-reduce-which")) $("d-reduce-which").textContent = "Reduz a perna " + side + ".";
-  if ($("m-reduce-which")) $("m-reduce-which").textContent = "Reduz a perna " + side + ".";
+  const which = reduceUnit === "pct"
+    ? "Reduz a perna " + side + ", nas 4 contas."
+    : "Reduz a perna " + side + ". O valor entra no mesmo % em cada conta.";
+  if ($("d-reduce-which")) $("d-reduce-which").textContent = which;
+  if ($("m-reduce-which")) $("m-reduce-which").textContent = which;
   if ($("btn-reduce")) { $("btn-reduce").classList.toggle("on", reducing); $("btn-reduce").setAttribute("aria-pressed", reducing); }
   if ($("d-reduce-toggle")) { $("d-reduce-toggle").classList.toggle("on", reducing); $("d-reduce-toggle").setAttribute("aria-pressed", reducing); }
+  document.querySelectorAll("#d-tabs .d-tab").forEach((b) => {
+    let on = false;
+    if (b.dataset.reduce) on = deskTab === "post" && reducing;
+    else if (b.dataset.tab === "post") on = deskTab === "post" && !reducing;
+    else on = deskTab === b.dataset.tab;
+    b.classList.toggle("on", on);
+  });
 }
 function setReducing(on) {
   reducing = !!on;
-  if (reducing && (deskKind === "hedge" || deskKind === "scale")) deskKind = ordType === "limit" ? "limit" : "market";
+  if (reducing && deskKind === "hedge") deskKind = ordType === "limit" ? "limit" : "market";
+  if (reducing) deskTab = "post";
   paintKind();
   updateSendLabel();
   drawPreviews();
@@ -1777,7 +2125,7 @@ function setReducing(on) {
 function setDeskKind(kind) {
   deskKind = kind;
   if ($("d-kind")) $("d-kind").value = kind;
-  if (kind === "hedge" || kind === "scale") reducing = false;
+  if (kind === "hedge") reducing = false;
   if (kind === "market") setOrdType("market");
   else if (kind === "limit") setOrdType("limit");
   else { entradaPreviewHold = false; drawPreviews(); }
@@ -1883,25 +2231,91 @@ async function sendHedge() {
     $("scale-ok").disabled = false;
   }
 }
+function reducePayload(prev) {
+  const payload = { side };
+  if (reduceUnit === "pct") payload.pct = prev.pct;
+  else payload.contracts = prev.rows.filter((r) => r.ct >= 0.1).map((r) => ({ name: r.name, ct: roundLot(r.ct) }));
+  return payload;
+}
+function reduceRejected(data) {
+  const msg = data.abort_msg || data.error || "";
+  if (reduceUnit !== "pct" && /percentual inválido/i.test(msg)) return "O servidor ainda não aceita reduzir por USD ou contratos. Nada foi enviado.";
+  if (deskKind === "scale" && /stop inválido/i.test(msg)) return "A redução em escala ainda não está no servidor. Nada foi enviado.";
+  return msg;
+}
 async function sendReduce() {
-  const pct = parseNum(($("d-reduce-pct") && $("d-reduce-pct").value) || ($("m-reduce-pct") && $("m-reduce-pct").value));
-  const price = parseNum($("price").value);
-  if (pct == null || pct < 1 || pct > 100) { $("banner-err").textContent = "Percentual inválido: use um valor de 1 a 100."; show($("banner-err"), true); return; }
-  if (ordType === "limit" && !(price > 0)) { $("banner-err").textContent = "Preenche um preço limite válido."; show($("banner-err"), true); return; }
+  if (deskKind === "scale") { openScaleSheet(); return; }
+  const prev = computeReducePreview(side);
+  if (!prev || prev.error || !(prev.totalCt >= 0.1)) {
+    $("banner-err").textContent = (prev && prev.error) || "Nada para reduzir.";
+    show($("banner-err"), true);
+    return;
+  }
+  const useLimit = deskKind === "limit";
   sending = true; $("send").disabled = true; $("send").textContent = "ENVIANDO…";
   try {
-    const payload = { side, reduce: true, pct, ordType };
-    if (ordType === "limit") payload.price = price;
+    const payload = { ...reducePayload(prev), reduce: true, ordType: useLimit ? "limit" : "market" };
+    if (useLimit) payload.price = prev.exit;
     const { res, data } = await api("/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (res.status === 401) return;
-    if (data.error && !data.accounts) { $("banner-err").textContent = data.error; show($("banner-err"), true); return; }
+    if (data.error && !data.accounts) { $("banner-err").textContent = reduceRejected(data); show($("banner-err"), true); return; }
     renderResult(data);
     if (data.aborted || data.ok === false) { $("banner-err").textContent = data.abort_msg || data.error || "Redução bloqueada."; show($("banner-err"), true); }
     loadPositions();
   } catch (e) { $("banner-err").textContent = "Não consegui falar com o servidor."; show($("banner-err"), true); }
   finally { sending = false; $("send").disabled = false; updateSendLabel(); }
 }
+function openScaleReduceSheet() {
+  const prev = computeReducePreview(side);
+  if (!prev || prev.error || !(prev.totalCt >= 0.1)) {
+    const msg = (prev && prev.error) || "Nada para reduzir.";
+    $("banner-err").textContent = msg;
+    show($("banner-err"), true);
+    if ($("d-msg")) { $("d-msg").textContent = msg; $("d-msg").className = "err"; }
+    return;
+  }
+  sheetKind = "scale-reduce";
+  $("scale-title").textContent = "Reduzir em escala";
+  $("scale-note").textContent = "Confirmar manda ordens limite só para reduzir. Não abre posição nova.";
+  const head = prev.rows.filter((r) => r.ct >= 0.1).map((r) => `<li><span class="name">${esc(r.name)}</span> · ${fmtCt(r.ct)} ct · ${fmtBtcPnl(r.btc)} BTC</li>`).join("");
+  const legs = (prev.ladder || []).filter((l) => l.ct >= 0.1).map((l) => `<li>${fmtPx(l.price)} · ${fmtCt(l.ct)} ct</li>`).join("");
+  const cls = prev.btc >= 0 ? "ok" : "blocked";
+  $("scale-list").innerHTML = head + `<li class="${cls}">${prev.label} ${fmtBtcPnl(prev.btc)} BTC (~${fmtUsdPnl(prev.usd)})</li>` + legs;
+  $("scale-msg").textContent = "";
+  show($("scale-msg"), false);
+  $("scale-ok").disabled = false;
+  scaleOpen = true;
+  show($("scale-sheet"), true);
+  try { $("scale-cancel").focus(); } catch (e) {}
+}
+async function submitScaleReduce() {
+  const prev = computeReducePreview(side);
+  const inp = scaleInputs();
+  if (!prev || prev.error) {
+    $("scale-msg").textContent = (prev && prev.error) || "Nada para reduzir.";
+    show($("scale-msg"), true);
+    return;
+  }
+  $("scale-ok").disabled = true;
+  try {
+    const payload = { ...reducePayload(prev), reduce: true, from: inp.from, to: inp.to, n: inp.n, priceSkew: !priceEven, sizeSkew: !sizeEven };
+    const { res, data } = await api("/scale", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    if (!res.ok || data.aborted || data.ok === false) {
+      $("scale-msg").textContent = reduceRejected(data) || "Redução bloqueada. Nada enviado.";
+      show($("scale-msg"), true);
+      $("scale-ok").disabled = false;
+      return;
+    }
+    closeScaleSheet();
+    loadPositions();
+  } catch (e) {
+    $("scale-msg").textContent = "Não consegui falar com o servidor.";
+    show($("scale-msg"), true);
+    $("scale-ok").disabled = false;
+  }
+}
 function openScaleSheet() {
+  if (reducing) return openScaleReduceSheet();
   sheetKind = "scale";
   $("scale-title").textContent = "Escala";
   $("scale-note").textContent = "Confirmar manda as ordens limite para as 4 contas.";
@@ -1933,6 +2347,7 @@ function closeScaleSheet() {
 }
 async function submitScale() {
   if (sheetKind === "hedge") return sendHedge();
+  if (sheetKind === "scale-reduce" || reducing) return submitScaleReduce();
   const plan = scalePlan();
   if (!plan) return;
   $("scale-ok").disabled = true;
@@ -1960,7 +2375,13 @@ function initDesk() {
   $("d-filter").onchange = () => setDeskFilter($("d-filter").value);
   $("d-filter-pos").onchange = () => setDeskFilter($("d-filter-pos").value);
   $("d-filter-ord").onchange = () => setDeskFilter($("d-filter-ord").value);
-  $("d-tabs").onclick = (ev) => { const b = ev.target.closest(".d-tab"); if (b) setDeskTab(b.dataset.tab); };
+  $("d-tabs").onclick = (ev) => {
+    const b = ev.target.closest(".d-tab");
+    if (!b) return;
+    if (b.dataset.reduce) { setDeskTab("post"); setReducing(true); return; }
+    if (b.dataset.tab === "post") { setReducing(false); setDeskTab("post"); return; }
+    setDeskTab(b.dataset.tab);
+  };
   $("d-risk").addEventListener("input", () => copyField("d-risk", "risk"));
   $("d-risk-range").addEventListener("input", () => { $("d-risk").value = $("d-risk-range").value; copyField("d-risk", "risk"); });
   $("d-max").onclick = () => { $("d-risk").value = "5"; $("d-risk-range").value = "5"; copyField("d-risk", "risk"); };
@@ -1985,8 +2406,11 @@ function initDesk() {
     $("d-long").onclick = () => { setSide("long"); if (deskKind === "scale") { openScaleSheet(); return; } $("send").click(); };
   $("d-short").onclick = () => { setSide("short"); if (deskKind === "scale") { openScaleSheet(); return; } $("send").click(); };
   $("d-reduce-toggle").onclick = () => setReducing(!reducing);
-  $("d-reduce-pct").addEventListener("input", () => { if ($("m-reduce-pct")) $("m-reduce-pct").value = $("d-reduce-pct").value; updateSendLabel(); paintKind(); });
-  $("m-reduce-pct").addEventListener("input", () => { if ($("d-reduce-pct")) $("d-reduce-pct").value = $("m-reduce-pct").value; updateSendLabel(); });
+  $("d-reduce-pct").addEventListener("input", () => { if ($("m-reduce-pct")) $("m-reduce-pct").value = $("d-reduce-pct").value; drawPreviews(); });
+  $("m-reduce-pct").addEventListener("input", () => { if ($("d-reduce-pct")) $("d-reduce-pct").value = $("m-reduce-pct").value; drawPreviews(); });
+  const onUnit = (ev) => { const b = ev.target.closest("[data-unit]"); if (b) setReduceUnit(b.dataset.unit); };
+  if ($("d-reduce-units")) $("d-reduce-units").onclick = onUnit;
+  if ($("m-reduce-units")) $("m-reduce-units").onclick = onUnit;
   const setHedgeMode = (mode) => {
     hedgeMode = mode;
     $("d-mode-short").classList.toggle("on", mode === "short");

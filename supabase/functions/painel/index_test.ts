@@ -1,6 +1,6 @@
 import { __test } from "./index.ts";
 
-const { setReq, reset, ctFromRisk, lossBtc, hedgeNumbers, runOrder, runReduce, runScale, runAmend, runHedge } = __test;
+const { setReq, reset, ctFromRisk, lossBtc, hedgeNumbers, realizedPnlBtc, allocateReduce, splitLots, runOrder, runReduce, runScale, runScaleReduce, runAmend, runHedge } = __test;
 
 type Call = { P: string; m: string; p: string; body?: unknown };
 let calls: Call[] = [];
@@ -176,4 +176,95 @@ Deno.test("hedge 0→50, 50→25, 50→50 e modo comprado", async () => {
   if ((flat.accounts as any[])[0].action !== "reduzir") throw new Error(JSON.stringify(flat.accounts));
   const canc = hit("/api/v5/trade/cancel-algos", "OKX").flatMap((c) => c.body as any[]);
   if (!canc.some((x) => x.algoId === "sl-short")) throw new Error("zerar o short devia cancelar o stop órfão");
+});
+
+Deno.test("pnl inverso e rateio do reduce", () => {
+  const longWin = realizedPnlBtc(1, 60000, 64000, "long");
+  const longLoss = realizedPnlBtc(1, 68000, 64000, "long");
+  const shortWin = realizedPnlBtc(1, 68000, 64000, "short");
+  const shortLoss = realizedPnlBtc(1, 60000, 64000, "short");
+  if (!(longWin > 0) || !(shortWin > 0) || !(longLoss < 0) || !(shortLoss < 0)) throw new Error("sinal do pnl " + [longWin, longLoss, shortWin, shortLoss]);
+  if (Math.abs(longWin - 100 * (1 / 60000 - 1 / 64000)) > 1e-12) throw new Error("pnl long " + longWin);
+  if (Math.abs(shortWin - 100 * (1 / 64000 - 1 / 68000)) > 1e-12) throw new Error("pnl short " + shortWin);
+  const alloc = allocateReduce([{ key: "pupo", pos: 10 }, { key: "pai", pos: 5 }, { key: "mãe", pos: 0 }], 3);
+  const pupo = alloc.find((a) => a.key === "pupo")!;
+  const pai = alloc.find((a) => a.key === "pai")!;
+  const mae = alloc.find((a) => a.key === "mãe")!;
+  if (pupo.ct !== 2 || pai.ct !== 1 || mae.ct !== 0) throw new Error("rateio " + JSON.stringify(alloc));
+  if (pupo.ct / 10 !== pai.ct / 5) throw new Error("não ficou o mesmo %");
+  const capped = allocateReduce([{ key: "a", pos: 1 }, { key: "b", pos: 1 }], 5);
+  if (capped.some((a) => a.ct !== 1)) throw new Error("passou da perna " + JSON.stringify(capped));
+  const parts = splitLots(1.3, [1, 1]);
+  if (Math.abs(parts[0] + parts[1] - 1.3) > 1e-9) throw new Error("escada " + parts);
+  if (parts.some((c) => Math.abs(c * 10 - Math.round(c * 10)) > 1e-9)) throw new Error("lote " + parts);
+});
+
+Deno.test("reduce por contratos, sem mexer no % antigo", async () => {
+  reset(); install();
+  balances = { OKX: 1, OKX2: 1 };
+  positions = {
+    OKX: [leg("long", "2", "64000"), leg("short", "1", "66000")],
+    OKX2: [leg("long", "4", "64000")],
+  };
+  algos = {
+    OKX: [algo("long", "sl-long", "62000"), algo("short", "sl-short", "68000")],
+    OKX2: [algo("long", "sl-2", "62000")],
+  };
+  const r = await runReduce("long", 0, "limit", 65000, false, { pupo: 1.26, pai: 9 });
+  if (r.aborted) throw new Error(String(r.abort_msg));
+  const okx = (r.accounts as any[]).find((a) => a.prefix === "OKX");
+  const pai = (r.accounts as any[]).find((a) => a.prefix === "OKX2");
+  if (okx.close_ct !== 1.3 || okx.status !== "ok") throw new Error("pupo " + JSON.stringify(okx));
+  if (pai.close_ct !== 4 || pai.status !== "ok") throw new Error("pai devia cravar na perna " + JSON.stringify(pai));
+  const orders = hit("/api/v5/trade/order").map((c) => c.body as any);
+  if (orders.length !== 2 || orders.some((o) => o.reduceOnly !== true || o.posSide !== "long" || o.side !== "sell")) throw new Error(JSON.stringify(orders));
+  if (orders.find((o) => o.sz === "1.3")?.px !== "65000") throw new Error("preço " + JSON.stringify(orders));
+  const touched = hit("/api/v5/trade/cancel-algos", "OKX").flatMap((c) => JSON.stringify(c.body));
+  if (touched.some((s) => s.includes("sl-short"))) throw new Error("contratos mexeram na short");
+
+  reset(); install();
+  positions = { OKX: [leg("long", "2", "64000")] };
+  algos = { OKX: [algo("long", "sl-long", "62000")] };
+  const pct = await runReduce("long", 33, "market", null, true);
+  const row = (pct.accounts as any[]).find((a) => a.prefix === "OKX");
+  if (row.close_ct !== 0.6) throw new Error("% ainda trunca no lote: " + row.close_ct);
+  if (posts().length) throw new Error("dry do % enviou");
+});
+
+Deno.test("escala reduce-only: dry não envia, falha desfaz, sem stop não sai", async () => {
+  reset(); install();
+  balances = { OKX: 1, OKX2: 1 };
+  positions = { OKX: [leg("long", "2", "60000", "64100")], OKX2: [leg("short", "2", "68000", "64100")] };
+  algos = { OKX: [algo("long", "sl-long", "58000")] };
+  const dry = await runScaleReduce("long", 63000, 65000, 2, false, false, 50, null, true);
+  if (posts().length) throw new Error("dry enviou");
+  const okx = (dry.accounts as any[]).find((a) => a.prefix === "OKX");
+  const other = (dry.accounts as any[]).find((a) => a.prefix === "OKX2");
+  if (okx.status !== "ok" || okx.close_ct !== 1) throw new Error("50% de 2 em 2 pernas " + JSON.stringify(okx));
+  if (other.status !== "sem perna") throw new Error("short não devia entrar na redução long " + JSON.stringify(other));
+  const legs = okx.legs as any[];
+  if (legs.length !== 2 || legs.some((l) => l.ct !== 0.5)) throw new Error("pernas " + JSON.stringify(legs));
+
+  const live = await runScaleReduce("long", 63000, 65000, 2, false, false, null, { pupo: 1 }, false);
+  if (live.aborted) throw new Error(String(live.abort_msg));
+  const batch = hit("/api/v5/trade/batch-orders", "OKX")[0].body as any[];
+  if (batch.length !== 2 || batch.some((o) => o.reduceOnly !== true || o.posSide !== "long" || o.side !== "sell")) throw new Error(JSON.stringify(batch));
+  if (hit("/api/v5/trade/batch-orders", "OKX2").length) throw new Error("mandou escala na conta sem a perna");
+
+  reset(); install();
+  positions = { OKX: [leg("long", "2", "60000")] };
+  algos = {};
+  const bare = await runScaleReduce("long", 63000, 65000, 2, false, false, 50, null, false);
+  if (!bare.aborted || posts().some((c) => c.p === "/api/v5/trade/batch-orders")) throw new Error("sem stop não podia enviar");
+
+  failBatch = true;
+  positions = { OKX: [leg("long", "2", "60000")], OKX2: [leg("long", "2", "60000")] };
+  algos = { OKX: [algo("long", "sl-long", "58000")], OKX2: [algo("long", "sl-2", "58000")] };
+  const bad = await runScaleReduce("long", 63000, 65000, 2, false, false, 50, null, false);
+  failBatch = false;
+  const failed = (bad.accounts as any[]).find((a) => a.prefix === "OKX");
+  const good = (bad.accounts as any[]).find((a) => a.prefix === "OKX2");
+  if (failed.status !== "falhou") throw new Error("OKX devia falhar " + JSON.stringify(failed));
+  if (good.status !== "ok") throw new Error("OKX2 devia entrar " + JSON.stringify(good));
+  if (!hit("/api/v5/trade/cancel-batch-orders", "OKX").length) throw new Error("não desfez a escala da OKX");
 });
