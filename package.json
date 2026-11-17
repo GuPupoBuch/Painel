@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "test:e2e": "playwright test",
-    "test:deno": "deno test -A supabase/functions/painel/index_test.ts"
+    "test:deno": "deno test --allow-env supabase/functions/painel/index_test.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1"

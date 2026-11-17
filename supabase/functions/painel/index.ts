@@ -16,6 +16,52 @@ const env = (k: string) => Deno.env.get(k) ?? "";
 const B = env("OKX_BASE") || "https://www.okx.com";
 const enc = new TextEncoder();
 
+// ---------- trava de ambiente ----------
+// A OKX real exige TRÊS coisas ao mesmo tempo; o mock em loopback é sempre permitido:
+//   1. destino: exatamente a origem https://www.okx.com (sem porta, caminho, query, fragmento ou credenciais);
+//   2. detecção de execução hospedada (hostedMarkersPresent): global EdgeRuntime + SB_EXECUTION_ID (UUID)
+//      + DENO_DEPLOYMENT_ID do projeto. São marcadores documentados do ambiente hospedado, NÃO prova
+//      criptográfica: qualquer um pode defini-los. Só reduzem o risco de liberar a OKX por engano;
+//   3. autorização para negociar (okxLiveAuthorized): OKX_LIVE_ENABLED exatamente "true".
+// SUPABASE_URL não conta para nada. Localmente, a barreira obrigatória continua sendo o
+// --allow-net=127.0.0.1 do tests/serve-painel.sh: o Deno recusa qualquer outro host.
+type EnvGet = (k: string) => string;
+const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
+const OKX_REAL_HOST = "www.okx.com";
+const PROJECT_REF = "krzznjwvcrbuhlfwsdel";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// {project_ref}_{function_id}_{version}: segmentos não vazios só com [A-Za-z0-9.-], separados por "_".
+// Ancorada nas duas pontas; exige pelo menos function_id e version.
+const DEPLOYMENT_ID_RE = new RegExp(`^${PROJECT_REF}_[A-Za-z0-9-]+(?:_[A-Za-z0-9.-]+)+$`);
+// OKX real: só esta origem, comparada como texto exato (new URL() esconderia ":443" e aceitaria caminho/query).
+const OKX_REAL_ORIGIN = "https://" + OKX_REAL_HOST;
+// O Supabase Edge Runtime define o global EdgeRuntime (hospedado e também no supabase functions serve).
+const IN_EDGE_RUNTIME = typeof (globalThis as Record<string, unknown>).EdgeRuntime !== "undefined";
+// Detecção: só diz se parece execução hospedada. Não autoriza nada.
+function hostedMarkersPresent(get: EnvGet, hasEdgeRuntime: boolean): boolean {
+  if (!hasEdgeRuntime) return false;
+  const exec = get("SB_EXECUTION_ID");
+  const dep = get("DENO_DEPLOYMENT_ID"); // formato documentado: {project_ref}_{function_id}_{version}
+  return UUID_RE.test(exec) && DEPLOYMENT_ID_RE.test(dep);
+}
+// Autorização: decisão explícita de negociar de verdade, independente da detecção.
+const okxLiveAuthorized = (get: EnvGet) => get("OKX_LIVE_ENABLED") === "true";
+function okxTargetAllowed(base: string, liveAuthorized: boolean, hosted: boolean): boolean {
+  let u: URL;
+  try {
+    u = new URL(base);
+  } catch {
+    return false;
+  }
+  if (LOOPBACK.has(u.hostname)) return u.protocol === "http:" || u.protocol === "https:";
+  // sem porta (nem :443), caminho, query, fragmento, usuário ou senha: o texto tem de ser exatamente a origem
+  return liveAuthorized && hosted && base === OKX_REAL_ORIGIN;
+}
+const okxBaseOf = (get: EnvGet) => get("OKX_BASE") || OKX_REAL_ORIGIN;
+function okxAllowedByEnv(get: EnvGet, hasEdgeRuntime: boolean): boolean {
+  return okxTargetAllowed(okxBaseOf(get), okxLiveAuthorized(get), hostedMarkersPresent(get, hasEdgeRuntime));
+}
+
 // ---------- crypto ----------
 async function hmacRaw(key: string, msg: string): Promise<Uint8Array> {
   const k = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -33,6 +79,9 @@ function safeEq(a: string, b: string): boolean {
 // ---------- OKX ----------
 type J = Record<string, any>;
 let req = async function req(P: string, m: string, p: string, body?: unknown): Promise<J> {
+  if (!okxTargetAllowed(B, okxLiveAuthorized(env), hostedMarkersPresent(env, IN_EDGE_RUNTIME))) {
+    throw new Error(`OKX bloqueada (${B}): fora do ambiente hospedado ou sem OKX_LIVE_ENABLED=true só o mock em loopback é permitido`);
+  }
   // mesmo timestamp ISO ms + 'Z' e assinatura ts+method+path+body do mkt.py
   const ts = new Date().toISOString();
   const b = body ? JSON.stringify(body) : "";
@@ -1573,7 +1622,7 @@ async function runHedgeScale(targetPct: number, mode: "short" | "net", from: num
   return out;
 }
 
-if (import.meta.main) Deno.serve(async (req) => {
+const handler = async (req: Request): Promise<Response> => {
   const c = cors(req);
   const json = (code: number, obj: unknown) => new Response(JSON.stringify(obj), { status: code, headers: { ...c, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: c });
@@ -1807,11 +1856,19 @@ if (import.meta.main) Deno.serve(async (req) => {
     console.error("erro", String((e as Error).message || e).slice(0, 200));
     return json(502, { ok: false, error: "Falha falando com a OKX: " + String((e as Error).message || e).slice(0, 160) });
   }
-});
+};
+// Onde escutar depende só do EdgeRuntime (não dos marcadores, nem da autorização):
+// no Edge Runtime (nuvem ou supabase functions serve), Deno.serve exatamente como antes;
+// num deno run comum, só 127.0.0.1 (porta PANEL_PORT, padrão 8000).
+if (import.meta.main) {
+  if (IN_EDGE_RUNTIME) Deno.serve(handler);
+  else Deno.serve({ hostname: "127.0.0.1", port: parseInt(env("PANEL_PORT") || "8000") }, handler);
+}
 
 export const __test = {
   setReq(fn: typeof req) { req = fn; },
   reset() { orderBusy = false; },
+  okxTargetAllowed, okxAllowedByEnv, hostedMarkersPresent, okxLiveAuthorized,
   ctFromRisk, ctFromEquityPct, lossBtc, scalePrices, hedgeNumbers, realizedPnlBtc, allocateReduce, splitLots, contractMap,
   runOrder, runReduce, runAdjust, runScale, runScaleReduce, runScaleAmount, runSized, runAlgo, runAmend, runCancel, runHedge, runHedgeScale, harmonicAvg, scaleRiskLots, fetchPositions, ACC,
 };

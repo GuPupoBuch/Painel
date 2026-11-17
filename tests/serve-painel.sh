@@ -16,5 +16,12 @@ export OKX4_API_PASSPHRASE=test-pass
 export TRADER_PANEL_PASSWORD=teste
 export PANEL_SESSION_SECRET=segredo-de-teste-painel
 export PANEL_ORIGINS=http://127.0.0.1:4173
+export PANEL_PORT=8000
+# nunca herda a autorização da OKX real: sem OKX_LIVE_ENABLED o backend só aceita o mock em loopback
+unset OKX_LIVE_ENABLED
+# nem herda marcadores de execução hospedada (são só indícios, mas não devem vazar para o ambiente local)
+unset SB_EXECUTION_ID DENO_DEPLOYMENT_ID
+unset SUPABASE_URL
 cd "$(dirname "$0")/.."
-exec deno run -A supabase/functions/painel/index.ts
+# rede só em 127.0.0.1: escuta na 8000 e fala com o mock na 8788. O Deno nega qualquer outro host (inclusive a OKX real).
+exec deno run --allow-env --allow-net=127.0.0.1 supabase/functions/painel/index.ts

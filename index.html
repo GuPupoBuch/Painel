@@ -900,7 +900,21 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
 </div>
 
 <script>
-const API = new URLSearchParams(location.search).get("api") || "https://krzznjwvcrbuhlfwsdel.supabase.co/functions/v1/painel";
+// Backend fixo por ambiente. O parâmetro ?api= é ignorado de propósito: nenhum link pode mandar a senha para outro lugar.
+// Página aberta localmente (arquivo, loopback, *.localhost, rede privada) só fala com o backend de teste em 127.0.0.1:8000.
+// Qualquer outro host (site publicado) usa só o endpoint oficial de produção.
+const PROD_API = "https://krzznjwvcrbuhlfwsdel.supabase.co/functions/v1/painel";
+const LOCAL_API = "http://127.0.0.1:8000";
+function isLocalHost(h) {
+  h = String(h || "").toLowerCase();
+  if (h === "" || h === "localhost" || h === "[::1]" || h.endsWith(".localhost") || h.endsWith(".local")) return true;
+  const m = h.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (!m) return false;
+  const a = +m[1], b = +m[2];
+  return a === 127 || a === 10 || a === 0 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254);
+}
+const IS_LOCAL = location.protocol === "file:" || isLocalHost(location.hostname);
+const API = IS_LOCAL ? LOCAL_API : PROD_API;
 const INST = "BTC-USD-SWAP";
 const TK = "painel_token";
 const $ = (id) => document.getElementById(id);
@@ -1832,6 +1846,10 @@ $("stop").addEventListener("input", () => { entradaPreviewHold = false; drawPrev
 
 // ---------- API ----------
 async function api(path, opts = {}) {
+  // segunda barreira: confere o destino real do pedido. Página local só sai para 127.0.0.1:8000.
+  const dest = new URL(API + path);
+  const expected = new URL(IS_LOCAL ? LOCAL_API : PROD_API);
+  if (dest.origin !== expected.origin) throw new Error("Backend bloqueado para este ambiente.");
   const t = localStorage.getItem(TK);
   const headers = { ...(opts.headers || {}) };
   if (t) headers["Authorization"] = "Bearer " + t;
@@ -3511,6 +3529,10 @@ function initDesk() {
   $("d-adj-best").onclick = () => { fillAdjMark(); $("d-adj-price").value = $("adj-price").value; invalidateAdjPreview(); };
   $("d-adj-preview").onclick = () => $("adj-preview").click();
   $("d-adj-send").onclick = () => $("adj-send").click();
+  // o Reduzir desktop acompanha o habilitado/desabilitado do botão interno (sem prévia pronta o clique seria ignorado)
+  const syncAdjSend = () => { $("d-adj-send").disabled = $("adj-send").disabled; };
+  new MutationObserver(syncAdjSend).observe($("adj-send"), { attributes: true, attributeFilter: ["disabled"] });
+  syncAdjSend();
   $("scale-cancel").onclick = () => closeScaleSheet();
   $("scale-ok").onclick = () => submitScale();
   $("scale-sheet").addEventListener("click", (ev) => { if (ev.target === $("scale-sheet")) closeScaleSheet(); });

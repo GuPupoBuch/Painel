@@ -3,7 +3,10 @@ const fs = require("fs");
 const path = require("path");
 
 const LIB = fs.readFileSync(path.join(__dirname, "fixtures/lightweight-charts.js"));
-const ART = "/opt/cursor/artifacts";
+// capturas ficam dentro do projeto (test-results/ já está no .gitignore e é recriado a cada execução)
+const ART = path.join(__dirname, "..", "test-results", "capturas");
+// a página local só fala com o backend de teste; aqui ele é simulado
+const LOCAL_API = "http://127.0.0.1:8000/";
 
 function buildCandles() {
   const start = Date.UTC(2026, 0, 1);
@@ -68,7 +71,13 @@ async function installMocks(page) {
       await route.fulfill({ contentType: "application/json", body: JSON.stringify({ code: "0", data: buildCandles() }) });
       return;
     }
-    if (url.includes("/functions/v1/painel")) {
+    if (url.includes("supabase.co")) {
+      // nunca deve acontecer com a trava do index.html; se acontecer, nada sai e o teste acusa
+      posts.push("PROD " + method + " " + url);
+      await route.abort();
+      return;
+    }
+    if (url.startsWith(LOCAL_API)) {
       await route.fulfill({ contentType: "application/json", body: JSON.stringify(positions()) });
       return;
     }

@@ -3,3 +3,6 @@ test-results/
 playwright-report/
 blob-report/
 playwright/.cache/
+
+# cache do Supabase CLI (ref do projeto, URL do pooler de produção)
+supabase/.temp/
