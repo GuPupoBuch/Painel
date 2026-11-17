@@ -40,8 +40,9 @@ test("grupos no desktop e a escala de hedge no gráfico", async ({ page }) => {
   expect(ladder.legs).toHaveLength(4);
   expect(ladder.legs[3].pct).toBeGreaterThan(ladder.legs[1].pct);
   expect(ladder.legs[1].pct).toBeGreaterThan(ladder.legs[0].pct);
-  expect(ladder.legs[3].pct).toBeGreaterThan(38);
-  expect(ladder.legs[3].pct).toBeLessThan(42);
+  expect(ladder.legs[3].pct).toBe(40);
+  expect(ladder.legs[0].pct).toBeGreaterThan(8);
+  expect(ladder.legs[0].pct).toBeLessThan(14);
   await page.screenshot({ path: "/opt/cursor/artifacts/hier-hedge-escala-1440.png" });
 
   await page.selectOption("#d-kind", "scale");
@@ -99,4 +100,63 @@ test.describe("grupos no celular", () => {
     });
     await page.screenshot({ path: "/opt/cursor/artifacts/hier-hedge-escala-390.png" });
   });
+});
+
+test("alvo, chip, rótulos e payload da escala de hedge são o mesmo valor", async ({ page }) => {
+  await login(page);
+  await page.click("#d-groups [data-group=hedge]");
+  await page.selectOption("#d-kind", "hedge-scale");
+  await expect(page.locator("#d-hedge-pct")).toHaveValue("50");
+  await expect(page.locator("#d-hedge-quick [data-h='50']")).toHaveClass(/on/);
+  await expect(page.locator("#d-hedge-ord")).toBeHidden();
+
+  await page.fill("#d-from", "63400");
+  await page.fill("#d-to", "64100");
+  await page.locator("input#d-orders").fill("4");
+  await page.fill("#d-hedge-pct", "40");
+  await expect(page.locator("#d-hedge-quick [data-h='50']")).not.toHaveClass(/on/);
+  await expect(page.locator("#d-hedge-quick .on")).toHaveCount(0);
+  await expect(page.locator("#d-hedge-table")).toContainText("40%");
+  await expect(page.locator("#d-hedge-table")).not.toContainText("50%");
+  await expect(page.locator("#d-avg")).toHaveText(/\d/);
+
+  const ladder = await page.evaluate(() => (window as unknown as { __painel: { hedgeLadder: () => { legs: { pct: number }[]; alvo: number; atual: number } } }).__painel.hedgeLadder());
+  expect(ladder.alvo).toBe(40);
+  expect(ladder.atual).toBeGreaterThan(0);
+  expect(ladder.atual).toBeLessThan(2);
+  expect(ladder.legs.map((l) => l.pct)).toHaveLength(4);
+  expect(ladder.legs[0].pct).toBeGreaterThan(ladder.atual);
+  expect(ladder.legs[0].pct).toBeGreaterThan(8);
+  expect(ladder.legs[0].pct).toBeLessThan(14);
+  expect(ladder.legs[3].pct).toBe(40);
+  for (let i = 1; i < 4; i++) expect(ladder.legs[i].pct).toBeGreaterThan(ladder.legs[i - 1].pct);
+
+  await page.fill("#d-hedge-pct", "25");
+  await expect(page.locator("#d-hedge-quick [data-h='25']")).toHaveClass(/on/);
+  await expect(page.locator("#d-hedge-quick [data-h='50']")).not.toHaveClass(/on/);
+  const at25 = await page.evaluate(() => (window as unknown as { __painel: { hedgeLadder: () => { legs: { pct: number }[] } } }).__painel.hedgeLadder());
+  expect(at25.legs[3].pct).toBe(25);
+
+  await page.fill("#d-hedge-pct", "40");
+  const hedge = page.waitForResponse((r) => r.url().includes(":8000/hedge") && r.request().method() === "POST");
+  await page.click("#d-hedge-go");
+  await page.waitForSelector("#scale-sheet:not(.hidden)");
+  await expect(page.locator("#scale-list")).toContainText("40%");
+  await page.click("#scale-ok");
+  const res = await hedge;
+  expect(res.ok()).toBeTruthy();
+  const sent = JSON.parse(res.request().postData() || "{}") as { target_pct: number; ordType: string; from: number; to: number; n: number };
+  expect(sent.target_pct).toBe(40);
+  expect(sent.ordType).toBe("limit");
+  expect(sent.from).toBe(63400);
+  expect(sent.to).toBe(64100);
+  expect(sent.n).toBe(4);
+  const body = await res.json();
+  expect(body.aborted).toBeFalsy();
+  const calls = (await fetch("http://127.0.0.1:8788/__calls").then((r) => r.json())) as { method: string; path: string; body: { posSide?: string; side?: string; ordType?: string }[] }[];
+  const batches = calls.filter((c) => c.method === "POST" && c.path === "/api/v5/trade/batch-orders");
+  expect(batches.length).toBeGreaterThan(0);
+  for (const batch of batches) {
+    expect(batch.body.every((b) => b.posSide === "short" && b.side === "sell" && b.ordType === "limit")).toBeTruthy();
+  }
 });

@@ -138,7 +138,8 @@ Deno.test("escala de hedge acumula a % vendida", async () => {
   const legs = ((dry.accounts as any[])[0].legs) as { pct: number; ct: number }[];
   if (legs.length !== 4) throw new Error(JSON.stringify(legs));
   if (!(legs[0].pct < legs[1].pct && legs[2].pct < legs[3].pct)) throw new Error(JSON.stringify(legs));
-  if (Math.abs(legs[3].pct - 40) > 0.6) throw new Error("final " + legs[3].pct);
+  if (!(legs[0].pct > 10)) throw new Error("começou do zero " + JSON.stringify(legs));
+  if (legs[3].pct !== 40) throw new Error("final " + legs[3].pct);
   const live = await __test.runHedgeScale(40, "short", 65000, 68000, 4, false, false, false, false);
   if (live.aborted) throw new Error(String(live.abort_msg));
   const rows = hit("/api/v5/trade/batch-orders", "OKX").flatMap((c) => c.body as any[]);

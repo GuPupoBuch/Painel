@@ -1527,16 +1527,17 @@ async function runHedgeScale(targetPct: number, mode: "short" | "net", from: num
       alvo = h.hedgePct;
     }
     const sell = delta > 0;
+    const atual = valor > 0 ? shortCt * 100 / valor * 100 : 0;
     const parts = splitLots(Math.abs(delta), weights).map((ct, i) => ({ price: prices[i], ct })).filter((p) => p.ct >= 0.1);
+    const totalCt = parts.reduce((s, p) => s + p.ct, 0);
     let walked = 0;
-    const cum = parts.map((p) => {
+    const cum = parts.map((p, i) => {
       walked = roundLot(walked + p.ct);
-      const signed = sell ? walked : -walked;
-      const pct = valor > 0 ? (shortCt + signed) * 100 / valor * 100 : 0;
+      const last = i === parts.length - 1;
+      const pct = last || !(totalCt > 0) ? alvo : atual + (alvo - atual) * (walked / totalCt);
       return { price: p.price, ct: p.ct, pct };
     });
     const err = !(eq > 0) ? "saldo zerado" : null;
-    const atual = valor > 0 ? shortCt * 100 / valor * 100 : 0;
     return { P, name, eq, atual, alvo, delta, parts: cum, sell, err };
   }));
   out.accounts = R.map((r) => ({
@@ -1778,15 +1779,16 @@ if (import.meta.main) Deno.serve(async (req) => {
       const rawType = String(body.ordType ?? "market").trim().toLowerCase();
       const ordType = rawType === "" ? "market" : rawType;
       if (ordType !== "market" && ordType !== "limit") return json(400, { ok: false, error: "Tipo inválido: use market ou limit." });
-      let price: number | null = null;
-      if (ordType === "limit") {
-        price = num(body.price);
-        if (price == null || !(price > 0)) return json(400, { ok: false, error: "Preço inválido." });
-      }
       const only = Array.isArray(body.accounts) ? body.accounts.map((x: unknown) => String(x)) : null;
       const dry = body.dry === true;
       const reduce = body.reduce === true;
       const from = num(body.from), to = num(body.to), nScale = num(body.n);
+      const scaling = from != null && to != null && nScale != null;
+      let price: number | null = null;
+      if (!scaling && ordType === "limit") {
+        price = num(body.price);
+        if (price == null || !(price > 0)) return json(400, { ok: false, error: "Preço inválido." });
+      }
       if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
       orderBusy = true;
       try {
