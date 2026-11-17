@@ -17,27 +17,50 @@ const B = env("OKX_BASE") || "https://www.okx.com";
 const enc = new TextEncoder();
 
 // ---------- trava de ambiente ----------
-// Na nuvem do Supabase, SUPABASE_URL vem preenchida por padrão com https://<projeto>.supabase.co.
-// Fora dela (deno run local, supabase functions serve) o backend só fala com uma OKX em loopback (o mock).
-// Assim, rodar o arquivo direto, sem OKX_BASE, nunca alcança a OKX real.
+// A OKX real exige TRÊS coisas ao mesmo tempo; o mock em loopback é sempre permitido:
+//   1. destino: exatamente a origem https://www.okx.com (sem porta, caminho, query, fragmento ou credenciais);
+//   2. detecção de execução hospedada (hostedMarkersPresent): global EdgeRuntime + SB_EXECUTION_ID (UUID)
+//      + DENO_DEPLOYMENT_ID do projeto. São marcadores documentados do ambiente hospedado, NÃO prova
+//      criptográfica: qualquer um pode defini-los. Só reduzem o risco de liberar a OKX por engano;
+//   3. autorização para negociar (okxLiveAuthorized): OKX_LIVE_ENABLED exatamente "true".
+// SUPABASE_URL não conta para nada. Localmente, a barreira obrigatória continua sendo o
+// --allow-net=127.0.0.1 do tests/serve-painel.sh: o Deno recusa qualquer outro host.
+type EnvGet = (k: string) => string;
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
-function hostedOnSupabase(supabaseUrl: string): boolean {
+const OKX_REAL_HOST = "www.okx.com";
+const PROJECT_REF = "krzznjwvcrbuhlfwsdel";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// {project_ref}_{function_id}_{version}: segmentos não vazios só com [A-Za-z0-9.-], separados por "_".
+// Ancorada nas duas pontas; exige pelo menos function_id e version.
+const DEPLOYMENT_ID_RE = new RegExp(`^${PROJECT_REF}_[A-Za-z0-9-]+(?:_[A-Za-z0-9.-]+)+$`);
+// OKX real: só esta origem, comparada como texto exato (new URL() esconderia ":443" e aceitaria caminho/query).
+const OKX_REAL_ORIGIN = "https://" + OKX_REAL_HOST;
+// O Supabase Edge Runtime define o global EdgeRuntime (hospedado e também no supabase functions serve).
+const IN_EDGE_RUNTIME = typeof (globalThis as Record<string, unknown>).EdgeRuntime !== "undefined";
+// Detecção: só diz se parece execução hospedada. Não autoriza nada.
+function hostedMarkersPresent(get: EnvGet, hasEdgeRuntime: boolean): boolean {
+  if (!hasEdgeRuntime) return false;
+  const exec = get("SB_EXECUTION_ID");
+  const dep = get("DENO_DEPLOYMENT_ID"); // formato documentado: {project_ref}_{function_id}_{version}
+  return UUID_RE.test(exec) && DEPLOYMENT_ID_RE.test(dep);
+}
+// Autorização: decisão explícita de negociar de verdade, independente da detecção.
+const okxLiveAuthorized = (get: EnvGet) => get("OKX_LIVE_ENABLED") === "true";
+function okxTargetAllowed(base: string, liveAuthorized: boolean, hosted: boolean): boolean {
+  let u: URL;
   try {
-    const u = new URL(supabaseUrl);
-    return u.protocol === "https:" && u.hostname.endsWith(".supabase.co");
+    u = new URL(base);
   } catch {
     return false;
   }
+  if (LOOPBACK.has(u.hostname)) return u.protocol === "http:" || u.protocol === "https:";
+  // sem porta (nem :443), caminho, query, fragmento, usuário ou senha: o texto tem de ser exatamente a origem
+  return liveAuthorized && hosted && base === OKX_REAL_ORIGIN;
 }
-function okxTargetAllowed(base: string, supabaseUrl: string): boolean {
-  if (hostedOnSupabase(supabaseUrl)) return true;
-  try {
-    return LOOPBACK.has(new URL(base).hostname);
-  } catch {
-    return false;
-  }
+const okxBaseOf = (get: EnvGet) => get("OKX_BASE") || OKX_REAL_ORIGIN;
+function okxAllowedByEnv(get: EnvGet, hasEdgeRuntime: boolean): boolean {
+  return okxTargetAllowed(okxBaseOf(get), okxLiveAuthorized(get), hostedMarkersPresent(get, hasEdgeRuntime));
 }
-const HOSTED = hostedOnSupabase(env("SUPABASE_URL"));
 
 // ---------- crypto ----------
 async function hmacRaw(key: string, msg: string): Promise<Uint8Array> {
@@ -56,8 +79,8 @@ function safeEq(a: string, b: string): boolean {
 // ---------- OKX ----------
 type J = Record<string, any>;
 let req = async function req(P: string, m: string, p: string, body?: unknown): Promise<J> {
-  if (!okxTargetAllowed(B, env("SUPABASE_URL"))) {
-    throw new Error(`ambiente local: OKX bloqueada (${B}). Use o mock via tests/serve-painel.sh`);
+  if (!okxTargetAllowed(B, okxLiveAuthorized(env), hostedMarkersPresent(env, IN_EDGE_RUNTIME))) {
+    throw new Error(`OKX bloqueada (${B}): fora do ambiente hospedado ou sem OKX_LIVE_ENABLED=true só o mock em loopback é permitido`);
   }
   // mesmo timestamp ISO ms + 'Z' e assinatura ts+method+path+body do mkt.py
   const ts = new Date().toISOString();
@@ -1834,16 +1857,18 @@ const handler = async (req: Request): Promise<Response> => {
     return json(502, { ok: false, error: "Falha falando com a OKX: " + String((e as Error).message || e).slice(0, 160) });
   }
 };
-// Na nuvem: Deno.serve exatamente como antes. Local: escuta só em 127.0.0.1 (porta PANEL_PORT, padrão 8000).
+// Onde escutar depende só do EdgeRuntime (não dos marcadores, nem da autorização):
+// no Edge Runtime (nuvem ou supabase functions serve), Deno.serve exatamente como antes;
+// num deno run comum, só 127.0.0.1 (porta PANEL_PORT, padrão 8000).
 if (import.meta.main) {
-  if (HOSTED) Deno.serve(handler);
+  if (IN_EDGE_RUNTIME) Deno.serve(handler);
   else Deno.serve({ hostname: "127.0.0.1", port: parseInt(env("PANEL_PORT") || "8000") }, handler);
 }
 
 export const __test = {
   setReq(fn: typeof req) { req = fn; },
   reset() { orderBusy = false; },
-  okxTargetAllowed, hostedOnSupabase,
+  okxTargetAllowed, okxAllowedByEnv, hostedMarkersPresent, okxLiveAuthorized,
   ctFromRisk, ctFromEquityPct, lossBtc, scalePrices, hedgeNumbers, realizedPnlBtc, allocateReduce, splitLots, contractMap,
   runOrder, runReduce, runAdjust, runScale, runScaleReduce, runScaleAmount, runSized, runAlgo, runAmend, runCancel, runHedge, runHedgeScale, harmonicAvg, scaleRiskLots, fetchPositions, ACC,
 };

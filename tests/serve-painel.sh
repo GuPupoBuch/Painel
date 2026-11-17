@@ -17,7 +17,10 @@ export TRADER_PANEL_PASSWORD=teste
 export PANEL_SESSION_SECRET=segredo-de-teste-painel
 export PANEL_ORIGINS=http://127.0.0.1:4173
 export PANEL_PORT=8000
-# sem SUPABASE_URL o backend se trata como local e recusa qualquer OKX fora de loopback
+# nunca herda a autorização da OKX real: sem OKX_LIVE_ENABLED o backend só aceita o mock em loopback
+unset OKX_LIVE_ENABLED
+# nem herda marcadores de execução hospedada (são só indícios, mas não devem vazar para o ambiente local)
+unset SB_EXECUTION_ID DENO_DEPLOYMENT_ID
 unset SUPABASE_URL
 cd "$(dirname "$0")/.."
 # rede só em 127.0.0.1: escuta na 8000 e fala com o mock na 8788. O Deno nega qualquer outro host (inclusive a OKX real).

@@ -618,21 +618,136 @@ Deno.test("ajuste com as duas pernas pede o lado e mexe só na perna escolhida",
   if (again.some((s) => s.includes("sl-long"))) throw new Error("ajuste da short mexeu no stop da long");
 });
 
-Deno.test("trava de ambiente: fora do Supabase só fala com OKX em loopback", () => {
-  const { okxTargetAllowed, hostedOnSupabase } = __test;
-  const cases: [string, string, boolean][] = [
-    ["http://127.0.0.1:8788", "", true],
-    ["http://localhost:8788", "", true],
-    ["https://www.okx.com", "", false],
-    ["https://www.okx.com", "http://127.0.0.1:54321", false],
-    ["https://www.okx.com", "http://kong:8000", false],
-    ["https://www.okx.com", "http://evil.supabase.co", false],
-    ["https://www.okx.com", "https://krzznjwvcrbuhlfwsdel.supabase.co", true],
-    ["http://127.0.0.1.okx.com", "", false],
-    ["lixo", "", false],
+const EXEC_ID = "6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b";
+const DEP_ID = "krzznjwvcrbuhlfwsdel_0a1b2c3d-4e5f-6789-abcd-ef0123456789_42";
+const envOf = (vars: Record<string, string>) => (k: string) => vars[k] ?? "";
+const HOSTED_ENV = { SB_EXECUTION_ID: EXEC_ID, DENO_DEPLOYMENT_ID: DEP_ID };
+
+Deno.test("trava de ambiente: destino da OKX real exige HTTPS em www.okx.com, autorização e hospedagem; loopback sempre", () => {
+  const { okxTargetAllowed } = __test;
+  const cases: [string, boolean, boolean, boolean][] = [
+    // [base, autorizado, hospedado, esperado]
+    // mock em loopback: permitido em qualquer combinação
+    ["http://127.0.0.1:8788", false, false, true],
+    ["http://localhost:8788", false, false, true],
+    ["http://[::1]:8788", false, false, true],
+    ["http://127.0.0.1:8788", true, true, true],
+    ["ftp://127.0.0.1:8788", false, false, false],
+    // OKX real: só com as duas condições
+    ["https://www.okx.com", true, true, true],
+    ["https://www.okx.com", true, false, false],
+    ["https://www.okx.com", false, true, false],
+    ["https://www.okx.com", false, false, false],
+    // destino errado, mesmo autorizado e hospedado
+    ["http://www.okx.com", true, true, false],
+    ["https://www.okx.com:8443", true, true, false],
+    ["https://user:pw@www.okx.com", true, true, false],
+    ["https://okx.com", true, true, false],
+    ["https://aws.okx.com", true, true, false],
+    ["https://www.okx.com.evil.com", true, true, false],
+    ["https://evil.com", true, true, false],
+    ["http://127.0.0.1.okx.com", true, true, false],
+    ["lixo", true, true, false],
+    // origem exata: nem porta padrão explícita, nem caminho, query, fragmento ou variação de escrita
+    ["https://www.okx.com:443", true, true, false],
+    ["https://www.okx.com/api", true, true, false],
+    ["https://www.okx.com/?x=1", true, true, false],
+    ["https://www.okx.com?x=1", true, true, false],
+    ["https://www.okx.com/", true, true, false],
+    ["https://www.okx.com#x", true, true, false],
+    ["https://user@www.okx.com", true, true, false],
+    ["https://:pw@www.okx.com", true, true, false],
+    ["HTTPS://WWW.OKX.COM", true, true, false],
+    ["https://www.okx.com.", true, true, false],
+    [" https://www.okx.com", true, true, false],
+    ["https://www.okx.com ", true, true, false],
+    // mock em loopback continua com porta e nos três hosts
+    ["http://localhost:8788", true, true, true],
+    ["http://[::1]:8788", true, true, true],
+    ["https://127.0.0.1:8788", false, false, true],
   ];
-  for (const [base, sb, want] of cases) {
-    if (okxTargetAllowed(base, sb) !== want) throw new Error(`okxTargetAllowed(${base}, ${sb}) deveria ser ${want}`);
+  for (const [base, live, hosted, want] of cases) {
+    if (okxTargetAllowed(base, live, hosted) !== want) throw new Error(`okxTargetAllowed(${base}, ${live}, ${hosted}) deveria ser ${want}`);
   }
-  if (hostedOnSupabase("") || !hostedOnSupabase("https://x.supabase.co")) throw new Error("hostedOnSupabase");
+});
+
+Deno.test("trava de ambiente: marcadores de hospedagem ausentes, incompletos ou malformados não contam", () => {
+  const { hostedMarkersPresent } = __test;
+  const cases: [Record<string, string>, boolean, boolean, string][] = [
+    // [variáveis, EdgeRuntime presente, esperado, cenário]
+    [HOSTED_ENV, true, true, "todos os marcadores válidos"],
+    [{}, false, false, "deno run comum, nada definido"],
+    [{}, true, false, "só EdgeRuntime (como no supabase functions serve)"],
+    [{ SB_EXECUTION_ID: EXEC_ID }, true, false, "falta DENO_DEPLOYMENT_ID"],
+    [{ DENO_DEPLOYMENT_ID: DEP_ID }, true, false, "falta SB_EXECUTION_ID"],
+    [HOSTED_ENV, false, false, "variáveis forjadas num deno run comum, sem EdgeRuntime"],
+    [{ ...HOSTED_ENV, SB_EXECUTION_ID: "abc" }, true, false, "SB_EXECUTION_ID não é UUID"],
+    [{ ...HOSTED_ENV, SB_EXECUTION_ID: EXEC_ID + "x" }, true, false, "SB_EXECUTION_ID com sobra"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "outroprojeto_fn_1" }, true, false, "deploy de outro projeto"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdel" }, true, false, "só o ref, sem função/versão"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdel_" }, true, false, "ref com sufixo vazio"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdelX_fn_1" }, true, false, "prefixo parecido"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdel_fn 1" }, true, false, "espaço no id"],
+    // sufixos malformados de DENO_DEPLOYMENT_ID
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdel_fn" }, true, false, "sem versão"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdel_fn_" }, true, false, "versão vazia"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdel__1" }, true, false, "function_id vazio"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdel_fn__1" }, true, false, "segmento vazio no meio"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdel_fn_1\n" }, true, false, "quebra de linha no fim"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdel_fn_1 " }, true, false, "espaço no fim"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: " krzznjwvcrbuhlfwsdel_fn_1" }, true, false, "espaço no início"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdel_fn/1_2" }, true, false, "barra"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdel_fn_1;x" }, true, false, "ponto e vírgula"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdel_fñ_1" }, true, false, "caractere fora do conjunto"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "x_krzznjwvcrbuhlfwsdel_fn_1" }, true, false, "ref fora do início"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "KRZZNJWVCRBUHLFWSDEL_fn_1" }, true, false, "ref em maiúsculas"],
+    // formatos válidos de {project_ref}_{function_id}_{version}
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdel_painel_7" }, true, true, "function_id simples"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdel_my-fn_12" }, true, true, "function_id com hífen"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdel_0a1b2c3d-4e5f-6789-abcd-ef0123456789_3" }, true, true, "function_id UUID"],
+    [{ ...HOSTED_ENV, DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdel_fn_1.2" }, true, true, "versão com ponto"],
+  ];
+  for (const [vars, edge, want, why] of cases) {
+    if (hostedMarkersPresent(envOf(vars), edge) !== want) throw new Error(`hostedMarkersPresent: ${why} deveria ser ${want}`);
+  }
+});
+
+Deno.test("trava de ambiente: detecção não autoriza; autorização sem detecção não libera; mock local continua", () => {
+  const { okxAllowedByEnv, okxLiveAuthorized } = __test;
+  // autorização é só a flag exata, sem relação com os marcadores
+  if (!okxLiveAuthorized(envOf({ OKX_LIVE_ENABLED: "true" }))) throw new Error("flag exata deveria autorizar");
+  for (const v of ["", "TRUE", "True", "1", "yes", " true", "true "]) {
+    if (okxLiveAuthorized(envOf({ OKX_LIVE_ENABLED: v }))) throw new Error(`flag ${JSON.stringify(v)} não deveria autorizar`);
+  }
+  if (okxLiveAuthorized(envOf(HOSTED_ENV))) throw new Error("marcadores não podem autorizar");
+
+  const prodUrl = "https://krzznjwvcrbuhlfwsdel.supabase.co";
+  const cases: [Record<string, string>, boolean, boolean, string][] = [
+    // [variáveis, EdgeRuntime presente, esperado, cenário]
+    [{ ...HOSTED_ENV, OKX_LIVE_ENABLED: "true" }, true, true, "produção: marcadores + flag"],
+    [{ ...HOSTED_ENV, OKX_LIVE_ENABLED: "true", OKX_BASE: "https://www.okx.com" }, true, true, "produção com OKX_BASE explícito"],
+    // flag ausente ou errada
+    [HOSTED_ENV, true, false, "marcadores sem flag"],
+    [{ ...HOSTED_ENV, OKX_LIVE_ENABLED: "TRUE" }, true, false, "flag em maiúsculas"],
+    // marcadores ausentes/incompletos com a flag
+    [{ OKX_LIVE_ENABLED: "true" }, false, false, "flag num deno run comum"],
+    [{ OKX_LIVE_ENABLED: "true" }, true, false, "flag com só EdgeRuntime (functions serve)"],
+    [{ OKX_LIVE_ENABLED: "true", SB_EXECUTION_ID: EXEC_ID }, true, false, "flag com marcador incompleto"],
+    // falsificações simuladas
+    [{ ...HOSTED_ENV, OKX_LIVE_ENABLED: "true" }, false, false, "marcadores + flag forjados sem EdgeRuntime"],
+    [{ OKX_LIVE_ENABLED: "true", SUPABASE_URL: prodUrl }, true, false, "SUPABASE_URL de produção não conta"],
+    [{ SUPABASE_URL: prodUrl, OKX_BASE: "https://www.okx.com" }, true, false, "SUPABASE_URL sem flag nem marcadores"],
+    // destino errado mesmo com tudo
+    [{ ...HOSTED_ENV, OKX_LIVE_ENABLED: "true", OKX_BASE: "http://www.okx.com" }, true, false, "OKX real por http"],
+    [{ ...HOSTED_ENV, OKX_LIVE_ENABLED: "true", OKX_BASE: "https://evil.com" }, true, false, "outro host"],
+    // mock local: como o tests/serve-painel.sh
+    [{ OKX_BASE: "http://127.0.0.1:8788" }, false, true, "mock local sem nada"],
+    [{ OKX_BASE: "http://127.0.0.1:8788", SUPABASE_URL: prodUrl }, false, true, "mock local com SUPABASE_URL"],
+    [{ ...HOSTED_ENV, OKX_LIVE_ENABLED: "true", OKX_BASE: "http://127.0.0.1:8788" }, true, true, "mock com tudo definido"],
+    // padrão sem OKX_BASE é a OKX real: bloqueado fora de produção
+    [{}, false, false, "nada definido"],
+  ];
+  for (const [vars, edge, want, why] of cases) {
+    if (okxAllowedByEnv(envOf(vars), edge) !== want) throw new Error(`okxAllowedByEnv: ${why} deveria ser ${want}`);
+  }
 });
