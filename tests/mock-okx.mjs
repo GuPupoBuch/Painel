@@ -63,6 +63,13 @@ const server = http.createServer((req, res) => {
       failBatchMsg = null;
       return send({ ok: true });
     }
+    if (url.pathname === "/__legs" && req.method === "POST") {
+      for (const name of Object.values(keys)) {
+        if (body && body.long != null) reduced[name + ":long"] = String(body.long);
+        if (body && body.short != null) reduced[name + ":short"] = String(body.short);
+      }
+      return send({ ok: true });
+    }
     if (url.pathname === "/__band" && req.method === "POST") {
       band = { buyLmt: String(body.buyLmt), sellLmt: String(body.sellLmt), enabled: true };
       return send({ ok: true });

@@ -452,6 +452,38 @@ Deno.test("escala de 10 pernas crescentes com as duas pernas abertas", async () 
   if (hit("/api/v5/trade/cancel-algos").some((c) => JSON.stringify(c.body).includes("sl-short"))) throw new Error("mexeu no stop da short");
 });
 
+Deno.test("escala long sem perna anexa o stop e não chama cf=1", async () => {
+  reset(); install();
+  balances = { OKX: 1, OKX2: 1, OKX3: 1, OKX4: 1 };
+  positions = {
+    OKX: [leg("short", "1", "68000")],
+    OKX2: [leg("long", "2", "60000"), leg("short", "1", "68000")],
+    OKX3: [],
+    OKX4: [leg("short", "1", "68000")],
+  };
+  algos = {
+    OKX2: [algo("long", "sl-long", "58000"), algo("short", "sl-short", "70000")],
+  };
+  const live = await runScale("long", 60000, 1, 62000, 63000, 4, false, false, false);
+  if (live.aborted) throw new Error(String(live.abort_msg) + " " + JSON.stringify((live.accounts as any[]).map((a) => [a.name, a.status, a.error])));
+  for (const prefix of ["OKX", "OKX3", "OKX4"]) {
+    const rows = hit("/api/v5/trade/batch-orders", prefix).flatMap((c) => c.body as any[]);
+    if (!rows.length) throw new Error(prefix + " não enviou");
+    for (const b of rows) {
+      const sl = b.attachAlgoOrds && b.attachAlgoOrds[0];
+      if (!sl || sl.slTriggerPx !== "60000" || sl.slOrdPx !== "-1" || sl.slTriggerPxType !== "mark") throw new Error(prefix + " " + JSON.stringify(b));
+      if (b.posSide !== "long" || b.side !== "buy") throw new Error(prefix + " lado " + JSON.stringify(b));
+    }
+  }
+  const withLeg = hit("/api/v5/trade/batch-orders", "OKX2").flatMap((c) => c.body as any[]);
+  if (!withLeg.length || withLeg.some((b) => b.attachAlgoOrds)) throw new Error("perna existente não devia anexar SL " + JSON.stringify(withLeg[0]));
+  const placedStop = hit("/api/v5/trade/order-algo").filter((c) => JSON.stringify(c.body).includes("closeFraction"));
+  if (placedStop.length) throw new Error("cf=1 sem posição: " + JSON.stringify(placedStop[0].body));
+  if (hit("/api/v5/trade/cancel-batch-orders").length) throw new Error("a escala foi desfeita");
+  const amends = hit("/api/v5/trade/amend-algos").map((c) => c.body as any);
+  if (amends.length !== 1 || amends[0].algoId !== "sl-long" || amends[0].newSlTriggerPx !== "60000") throw new Error(JSON.stringify(amends));
+});
+
 Deno.test("recusa da OKX na escala guarda sCode e sMsg por conta", async () => {
   reset(); install();
   balances = { OKX: 1 };

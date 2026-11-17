@@ -592,8 +592,16 @@ async function runAdjust(pct: number, ordType: "market" | "limit", price: number
   return out;
 }
 
+// SL anexado na ordem limite. A OKX ativa quando a ordem executa; não exige posição aberta.
+// slTriggerPxType "mark" é o mesmo padrão da ordem única (runOrder / runSized).
+function attachSl(trigger: number): J[] {
+  return [{ slTriggerPx: pyG(trigger), slOrdPx: "-1", slTriggerPxType: "mark" }];
+}
 // Move ou cria o stop cf=1 SÓ da perna pedida. A perna oposta não entra no cancelamento.
+// Sem posição, não chama a OKX: close-fraction responde "Position doesn't exist" e derrubava a escala.
 async function ensureCf1(P: string, posSide: Side, trigger: number): Promise<{ err: string | null }> {
+  const open = await legsOf(P);
+  if (!open.some((l) => l.posSide === posSide && l.pos > 0)) return { err: null };
   const stp = pyG(trigger);
   const cs = algosFor(await conds(P), posSide);
   const cf1 = cs.find(isCf1) ?? null;
@@ -771,13 +779,14 @@ async function runScale(side: Side, stop: number, riskPct: number, from: number,
       const loss = legsOk.reduce((s, l) => s + l.loss, 0);
       const addCt = legsOk.reduce((s, l) => s + l.ct, 0);
       const expo = eq > 0 && mark > 0 ? (gross + addCt) * 100 / (eq * mark) * 100 : 0;
+      const adding = legs.some((l) => l.posSide === side && l.pos > 0);
       let err: string | null = null;
       if (eq <= 0) err = "saldo zerado";
       else if (!legsOk.length) err = "tamanho < 0.1 ct";
       else if (expo > CAP) err = `expo ${expo.toFixed(0)}% > teto`;
-      return { P, name, eq, legs: planned, legsOk, loss, addCt, expo, err };
+      return { P, name, eq, legs: planned, legsOk, loss, addCt, expo, adding, err };
     } catch (e) {
-      return { P, name, eq: 0, legs: [], legsOk: [], loss: 0, addCt: 0, expo: 0, err: "falha ao ler conta: " + String((e as Error).message || e).slice(0, 120) };
+      return { P, name, eq: 0, legs: [], legsOk: [], loss: 0, addCt: 0, expo: 0, adding: false, err: "falha ao ler conta: " + String((e as Error).message || e).slice(0, 120) };
     }
   }));
   out.accounts = R.map((r) => ({
@@ -796,10 +805,14 @@ async function runScale(side: Side, stop: number, riskPct: number, from: number,
     const placed: string[] = [];
     let fail = "";
     for (let i = 0; i < r.legsOk.length; i += 20) {
-      const chunk = r.legsOk.slice(i, i + 20).map((l) => ({
-        instId: INST, tdMode: "cross", side: osSide, posSide: side, ordType: "limit",
-        sz: szStr(l.ct), px: pxStr(l.price),
-      }));
+      const chunk = r.legsOk.slice(i, i + 20).map((l) => {
+        const order: J = {
+          instId: INST, tdMode: "cross", side: osSide, posSide: side, ordType: "limit",
+          sz: szStr(l.ct), px: pxStr(l.price),
+        };
+        if (!r.adding) order.attachAlgoOrds = attachSl(stop);
+        return order;
+      });
       const e = await req(r.P, "POST", "/api/v5/trade/batch-orders", chunk);
       const data = Array.isArray(e.data) ? e.data : [];
       let bad = e.code !== "0" && e.code !== "2";
@@ -813,10 +826,12 @@ async function runScale(side: Side, stop: number, riskPct: number, from: number,
         return { ok: false, msg: fail || "perna recusada", placed: [] as string[] };
       }
     }
-    const stopRes = await ensureCf1(r.P, side, stop);
-    if (stopRes.err) {
-      if (placed.length) await cancelBatch(r.P, placed);
-      return { ok: false, msg: stopRes.err, placed: [] as string[] };
+    if (r.adding) {
+      const stopRes = await ensureCf1(r.P, side, stop);
+      if (stopRes.err) {
+        if (placed.length) await cancelBatch(r.P, placed);
+        return { ok: false, msg: stopRes.err, placed: [] as string[] };
+      }
     }
     return { ok: true, msg: null as string | null, placed };
   }));
@@ -1326,11 +1341,12 @@ async function runScaleAmount(side: Side, from: number, to: number, n: number, p
     const ct = roundLot(parts.reduce((s, p) => s + p.ct, 0));
     const gross = r.legs.reduce((s, l) => s + l.pos, 0);
     const expo = r.eq > 0 && mark > 0 ? (gross + ct) * 100 / (r.eq * mark) * 100 : 0;
+    const adding = r.legs.some((l) => l.posSide === side && l.pos > 0);
     let err = r.err;
     if (!err && !(r.eq > 0)) err = "saldo zerado";
     else if (!err && ct < 0.1) err = "tamanho < 0.1 ct";
     else if (!err && expo > CAP) err = `expo ${expo.toFixed(0)}% > teto`;
-    return { ...r, ct, parts, expo, err };
+    return { ...r, ct, parts, expo, adding, err };
   });
   out.accounts = planned.map((r) => ({
     prefix: r.P, name: r.n, ct: r.ct, size_usd: r.ct * 100, expo: r.expo,
@@ -1345,9 +1361,13 @@ async function runScaleAmount(side: Side, from: number, to: number, n: number, p
     const placed: string[] = [];
     let fail = "";
     for (let i = 0; i < r.parts.length; i += 20) {
-      const chunk = r.parts.slice(i, i + 20).map((l) => ({
-        instId: INST, tdMode: "cross", side: osSide, posSide: side, ordType: "limit", sz: szStr(l.ct), px: pxStr(l.price),
-      }));
+      const chunk = r.parts.slice(i, i + 20).map((l) => {
+        const order: J = {
+          instId: INST, tdMode: "cross", side: osSide, posSide: side, ordType: "limit", sz: szStr(l.ct), px: pxStr(l.price),
+        };
+        if (stop != null && stop > 0 && !r.adding) order.attachAlgoOrds = attachSl(stop);
+        return order;
+      });
       const e = await req(r.P, "POST", "/api/v5/trade/batch-orders", chunk);
       const data = Array.isArray(e.data) ? e.data : [];
       let bad = e.code !== "0" && e.code !== "2";
@@ -1361,7 +1381,7 @@ async function runScaleAmount(side: Side, from: number, to: number, n: number, p
         return { ok: false, msg: fail || "perna recusada", placed: [] as string[] };
       }
     }
-    if (stop != null && stop > 0) {
+    if (stop != null && stop > 0 && r.adding) {
       const stopRes = await ensureCf1(r.P, side, stop);
       if (stopRes.err) {
         if (placed.length) await cancelBatch(r.P, placed);
