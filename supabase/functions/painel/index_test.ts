@@ -592,3 +592,22 @@ Deno.test("ajuste com as duas pernas pede o lado e mexe só na perna escolhida",
   const again = hit("/api/v5/trade/cancel-algos").flatMap((c) => JSON.stringify(c.body));
   if (again.some((s) => s.includes("sl-long"))) throw new Error("ajuste da short mexeu no stop da long");
 });
+
+Deno.test("trava de ambiente: fora do Supabase só fala com OKX em loopback", () => {
+  const { okxTargetAllowed, hostedOnSupabase } = __test;
+  const cases: [string, string, boolean][] = [
+    ["http://127.0.0.1:8788", "", true],
+    ["http://localhost:8788", "", true],
+    ["https://www.okx.com", "", false],
+    ["https://www.okx.com", "http://127.0.0.1:54321", false],
+    ["https://www.okx.com", "http://kong:8000", false],
+    ["https://www.okx.com", "http://evil.supabase.co", false],
+    ["https://www.okx.com", "https://krzznjwvcrbuhlfwsdel.supabase.co", true],
+    ["http://127.0.0.1.okx.com", "", false],
+    ["lixo", "", false],
+  ];
+  for (const [base, sb, want] of cases) {
+    if (okxTargetAllowed(base, sb) !== want) throw new Error(`okxTargetAllowed(${base}, ${sb}) deveria ser ${want}`);
+  }
+  if (hostedOnSupabase("") || !hostedOnSupabase("https://x.supabase.co")) throw new Error("hostedOnSupabase");
+});

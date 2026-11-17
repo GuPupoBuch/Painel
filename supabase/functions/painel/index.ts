@@ -16,6 +16,29 @@ const env = (k: string) => Deno.env.get(k) ?? "";
 const B = env("OKX_BASE") || "https://www.okx.com";
 const enc = new TextEncoder();
 
+// ---------- trava de ambiente ----------
+// Na nuvem do Supabase, SUPABASE_URL vem preenchida por padrão com https://<projeto>.supabase.co.
+// Fora dela (deno run local, supabase functions serve) o backend só fala com uma OKX em loopback (o mock).
+// Assim, rodar o arquivo direto, sem OKX_BASE, nunca alcança a OKX real.
+const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
+function hostedOnSupabase(supabaseUrl: string): boolean {
+  try {
+    const u = new URL(supabaseUrl);
+    return u.protocol === "https:" && u.hostname.endsWith(".supabase.co");
+  } catch {
+    return false;
+  }
+}
+function okxTargetAllowed(base: string, supabaseUrl: string): boolean {
+  if (hostedOnSupabase(supabaseUrl)) return true;
+  try {
+    return LOOPBACK.has(new URL(base).hostname);
+  } catch {
+    return false;
+  }
+}
+const HOSTED = hostedOnSupabase(env("SUPABASE_URL"));
+
 // ---------- crypto ----------
 async function hmacRaw(key: string, msg: string): Promise<Uint8Array> {
   const k = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -33,6 +56,9 @@ function safeEq(a: string, b: string): boolean {
 // ---------- OKX ----------
 type J = Record<string, any>;
 let req = async function req(P: string, m: string, p: string, body?: unknown): Promise<J> {
+  if (!okxTargetAllowed(B, env("SUPABASE_URL"))) {
+    throw new Error(`ambiente local: OKX bloqueada (${B}). Use o mock via tests/serve-painel.sh`);
+  }
   // mesmo timestamp ISO ms + 'Z' e assinatura ts+method+path+body do mkt.py
   const ts = new Date().toISOString();
   const b = body ? JSON.stringify(body) : "";
@@ -1447,7 +1473,7 @@ function cors(req: Request): Record<string, string> {
 }
 const num = (x: unknown) => { const n = parseFloat(String(x ?? "").replace(",", ".")); return Number.isFinite(n) ? n : null; };
 
-if (import.meta.main) Deno.serve(async (req) => {
+const handler = async (req: Request): Promise<Response> => {
   const c = cors(req);
   const json = (code: number, obj: unknown) => new Response(JSON.stringify(obj), { status: code, headers: { ...c, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: c });
@@ -1673,11 +1699,17 @@ if (import.meta.main) Deno.serve(async (req) => {
     console.error("erro", String((e as Error).message || e).slice(0, 200));
     return json(502, { ok: false, error: "Falha falando com a OKX: " + String((e as Error).message || e).slice(0, 160) });
   }
-});
+};
+// Na nuvem: Deno.serve exatamente como antes. Local: escuta só em 127.0.0.1 (porta PANEL_PORT, padrão 8000).
+if (import.meta.main) {
+  if (HOSTED) Deno.serve(handler);
+  else Deno.serve({ hostname: "127.0.0.1", port: parseInt(env("PANEL_PORT") || "8000") }, handler);
+}
 
 export const __test = {
   setReq(fn: typeof req) { req = fn; },
   reset() { orderBusy = false; },
+  okxTargetAllowed, hostedOnSupabase,
   ctFromRisk, ctFromEquityPct, lossBtc, scalePrices, hedgeNumbers, realizedPnlBtc, allocateReduce, splitLots, contractMap,
   runOrder, runReduce, runAdjust, runScale, runScaleReduce, runScaleAmount, runSized, runAlgo, runAmend, runCancel, runHedge, fetchPositions, ACC,
 };
