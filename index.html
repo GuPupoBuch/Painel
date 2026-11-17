@@ -314,7 +314,8 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   .d-bars i{display:block;flex:1;background:#00e29a;min-height:2px;opacity:.9}
   .d-bars.short i{background:#e5425c}
   .d-avg{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;color:#d7dde3}
-  .d-sides{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px}
+  .d-dock{flex:0 0 auto;padding:8px;border-top:1px solid #1f2428;background:#0c0e10}
+  .d-sides{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:0}
   .d-sides button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:52px;border:0;border-radius:2px;font-size:13px;font-weight:800;letter-spacing:.08em;line-height:1.1}
   .d-sides button:hover{filter:brightness(1.06)}
   #d-long{background:#00e29a;color:#04140c}
@@ -356,9 +357,15 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
   #desk-order .mode-tog{min-height:32px;font-size:10px}
   .d-table .cancel-algo{min-height:28px;padding:0 8px;font-size:10px}
 }
-.pnl-prev{margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+.pnl-prev{margin-top:6px;padding-top:4px}
+.pnl-line{font-family:var(--mono);font-size:11px;font-weight:650;line-height:1.35;font-variant-numeric:tabular-nums}
 .pnl-k{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .pnl-v{margin-top:2px;font-family:var(--mono);font-size:13px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.3}
+.por-conta{min-height:28px;margin-top:2px;padding:0 8px;background:transparent;border:0;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.04em}
+.por-conta.on{color:var(--green)}
+@media (max-width:959px){
+  .por-conta{min-height:44px}
+}
 .pnl-row{display:grid;grid-template-columns:minmax(0,1.1fr) auto auto;gap:8px;align-items:baseline;padding:3px 0;font-size:11px;font-family:var(--mono);font-variant-numeric:tabular-nums}
 .pnl-row.tot{border-top:1px solid var(--line);margin-top:2px;padding-top:4px;font-weight:700}
 .pnl-up{color:var(--green)}
@@ -478,11 +485,18 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
         </label>
         <input id="d-risk-range" class="d-range" type="range" min="0.1" max="5" step="0.1" value="1" aria-label="Risco">
       </div>
-      <div class="size-box" id="d-size-box">
+      <div id="d-stop-box">
+        <label class="field">
+          <span class="field-k">Stop</span>
+          <input id="d-stop" type="text" inputmode="decimal" placeholder="63800" aria-label="Stop">
+          <span class="field-u">USD</span>
+        </label>
+      </div>
+      <div class="size-box hidden" id="d-size-box">
         <span class="field-k" id="d-size-k">Tamanho</span>
         <div id="d-size" class="d-size">—</div>
       </div>
-      <div id="d-size-rows" class="d-size-rows"></div>
+      <div id="d-size-rows" class="d-size-rows hidden"></div>
       <div id="d-price-box">
         <div class="d-row">
           <label class="field">
@@ -574,22 +588,11 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
         <button type="button" class="mode-tog" id="d-tpsl-tog" aria-pressed="false">TP/SL</button>
       </div>
       <div id="d-pnl" class="pnl-prev hidden">
-        <div class="pnl-k" id="d-pnl-k">PNL</div>
-        <div class="pnl-v" id="d-pnl-v">—</div>
         <div id="d-pnl-rows"></div>
-      </div>
-      <div id="d-stop-box">
-        <label class="field">
-          <span class="field-k">Stop</span>
-          <input id="d-stop" type="text" inputmode="decimal" placeholder="63800" aria-label="Stop">
-          <span class="field-u">USD</span>
-        </label>
+        <button type="button" class="por-conta" id="d-por-conta" aria-expanded="false">por conta</button>
+        <div id="d-pnl-acc" class="hidden"></div>
       </div>
       <p class="d-note" id="d-reduce-which"></p>
-      <div class="d-sides" id="d-sides">
-        <button type="button" id="d-long"><span class="go-k">LONG</span><span class="go-sub">—</span></button>
-        <button type="button" id="d-short"><span class="go-k">SHORT</span><span class="go-sub">—</span></button>
-      </div>
       <p class="d-note" id="d-size-note">O tamanho sai do risco e da distância até o stop, em cada conta. A ordem vai para as 4 contas.</p>
     </div>
     <div id="d-reduce" class="hidden">
@@ -634,6 +637,12 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
     <div id="d-msg" class="err hidden"></div>
     <div id="d-result" class="d-size-rows"></div>
     <div class="d-saldo"><span>Saldo</span><b id="d-equity">—</b></div>
+  </div>
+  <div class="d-dock" id="d-dock">
+    <div class="d-sides" id="d-sides">
+      <button type="button" id="d-long"><span class="go-k">LONG</span><span class="go-sub">—</span></button>
+      <button type="button" id="d-short"><span class="go-k">SHORT</span><span class="go-sub">—</span></button>
+    </div>
   </div>
 </aside>
 <aside id="desk-side">
@@ -727,9 +736,9 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
         <button type="button" class="mode-tog" id="m-tpsl-tog" aria-pressed="false">TP/SL</button>
       </div>
       <div id="m-pnl" class="pnl-prev hidden">
-        <div class="pnl-k" id="m-pnl-k">PNL</div>
-        <div class="pnl-v" id="m-pnl-v">—</div>
         <div id="m-pnl-rows"></div>
+        <button type="button" class="por-conta" id="m-por-conta" aria-expanded="false">por conta</button>
+        <div id="m-pnl-acc" class="hidden"></div>
       </div>
       <p class="all-note" id="m-reduce-which"></p>
       <div id="m-scale" class="hidden">
@@ -2162,35 +2171,37 @@ function computeReducePreview(posSide) {
     chartTitle: label + " " + fmtBtcChart(btc),
   };
 }
-function legRows(title, prev) {
-  const head = `<div class="size-h">${esc(title)}</div>`;
-  if (!prev || prev.error) return head + `<div class="d-empty">${esc((prev && prev.error) || "—")}</div>`;
-  const body = prev.rows.map((r) => `<div><span>${esc(r.name)}</span><span>${r.has ? (r.ct >= 0.1 ? fmtCt(r.ct) + " ct" : "0 ct") : "sem perna"}</span></div>`).join("");
-  return head + body + `<div class="size-pair"><span>Total</span><b>${fmtCt(prev.totalCt)} ct</b></div>`;
-}
-function pnlBlock(prev, buttonName) {
+let porConta = false;
+function pnlLine(prev, buttonName) {
   if (!prev) return "";
-  const cls = prev.error && !(prev.totalCt >= 0.1) ? "" : (prev.btc >= 0 ? "pnl-up" : "pnl-dn");
-  const rows = prev.rows.map((r) => {
+  if (prev.error && !(prev.totalCt >= 0.1)) return `<div class="pnl-line">${esc(prev.label)} (botão ${esc(buttonName)}) · ${esc(prev.error)}</div>`;
+  const cls = prev.btc >= 0 ? "pnl-up" : "pnl-dn";
+  const sign = prev.btc >= 0 ? "+" : "";
+  const money = prev.exit > 0 ? ` · ${sign}${fmtBtcPnl(prev.btc)} BTC (~${fmtUsdPnl(prev.usd)})` : "";
+  return `<div class="pnl-line ${cls}">${esc(prev.label)} (botão ${esc(buttonName)}) · ${fmtCt(prev.totalCt)} ct${money}</div>`;
+}
+function pnlAccounts(prev) {
+  if (!prev) return "";
+  return prev.rows.map((r) => {
     const col = r.ct > 0 ? (r.btc >= 0 ? "pnl-up" : "pnl-dn") : "";
-    const pnl = r.ct > 0 ? fmtBtcPnl(r.btc) + " BTC" : "—";
+    const pnl = r.ct > 0 && prev.exit > 0 ? fmtBtcPnl(r.btc) + " BTC" : "";
     return `<div class="pnl-row"><span>${esc(r.name)}</span><span>${r.has ? (r.ct >= 0.1 ? fmtCt(r.ct) + " ct" : "0 ct") : "sem perna"}</span><span class="${col}">${pnl}</span></div>`;
   }).join("");
-  const foot = `<div class="pnl-row tot"><span>Total</span><span>${fmtCt(prev.totalCt)} ct</span><span class="${cls}">${prev.error && !(prev.exit > 0) ? "—" : fmtBtcPnl(prev.btc) + " BTC"}</span></div>`;
-  const err = prev.error ? `<div class="d-empty">${esc(prev.error)}</div>` : "";
-  const value = prev.error && !(prev.exit > 0) ? "—" : `${fmtBtcPnl(prev.btc)} BTC (~${fmtUsdPnl(prev.usd)})`;
-  return `<div class="pnl-k">${esc(prev.label)} · botão ${esc(buttonName)}</div><div class="pnl-v ${cls}">${value}</div>${rows}${foot}${err}`;
 }
 function paintReduce() {
   const on = reducing && deskKind !== "hedge";
   const longBtn = on ? computeReducePreview("short") : null;
   const shortBtn = on ? computeReducePreview("long") : null;
-  const html = on ? pnlBlock(longBtn, "LONG") + pnlBlock(shortBtn, "SHORT") : "";
-  for (const [k, v, rows] of [["d-pnl-k", "d-pnl-v", "d-pnl-rows"], ["m-pnl-k", "m-pnl-v", "m-pnl-rows"]]) {
-    if ($(k)) $(k).textContent = "";
-    if ($(v)) { $(v).textContent = ""; $(v).className = "pnl-v"; }
-    if ($(rows)) $(rows).innerHTML = html;
-  }
+  const lines = on ? pnlLine(longBtn, "LONG") + pnlLine(shortBtn, "SHORT") : "";
+  const acc = on && porConta ? pnlAccounts(longBtn) + pnlAccounts(shortBtn) : "";
+  if ($("d-pnl-rows")) $("d-pnl-rows").innerHTML = lines;
+  if ($("m-pnl-rows")) $("m-pnl-rows").innerHTML = lines;
+  if ($("d-pnl-acc")) { $("d-pnl-acc").innerHTML = acc; show($("d-pnl-acc"), on && porConta); }
+  if ($("m-pnl-acc")) { $("m-pnl-acc").innerHTML = acc; show($("m-pnl-acc"), on && porConta); }
+  document.querySelectorAll(".por-conta").forEach((b) => {
+    b.classList.toggle("on", porConta);
+    b.setAttribute("aria-expanded", porConta ? "true" : "false");
+  });
 }
 function paintActions() {
   const longPrev = reducing ? computeReducePreview("short") : null;
@@ -2271,13 +2282,7 @@ function updateDesk() {
       const maxW = plan ? Math.max(...plan.legs.map((l) => l.weight)) : 1;
       bars.innerHTML = plan ? plan.legs.map((l) => `<i style="height:${Math.max(8, Math.round(l.weight / maxW * 36))}px"></i>`).join("") : "";
     }
-  } else if (reducing) {
-    const longBtn = computeReducePreview("short");
-    const shortBtn = computeReducePreview("long");
-    const line = (name, prev) => `<div class="size-pair"><span>${name}</span><b>${prev && !prev.error ? fmtCt(prev.totalCt) + " ct" : "—"}</b></div>`;
-    $("d-size").innerHTML = line("LONG", longBtn) + line("SHORT", shortBtn);
-    $("d-size-rows").innerHTML = legRows("LONG fecha short", longBtn) + legRows("SHORT fecha long", shortBtn);
-  } else {
+  } else if (!reducing) {
     const sized = openSize();
     $("d-size").textContent = sized.ct >= 0.1 ? fmtUsd(sized.ct * 100) : "—";
     $("d-size-rows").innerHTML = renderSizeRows(sized.rows);
@@ -2382,7 +2387,7 @@ function paintQtyLabel() {
   for (const id of ["d-qty-k", "m-qty-k"]) if ($(id)) $(id).textContent = k;
   for (const id of ["d-qty-u", "m-qty-u"]) if ($(id)) $(id).textContent = u;
   for (const id of ["d-qty", "m-qty"]) if ($(id)) $(id).setAttribute("aria-label", k);
-  if ($("d-size-k")) $("d-size-k").textContent = reducing ? "Fecha" : "Tamanho";
+  if ($("d-size-k")) $("d-size-k").textContent = "Tamanho";
 }
 function paintKind() {
   const hedge = deskKind === "hedge";
@@ -2405,7 +2410,9 @@ function paintKind() {
   if ($("m-risk-box")) show($("m-risk-box"), showRisk);
   if ($("d-stop-box")) show($("d-stop-box"), showStop);
   if ($("m-stop-box")) show($("m-stop-box"), showStop);
-  if ($("d-size-box")) show($("d-size-box"), showSize);
+  if ($("d-size-box")) show($("d-size-box"), false);
+  if ($("d-size-rows")) show($("d-size-rows"), false);
+  if ($("d-dock")) show($("d-dock"), !hedge && deskTab === "post");
   if ($("d-price-box")) show($("d-price-box"), deskKind === "limit");
   if ($("price-row")) show($("price-row"), deskKind === "limit" || (hedge && hedgeOrd === "limit"));
   if ($("d-trigger-box")) show($("d-trigger-box"), deskKind === "trigger");
@@ -2473,6 +2480,7 @@ function setDeskTab(name) {
   show($("d-tpsl"), name === "tpsl");
   if (name === "reduce") setTab("ajustar");
   else if (name === "post") setTab("entrada");
+  paintKind();
   drawPreviews();
 }
 function hedgePctValue() {
@@ -2806,6 +2814,9 @@ function initDesk() {
   const onReduce = () => setReducing(!reducing);
   $("d-reduce-toggle").onclick = onReduce;
   if ($("m-reduce-toggle")) $("m-reduce-toggle").onclick = onReduce;
+  const onPor = () => { porConta = !porConta; paintReduce(); };
+  if ($("d-por-conta")) $("d-por-conta").onclick = onPor;
+  if ($("m-por-conta")) $("m-por-conta").onclick = onPor;
   if ($("d-post-tog")) $("d-post-tog").onclick = () => { setReducing(false); setDeskTab("post"); };
   if ($("m-post")) $("m-post").onclick = () => setReducing(false);
   const onTpsl = () => { tpslOn = !tpslOn; paintKind(); drawPreviews(); };

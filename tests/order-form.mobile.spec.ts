@@ -20,8 +20,9 @@ test("mobile 390: reduce verde, 44px e stop a mercado", async ({ page }) => {
   await expect(page.locator("#m-size-note")).toContainText("% da perna");
   const box = await page.locator("#m-reduce-toggle").boundingBox();
   expect(box && box.height >= 44).toBeTruthy();
-  await expect(page.locator("#m-pnl")).toContainText("SHORT PNL");
-  await expect(page.locator("#m-pnl")).toContainText("LONG PNL");
+  await expect(page.locator("#m-pnl")).toContainText("SHORT PNL (botão LONG)");
+  await expect(page.locator("#m-pnl")).toContainText("LONG PNL (botão SHORT)");
+  await expect(page.locator("#m-pnl-acc")).toBeHidden();
   await expect(page.locator("#btn-long .go-sub")).toContainText("2 @");
   await expect(page.locator("#btn-short .go-sub")).toContainText("4 @");
   await page.screenshot({ path: "/opt/cursor/artifacts/painel-mobile-390.png", fullPage: true });
