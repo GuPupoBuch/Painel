@@ -195,6 +195,37 @@ test("escala com e sem reduce, hedge esconde o toggle", async ({ page }) => {
   every(orders, (b) => b.posSide === "short" && b.side === "sell" && !b.reduceOnly, "hedge vende short");
 });
 
+test("escala long sem perna manda o stop anexado", async ({ page }) => {
+  await fetch("http://127.0.0.1:8788/__legs", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ long: "0", short: "1" }),
+  });
+  await setKind(page, "scale");
+  await setReduce(page, false);
+  await setSize(page, "risco");
+  const wide = await desk(page);
+  await page.fill(wide ? "#d-from" : "#m-from", "62000");
+  await page.fill(wide ? "#d-to" : "#m-to", "63000");
+  if (wide) await page.locator("input#d-orders").fill("2");
+  else await page.fill("#m-orders", "2");
+  await page.fill(wide ? "#d-stop" : "#stop", "60000");
+  await clickSide(page, "long", "/scale");
+  const batch = await okxPosts("/api/v5/trade/batch-orders");
+  expect(batch.length).toBeGreaterThan(0);
+  for (const chunk of batch) {
+    const rows = chunk as unknown as Body[];
+    expect(rows.length).toBeGreaterThan(0);
+    for (const b of rows) {
+      const sl = (b.attachAlgoOrds as Body[] | undefined)?.[0];
+      expect(sl && sl.slTriggerPx === "60000" && sl.slOrdPx === "-1" && sl.slTriggerPxType === "mark", JSON.stringify(b)).toBeTruthy();
+      expect(b.posSide === "long" && b.side === "buy" && !b.reduceOnly).toBeTruthy();
+    }
+  }
+  expect(await okxPosts("/api/v5/trade/order-algo")).toHaveLength(0);
+  expect(await okxPosts("/api/v5/trade/cancel-batch-orders")).toHaveLength(0);
+});
+
 test("escala de 10 pernas: compra abaixo do mark entra; acima do máximo não", async ({ page }) => {
   const wide = await desk(page);
   expect(wide).toBeTruthy();
