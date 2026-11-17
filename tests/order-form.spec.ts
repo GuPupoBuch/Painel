@@ -195,7 +195,7 @@ test("escala com e sem reduce, hedge esconde o toggle", async ({ page }) => {
   every(orders, (b) => b.posSide === "short" && b.side === "sell" && !b.reduceOnly, "hedge vende short");
 });
 
-test("escala de 10 pernas: fora da faixa não envia, e USD crescente entra nas duas pernas", async ({ page }) => {
+test("escala de 10 pernas: compra abaixo do mark entra; acima do máximo não", async ({ page }) => {
   const wide = await desk(page);
   expect(wide).toBeTruthy();
   await fetch("http://127.0.0.1:8788/__band", {
@@ -212,20 +212,36 @@ test("escala de 10 pernas: fora da faixa não envia, e USD crescente entra nas d
   await page.click("#d-size-even");
   await page.fill("#d-stop", "60000");
   await page.fill("#d-risk", "1");
-  const blockedWait = page.waitForResponse((r) => r.url().includes(":8000/scale") && r.request().method() === "POST");
+  const deepWait = page.waitForResponse((r) => r.url().includes(":8000/scale") && r.request().method() === "POST");
   await page.click("#d-long");
   await page.waitForSelector("#scale-sheet:not(.hidden)");
   await page.click("#scale-ok");
-  const blockedRes = await blockedWait;
-  const blocked = await blockedRes.json();
-  expect(blocked.sizeMode == null || blocked.aborted).toBeTruthy();
-  const blockedBody = blockedRes.request().postData() || "";
-  expect(blockedBody).toContain('"sizeMode":"risk"');
-  expect(blockedBody).not.toContain('"sizeMode":"usd"');
-  await expect(page.locator("#scale-msg")).toContainText("faixa da OKX");
-  await expect(page.locator("#scale-msg")).toContainText("62710.5");
+  const deepRes = await deepWait;
+  const deep = await deepRes.json();
+  expect(deep.aborted, String(deep.abort_msg || "")).toBeFalsy();
+  const deepBody = deepRes.request().postData() || "";
+  expect(deepBody).toContain('"sizeMode":"risk"');
+  const deepBatches = await okxPosts("/api/v5/trade/batch-orders");
+  expect(deepBatches.length).toBeGreaterThan(0);
+  for (const chunk of deepBatches) {
+    const rows = chunk as unknown as Body[];
+    expect(rows.some((b) => parseFloat(String(b.px)) <= 62710.5 && b.side === "buy" && b.posSide === "long")).toBeTruthy();
+  }
+
+  await resetMock();
+  await fetch("http://127.0.0.1:8788/__band", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ buyLmt: "64099.5", sellLmt: "63461.4" }),
+  });
+  await page.fill("#d-from", "65000");
+  await page.fill("#d-to", "66000");
+  const highWait = page.waitForResponse((r) => r.url().includes(":8000/scale") && r.request().method() === "POST");
+  await page.click("#d-long");
+  await page.click("#scale-ok");
+  expect((await highWait).ok()).toBeTruthy();
+  await expect(page.locator("#scale-msg")).toContainText("compra acima de 64099.5");
   expect(await okxPosts("/api/v5/trade/batch-orders")).toHaveLength(0);
-  expect(await okxPosts("/api/v5/trade/order")).toHaveLength(0);
 
   await page.click("#scale-cancel");
   await resetMock();

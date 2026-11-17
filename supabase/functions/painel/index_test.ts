@@ -389,13 +389,23 @@ Deno.test("altera stop a mercado com newTriggerPx e cancela chase", async () => 
 
 Deno.test("escala de 10 pernas crescentes com as duas pernas abertas", async () => {
   reset(); install();
-  const tight = async (P: string, m: string, p: string, body?: unknown) => {
-    calls.push({ P, m, p, body });
-    if (p.startsWith("/api/v5/public/price-limit")) return { code: "0", data: [{ buyLmt: "64099.5", sellLmt: "63461.4", enabled: true }] };
-    if (p.startsWith("/api/v5/public/mark-price")) return { code: "0", data: [{ markPx: "63772" }] };
-    return { code: "0", data: [] };
+  const banded = (buy: string, sell: string) => {
+    setReq(async (P, m, p, body) => {
+      calls.push({ P, m, p, body });
+      if (p.startsWith("/api/v5/public/price-limit")) return { code: "0", data: [{ buyLmt: buy, sellLmt: sell, enabled: true }] };
+      if (p.startsWith("/api/v5/public/mark-price")) return { code: "0", data: [{ markPx: "63772" }] };
+      if (p.startsWith("/api/v5/account/balance")) return { code: "0", data: [{ details: [{ ccy: "BTC", eq: String(balances[P] ?? 1) }] }] };
+      if (p.startsWith("/api/v5/account/positions")) return { code: "0", data: positions[P] ?? [] };
+      if (p.startsWith("/api/v5/trade/orders-algo-pending")) return { code: "0", data: algos[P] ?? [] };
+      if (p.startsWith("/api/v5/trade/orders-pending")) return { code: "0", data: [] };
+      if (p === "/api/v5/trade/batch-orders") {
+        const rows = (body as any[]) || [];
+        return { code: "0", data: rows.map((_: unknown, i: number) => ({ sCode: "0", ordId: "b" + i })) };
+      }
+      if (p === "/api/v5/trade/amend-algos" || p === "/api/v5/trade/cancel-algos" || p === "/api/v5/trade/cancel-batch-orders") return { code: "0", data: [{ sCode: "0" }] };
+      return { code: "0", data: [] };
+    });
   };
-  setReq(tight);
   balances = { OKX: 1, OKX2: 1, OKX3: 1, OKX4: 1 };
   positions = {
     OKX: [leg("long", "2", "60000"), leg("short", "1", "68000")],
@@ -409,9 +419,22 @@ Deno.test("escala de 10 pernas crescentes com as duas pernas abertas", async () 
     OKX3: [algo("long", "sl-long", "58000"), algo("short", "sl-short", "70000")],
     OKX4: [algo("long", "sl-long", "58000"), algo("short", "sl-short", "70000")],
   };
-  const blocked = await runScale("long", 60000, 1, 62710.5, 62425, 10, false, true, false);
-  if (!blocked.aborted || !String(blocked.abort_msg).includes("faixa da OKX")) throw new Error(String(blocked.abort_msg));
-  if (posts().length) throw new Error("preço fora da faixa foi enviado");
+  banded("64099.5", "63461.4");
+  const deep = await runScale("long", 60000, 1, 62710.5, 62425, 10, false, true, false);
+  if (deep.aborted) throw new Error("compra abaixo do mark foi bloqueada: " + deep.abort_msg);
+  const deepRows = hit("/api/v5/trade/batch-orders", "OKX").flatMap((c) => c.body as any[]);
+  if (deepRows.length !== 10) throw new Error("deep batch " + deepRows.length);
+  if (deepRows.some((b) => !(parseFloat(b.px) <= 62710.5))) throw new Error("preço profundo sumiu");
+
+  calls = [];
+  const tooHigh = await runScale("long", 60000, 1, 65000, 66000, 10, false, false, false);
+  if (!tooHigh.aborted || !String(tooHigh.abort_msg).includes("compra acima de 64099.5")) throw new Error(String(tooHigh.abort_msg));
+  if (posts().some((c) => c.p === "/api/v5/trade/batch-orders")) throw new Error("compra acima do máximo foi enviada");
+
+  calls = [];
+  const tooLow = await runScale("short", 70000, 1, 62000, 62400, 10, false, false, false);
+  if (!tooLow.aborted || !String(tooLow.abort_msg).includes("venda abaixo de 63461.4")) throw new Error(String(tooLow.abort_msg));
+  if (posts().some((c) => c.p === "/api/v5/trade/batch-orders")) throw new Error("venda abaixo do mínimo foi enviada");
 
   install();
   const live = await runScale("long", 60000, 1, 63500, 63800, 10, false, true, false);

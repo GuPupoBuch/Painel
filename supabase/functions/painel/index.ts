@@ -119,14 +119,15 @@ async function priceBand(): Promise<{ buy: number; sell: number } | null> {
     return null;
   }
 }
-// A OKX recusa limite fora do intervalo [sellLmt, buyLmt] (51006) e o painel
-// cancelava a conta inteira sem mostrar o sMsg. A faixa ao vivo fica a fração de 1% do mark.
-function pricesOutside(prices: number[], band: { buy: number; sell: number } | null): string | null {
+// buyLmt é o máximo de uma compra. sellLmt é o mínimo de uma venda.
+// Compra abaixo do mark e venda acima do mark são ordens normais e passam.
+function pricesOutside(prices: number[], band: { buy: number; sell: number } | null, buying: boolean): string | null {
   if (!band) return null;
-  const bad = prices.filter((p) => p < band.sell - 1e-9 || p > band.buy + 1e-9);
+  const bad = prices.filter((p) => buying ? p > band.buy + 1e-9 : p < band.sell - 1e-9);
   if (!bad.length) return null;
   const show = [...new Set(bad.map(pxStr))].slice(0, 4).join(", ");
-  return `Preço fora da faixa da OKX (${pxStr(band.sell)}–${pxStr(band.buy)}). Fora: ${show}. Nada foi enviado.`;
+  const rule = buying ? `compra acima de ${pxStr(band.buy)}` : `venda abaixo de ${pxStr(band.sell)}`;
+  return `Preço fora do limite da OKX (${rule}). Fora: ${show}. Nada foi enviado.`;
 }
 type Side = "long" | "short";
 type Leg = { posSide: Side; pos: number; avg: number; mark: number; upl: number };
@@ -747,7 +748,7 @@ async function runScale(side: Side, stop: number, riskPct: number, from: number,
   if (!(from > 0) || !(to > 0) || from === to) return { ...out, aborted: true, abort_msg: "ABORT preço inválido" };
   if (!(stop > 0)) return { ...out, aborted: true, abort_msg: "Stop inválido." };
   const prices = scalePrices(from, to, n, priceSkew).map(pxTick);
-  const bandMsg = pricesOutside(prices, await priceBand());
+  const bandMsg = pricesOutside(prices, await priceBand(), side === "long");
   if (bandMsg) return { ...out, aborted: true, abort_msg: bandMsg };
   if (prices.some((p) => !stopOnSide(side, stop, p))) {
     return { ...out, aborted: true, abort_msg: side === "long" ? "No long, o stop precisa ficar abaixo de todas as pernas." : "No short, o stop precisa ficar acima de todas as pernas." };
@@ -841,7 +842,7 @@ async function runScaleReduce(side: Side, from: number, to: number, n: number, p
   if (!(n >= 2 && n <= 50)) return { ...out, aborted: true, abort_msg: "A escala precisa de 2 a 50 ordens." };
   if (!(from > 0) || !(to > 0) || from === to) return { ...out, aborted: true, abort_msg: "ABORT preço inválido" };
   const prices = scalePrices(from, to, n, priceSkew).map(pxTick);
-  const bandMsg = pricesOutside(prices, await priceBand());
+  const bandMsg = pricesOutside(prices, await priceBand(), side === "short");
   if (bandMsg) return { ...out, aborted: true, abort_msg: bandMsg };
   const weights = prices.map((_, i) => (sizeSkew ? i + 1 : 1));
   const mark = await markPx();
@@ -1310,7 +1311,7 @@ async function runScaleAmount(side: Side, from: number, to: number, n: number, p
   if (mode === "usd" && !(amount > 0)) return { ...out, aborted: true, abort_msg: "Valor em USD inválido." };
   if (mode === "pct" && !(amount >= 1 && amount <= 100)) return { ...out, aborted: true, abort_msg: "Percentual inválido: use um valor de 1 a 100." };
   const prices = scalePrices(from, to, n, priceSkew).map(pxTick);
-  const bandMsg = pricesOutside(prices, await priceBand());
+  const bandMsg = pricesOutside(prices, await priceBand(), side === "long");
   if (bandMsg) return { ...out, aborted: true, abort_msg: bandMsg };
   if (stop != null && stop > 0 && prices.some((p) => !stopOnSide(side, stop, p))) {
     return { ...out, aborted: true, abort_msg: side === "long" ? "No long, o stop precisa ficar abaixo de todas as pernas." : "No short, o stop precisa ficar acima de todas as pernas." };
