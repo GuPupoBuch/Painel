@@ -239,8 +239,8 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
     background:#070809;color:#d7dde3;
     display:grid;
     grid-template-columns:312px minmax(0,1fr) 360px;
-    grid-template-rows:auto minmax(0,1fr);
-    grid-template-areas:"order tools side" "order chart side";
+    grid-template-rows:auto auto minmax(0,1fr);
+    grid-template-areas:"order tools side" "order chips side" "order chart side";
     gap:4px;
     font-variant-numeric:tabular-nums;
   }
@@ -259,7 +259,7 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   html.in-app .tfs{background:transparent;border-bottom:0;padding:0 4px}
   html.in-app .tf{min-width:28px;min-height:26px;padding:0 6px;font-size:11px;letter-spacing:.04em}
   html.in-app .tf:hover{color:#d7dde3}
-  html.in-app .accts{background:transparent;border-bottom:0;padding:0 4px}
+  html.in-app .accts{grid-area:chips;background:#0c0e10;border:1px solid #1f2428;border-top:0;padding:0 4px}
   html.in-app #accts .chip{min-width:0;min-height:26px;padding:0 8px;font-size:11px;letter-spacing:.04em}
   html.in-app #accts .chip:hover{color:#d7dde3}
   html.in-app .chart-wrap{grid-area:chart;min-width:0;min-height:0;background:#0c0e10;border:1px solid #1f2428;border-top:0}
@@ -431,17 +431,17 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
   <button type="button" class="tf" data-bar="1W">1W</button>
   <button type="button" class="tf" data-bar="1M">1M</button>
 </div>
+</div>
+<div class="chart-wrap" id="chart-wrap">
+<div id="chart"><div id="chart-msg">Carregando gráfico…</div></div>
+<div id="drag-tag" class="drag-tag hidden"></div>
+</div>
 <div class="accts" id="accts">
   <button type="button" class="chip" data-acct="todas">Todas</button>
   <button type="button" class="chip" data-acct="pupo">pupo</button>
   <button type="button" class="chip" data-acct="pai">pai</button>
   <button type="button" class="chip" data-acct="mãe">mãe</button>
   <button type="button" class="chip" data-acct="tcheco">tcheco</button>
-</div>
-</div>
-<div class="chart-wrap" id="chart-wrap">
-<div id="chart"><div id="chart-msg">Carregando gráfico…</div></div>
-<div id="drag-tag" class="drag-tag hidden"></div>
 </div>
 
 <div id="desk" class="desk">
@@ -596,6 +596,12 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
       <p class="d-note" id="d-size-note">O tamanho sai do risco e da distância até o stop, em cada conta. A ordem vai para as 4 contas.</p>
     </div>
     <div id="d-reduce" class="hidden">
+      <div class="d-togs" id="d-adj-leg" role="group" aria-label="Perna do ajuste">
+        <button type="button" class="d-tog" data-leg="long" aria-pressed="false">Long</button>
+        <button type="button" class="d-tog" data-leg="short" aria-pressed="false">Short</button>
+      </div>
+      <p class="d-note" id="d-adj-leg-note"></p>
+      <div id="d-adj-pnl" class="pnl-line"></div>
       <div class="d-k">Quanto fechar</div>
       <div class="d-togs" id="d-pcts">
         <button type="button" class="d-tog" data-pct="25">25%</button>
@@ -673,16 +679,6 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
 </section>
 
 <section id="app-view" class="hidden">
-  <section id="positions">
-    <div class="pos-head"><h2>Posições</h2><button type="button" class="refresh" id="refresh">Atualizar</button></div>
-    <div class="pos-cols" aria-hidden="true"><span>Conta</span><span>Posição</span><span>Média</span><span>Stop</span><span>Resultado</span></div>
-    <div id="pos-body" class="acct-list"><div class="acct-empty muted">Carregando…</div></div>
-  </section>
-  <section id="m-ord-panel" class="hidden">
-    <div class="pos-head"><h2>Ordens</h2></div>
-    <div id="m-ord-body"></div>
-  </section>
-
   <div class="actions">
     <div class="tabs">
       <button type="button" class="tab on" id="tab-entrada" aria-pressed="true">Entrada</button>
@@ -789,6 +785,12 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
     </div>
 
     <div id="pane-ajustar" class="hidden">
+      <div class="otypes" id="m-adj-leg" role="group" aria-label="Perna do ajuste">
+        <button type="button" class="otype" data-leg="long" aria-pressed="false">Long</button>
+        <button type="button" class="otype" data-leg="short" aria-pressed="false">Short</button>
+      </div>
+      <p class="all-note" id="m-adj-leg-note"></p>
+      <div id="adj-pnl" class="pnl-line"></div>
       <div class="offstage" aria-hidden="true">
         <button type="button" class="refresh" id="adj-refresh" tabindex="-1">Atualizar</button>
         <div id="adj-pos-body"></div>
@@ -820,6 +822,16 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
       </div>
     </div>
   </div>
+
+  <section id="positions">
+    <div class="pos-head"><h2>Posições</h2><button type="button" class="refresh" id="refresh">Atualizar</button></div>
+    <div class="pos-cols" aria-hidden="true"><span>Conta</span><span>Posição</span><span>Média</span><span>Stop</span><span>Resultado</span></div>
+    <div id="pos-body" class="acct-list"><div class="acct-empty muted">Carregando…</div></div>
+  </section>
+  <section id="m-ord-panel" class="hidden">
+    <div class="pos-head"><h2>Ordens</h2></div>
+    <div id="m-ord-body"></div>
+  </section>
 </section>
 
 <div id="amend-sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="amend-title">
@@ -855,6 +867,7 @@ const TK = "painel_token";
 const $ = (id) => document.getElementById(id);
 let side = "long", sending = false, ordType = "market";
 let adjPct = 50, adjOrdType = "market", adjSending = false, adjPreview = null;
+let adjLeg = null, adjLegTouched = false;
 
 // ---------- formatação ----------
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -1149,8 +1162,8 @@ function drawOrderLines(accounts) {
       const title = names.length > 1 ? label + names.join("+") + " " + fmtPx(g.price) : label + names[0];
       const line = series.createPriceLine({
         price: g.price,
-        color: kind === "limit" ? (isDesk() ? "#d7dde3" : LIMIT_COLOR) : (isDesk() ? "#f6465d" : STOP_COLOR),
-        lineWidth: 1,
+        color: orderLineColor(kind, g.items),
+        lineWidth: orderLineWidth(kind, g.items),
         lineStyle: kind === "limit" ? 0 : 2,
         axisLabelVisible: true,
         title,
@@ -1158,6 +1171,21 @@ function drawOrderLines(accounts) {
       orderGroups.push({ key: kind, kind, price: g.price, orders: g.items, line, title });
     }
   }
+}
+function adjustingNow() {
+  return deskTab === "reduce" || document.body.classList.contains("tab-ajustar");
+}
+function orderLineColor(kind, items) {
+  const base = kind === "limit" ? (isDesk() ? "#d7dde3" : LIMIT_COLOR) : (isDesk() ? "#f6465d" : STOP_COLOR);
+  if (!adjustingNow() || !adjLeg || kind === "limit") return base;
+  const sides = new Set(items.map((x) => x.posSide).filter(Boolean));
+  if (!sides.size) return base;
+  return sides.has(adjLeg) && ![...sides].some((s) => s !== adjLeg) ? "#f6465d" : "#3a444e";
+}
+function orderLineWidth(kind, items) {
+  if (!adjustingNow() || !adjLeg || kind === "limit") return 1;
+  const sides = new Set(items.map((x) => x.posSide).filter(Boolean));
+  return sides.has(adjLeg) && ![...sides].some((s) => s !== adjLeg) ? 2 : 1;
 }
 function addPreview(price, title, opt) {
   const o = opt || {};
@@ -1210,9 +1238,9 @@ function drawMobilePreviews() {
     }
   }
   const adjOn = !$("pane-ajustar").classList.contains("hidden");
-  if (adjOn && !adjPreviewHold && adjOrdType === "limit") {
+  if (adjOn && adjLeg && !adjPreviewHold && adjOrdType === "limit") {
     const p = parseNum($("adj-price").value);
-    if (p > 0) addPreview(p, "prévia redução " + fmtPx(p));
+    if (p > 0) addPreview(p, "ajuste " + adjLeg + " " + fmtPx(p), { color: adjLeg === "short" ? "#e5425c" : "#00e29a", lineStyle: 1 });
   }
 }
 function paintReduceLines() {
@@ -1244,9 +1272,9 @@ function drawDeskPreviews() {
   const stop = parseNum($("stop").value);
   const col = side === "short" ? "#e5425c" : "#00e29a";
   if (deskTab === "reduce") {
-    if (!adjPreviewHold && adjOrdType === "limit") {
+    if (adjLeg && !adjPreviewHold && adjOrdType === "limit") {
       const p = parseNum($("adj-price").value);
-      if (p > 0) addPreview(p, "prévia redução " + fmtPx(p), { color: "#b7c9da", lineStyle: 1 });
+      if (p > 0) addPreview(p, "ajuste " + adjLeg + " " + fmtPx(p), { color: adjLeg === "short" ? "#e5425c" : "#00e29a", lineStyle: 1 });
     }
     return;
   }
@@ -1630,6 +1658,7 @@ function renderAllPos() {
   renderPosTable("pos-body", lastAccounts);
   renderPosTable("adj-pos-body", lastAccounts);
   renderDesk();
+  syncAdjLeg();
 }
 async function loadPositions() {
   try {
@@ -1764,12 +1793,70 @@ $("adj-use-mark").onclick = () => { fillAdjMark(); invalidateAdjPreview(); };
 $("adj-price").addEventListener("input", invalidateAdjPreview);
 $("adj-refresh").onclick = () => loadPositions();
 
+function openLegs() {
+  const sides = new Set();
+  for (const a of lastAccounts || []) {
+    const legs = Array.isArray(a.legs) ? a.legs : [];
+    for (const l of legs) if ((Number(l.ct ?? l.pos) || 0) > 0 && (l.posSide === "long" || l.posSide === "short")) sides.add(l.posSide);
+    if (!legs.length && a.net) sides.add(a.net > 0 ? "long" : "short");
+  }
+  return sides;
+}
+function syncAdjLeg() {
+  const sides = openLegs();
+  if (!adjLegTouched) adjLeg = sides.size === 1 ? [...sides][0] : null;
+  else if (adjLeg && !sides.has(adjLeg)) {
+    adjLeg = sides.size === 1 ? [...sides][0] : null;
+    if (!adjLeg) adjLegTouched = false;
+  }
+  paintAdjLeg();
+}
+function setAdjLeg(leg) {
+  adjLegTouched = true;
+  adjLeg = leg === "short" ? "short" : "long";
+  invalidateAdjPreview();
+  paintAdjLeg();
+  drawPreviews();
+  if (lastAccounts) drawOrderLines(lastAccounts);
+}
+function paintAdjLeg() {
+  const sides = openLegs();
+  const note = sides.size > 1 && !adjLeg ? "Escolha long ou short." : adjLeg ? "Ajusta só a perna " + adjLeg + "." : "Sem perna aberta.";
+  for (const id of ["d-adj-leg-note", "m-adj-leg-note"]) if ($(id)) $(id).textContent = note;
+  document.querySelectorAll("#d-adj-leg button, #m-adj-leg button").forEach((b) => {
+    const on = b.dataset.leg === adjLeg;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+  const prev = adjustClosePreview();
+  const text = !prev ? "" : !(prev.totalCt >= 0.1) ? "Tamanho abaixo de 0,1 ct." : `${prev.label} · ${fmtCt(prev.totalCt)} ct` + (prev.exit > 0 ? ` · ${prev.btc >= 0 ? "+" : ""}${fmtBtcPnl(prev.btc)} BTC (~${fmtUsdPnl(prev.usd)})` : "");
+  for (const id of ["d-adj-pnl", "adj-pnl"]) if ($(id)) $(id).textContent = text;
+}
+function adjustClosePreview() {
+  if (!adjLeg || adjPct == null || !(adjPct > 0)) return null;
+  const rows = (lastAccounts || []).filter((a) => !a.error).map((a) => {
+    const leg = legOn(a, adjLeg);
+    if (!leg) return { ct: 0, btc: 0 };
+    const ct = adjPct >= 100 - 1e-9 ? leg.ct : Math.min(leg.ct, floorLot(leg.ct * adjPct / 100));
+    const use = ct >= 0.1 - 1e-9 ? ct : 0;
+    const exit = adjOrdType === "limit" ? parseNum($("adj-price").value) : lastPx;
+    return { ct: use, btc: use > 0 && exit > 0 ? pnlBtc(use, leg.avg, exit, adjLeg) : 0, exit };
+  });
+  const totalCt = rows.reduce((s, r) => s + r.ct, 0);
+  const btc = rows.reduce((s, r) => s + r.btc, 0);
+  const exit = adjOrdType === "limit" ? parseNum($("adj-price").value) : lastPx;
+  return { totalCt, btc, usd: btc * (exit || 0), exit, label: (adjLeg === "short" ? "SHORT" : "LONG") + " PNL" };
+}
 function adjPayload(dry) {
   const payload = { pct: adjPct, ordType: adjOrdType, dry };
+  if (adjLeg) payload.posSide = adjLeg;
   if (adjOrdType === "limit") payload.price = parseNum($("adj-price").value);
   return payload;
 }
 function adjValidate() {
+  const sides = openLegs();
+  if (sides.size > 1 && !adjLeg) return "Escolha long ou short.";
+  if (!sides.size) return "Nenhuma perna aberta.";
   if (adjPct == null || adjPct < 1 || adjPct > 100) return "Percentual inválido: use um valor de 1 a 100.";
   if (adjOrdType === "limit") {
     const pr = parseNum($("adj-price").value);
@@ -2884,6 +2971,9 @@ function initDesk() {
   $("m-hedge-lmt").onclick = () => { hedgeOrd = "limit"; $("m-hedge-lmt").classList.add("on"); $("m-hedge-mkt").classList.remove("on"); paintKind(); if (lastPx && !$("price").value) $("price").value = String(Math.round(lastPx * 10) / 10); drawPreviews(); };
   $("accts").onclick = (ev) => { const b = ev.target.closest(".chip"); if (b) setDeskFilter(b.dataset.acct); };
   setDeskFilter(deskFilter);
+  const onAdjLeg = (ev) => { const b = ev.target.closest("[data-leg]"); if (b) setAdjLeg(b.dataset.leg); };
+  if ($("d-adj-leg")) $("d-adj-leg").onclick = onAdjLeg;
+  if ($("m-adj-leg")) $("m-adj-leg").onclick = onAdjLeg;
   $("d-pcts").onclick = (ev) => {
     const b = ev.target.closest("[data-pct]"); if (!b) return;
     setAdjPct(Number(b.dataset.pct));

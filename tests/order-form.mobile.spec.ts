@@ -8,6 +8,14 @@ test("mobile 390: reduce verde, 44px e stop a mercado", async ({ page }) => {
   await page.click("#login-btn");
   await page.waitForSelector("#m-kind", { state: "visible" });
   await expect(page.locator("body")).toContainText("pupo", { timeout: 15000 });
+  const order = await page.evaluate(() => {
+    const top = (sel) => document.querySelector(sel).getBoundingClientRect().top + window.scrollY;
+    return { chart: top("#chart"), chips: top("#accts"), form: top("#tab-entrada"), pos: top("#positions") };
+  });
+  expect(order.chart).toBeLessThan(order.chips);
+  expect(order.chips).toBeLessThan(order.form);
+  expect(order.form).toBeLessThan(order.pos);
+  await page.screenshot({ path: "/opt/cursor/artifacts/painel-mobile-390.png", fullPage: false });
   await page.selectOption("#m-kind", "trigger");
   await page.click("#m-size-modes button[data-size='pct']");
   await page.fill("#m-qty", "50");
@@ -25,6 +33,10 @@ test("mobile 390: reduce verde, 44px e stop a mercado", async ({ page }) => {
   await expect(page.locator("#m-pnl-acc")).toBeHidden();
   await expect(page.locator("#btn-long .go-sub")).toContainText("2 @");
   await expect(page.locator("#btn-short .go-sub")).toContainText("4 @");
-  await page.screenshot({ path: "/opt/cursor/artifacts/painel-mobile-390.png", fullPage: true });
+  await page.screenshot({ path: "/opt/cursor/artifacts/painel-mobile-390-reduce.png", fullPage: true });
+  await page.click("#tab-ajustar");
+  await expect(page.locator("#m-adj-leg-note")).toHaveText("Escolha long ou short.");
+  await page.locator("#m-adj-leg").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "/opt/cursor/artifacts/painel-mobile-390-ajustar.png", fullPage: false });
   await expect(page.locator("#btn-reduce")).toHaveCount(0);
 });

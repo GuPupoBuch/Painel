@@ -2,6 +2,7 @@ import http from "node:http";
 
 const calls = [];
 const placed = [];
+const reduced = {};
 let n = 1;
 const keys = {
   "key-pupo": "pupo",
@@ -10,11 +11,18 @@ const keys = {
   "key-tcheco": "tcheco",
 };
 
-function legs() {
-  return [
-    { instId: "BTC-USD-SWAP", posSide: "long", pos: "2", avgPx: "60000", markPx: "64000", upl: "0.002" },
-    { instId: "BTC-USD-SWAP", posSide: "short", pos: "1", avgPx: "68000", markPx: "64000", upl: "0.001" },
-  ];
+function legs(account) {
+  const base = { long: "2", short: "1" };
+  const rows = [];
+  for (const posSide of ["long", "short"]) {
+    const pos = reduced[account + ":" + posSide] ?? base[posSide];
+    if (!(parseFloat(pos) > 0)) continue;
+    rows.push({
+      instId: "BTC-USD-SWAP", posSide, pos,
+      avgPx: posSide === "long" ? "60000" : "68000", markPx: "64000", upl: "0.001",
+    });
+  }
+  return rows;
 }
 function stops(name) {
   return [
@@ -46,12 +54,16 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify(obj));
     };
     if (url.pathname === "/__health") return send({ ok: true });
-    if (url.pathname === "/__reset") { calls.length = 0; placed.length = 0; return send({ ok: true }); }
+    if (url.pathname === "/__reset") {
+      calls.length = 0; placed.length = 0;
+      for (const k of Object.keys(reduced)) delete reduced[k];
+      return send({ ok: true });
+    }
     if (url.pathname === "/__calls") return send(calls);
     calls.push({ account, method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), body });
     if (url.pathname === "/api/v5/public/mark-price") return send({ code: "0", data: [{ markPx: "64000" }] });
     if (url.pathname === "/api/v5/account/balance") return send({ code: "0", data: [{ details: [{ ccy: "BTC", eq: "1" }] }] });
-    if (url.pathname === "/api/v5/account/positions") return send({ code: "0", data: legs() });
+    if (url.pathname === "/api/v5/account/positions") return send({ code: "0", data: legs(account) });
     if (url.pathname === "/api/v5/trade/orders-pending") return send({ code: "0", data: [] });
     if (url.pathname === "/api/v5/trade/orders-algo-pending") {
       const ordType = url.searchParams.get("ordType");
@@ -60,6 +72,12 @@ const server = http.createServer((req, res) => {
       return send({ code: "0", data: mine });
     }
     if (url.pathname === "/api/v5/trade/order" && req.method === "POST") {
+      if (body && body.reduceOnly && (body.posSide === "long" || body.posSide === "short")) {
+        const key = account + ":" + body.posSide;
+        const cur = parseFloat(reduced[key] ?? (body.posSide === "long" ? "2" : "1"));
+        const next = Math.max(0, Math.round((cur - parseFloat(body.sz || "0")) * 10) / 10);
+        reduced[key] = String(next);
+      }
       return send({ code: "0", data: [{ sCode: "0", ordId: "ord-" + (n++) }] });
     }
     if (url.pathname === "/api/v5/trade/order-algo" && req.method === "POST") {

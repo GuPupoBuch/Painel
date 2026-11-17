@@ -1,6 +1,6 @@
 import { __test } from "./index.ts";
 
-const { setReq, reset, ctFromRisk, ctFromEquityPct, lossBtc, hedgeNumbers, realizedPnlBtc, allocateReduce, splitLots, runOrder, runReduce, runScale, runScaleReduce, runScaleAmount, runSized, runAlgo, runAmend, runCancel, runHedge, fetchPositions } = __test;
+const { setReq, reset, ctFromRisk, ctFromEquityPct, lossBtc, hedgeNumbers, realizedPnlBtc, allocateReduce, splitLots, runOrder, runReduce, runAdjust, runScale, runScaleReduce, runScaleAmount, runSized, runAlgo, runAmend, runCancel, runHedge, fetchPositions } = __test;
 
 type Call = { P: string; m: string; p: string; body?: unknown };
 let calls: Call[] = [];
@@ -415,4 +415,54 @@ Deno.test("escala por USD reparte e não exige risco; posições listam trigger 
   if (kinds.join(",") !== "chase,trigger") throw new Error(kinds.join(","));
   const tg = okx.orders.find((o: any) => o.kind === "trigger");
   if (tg.price !== 61000 || tg.algoId !== "tg") throw new Error(JSON.stringify(tg));
+});
+
+Deno.test("ajuste com as duas pernas pede o lado e mexe só na perna escolhida", async () => {
+  reset(); install();
+  balances = { OKX: 1 };
+  positions = { OKX: [leg("long", "2", "60000"), leg("short", "1", "68000")] };
+  algos = { OKX: [algo("long", "sl-long", "58000"), algo("short", "sl-short", "70000")] };
+  const missing = await runAdjust(50, "market", null, false, null);
+  if (!missing.aborted || missing.abort_msg !== "Escolha long ou short") throw new Error(String(missing.abort_msg));
+  if (posts().length) throw new Error("sem lado enviou");
+
+  positions = { OKX: [leg("long", "2", "60000")] };
+  const only = await runAdjust(50, "market", null, true, null);
+  if (only.aborted) throw new Error("perna única devia seguir: " + only.abort_msg);
+  const row = (only.accounts as any[])[0];
+  if (row.side !== "long" || row.close_ct !== 1) throw new Error(JSON.stringify(row));
+  if (posts().length) throw new Error("dry enviou");
+
+  positions = { OKX: [leg("long", "2", "60000"), leg("short", "1", "68000")] };
+  let shrunk = false;
+  setReq(async (P, m, p, body) => {
+    calls.push({ P, m, p, body });
+    if (p.startsWith("/api/v5/public/mark-price")) return { code: "0", data: [{ markPx: "64100" }] };
+    if (p.startsWith("/api/v5/account/balance")) return { code: "0", data: [{ details: [{ ccy: "BTC", eq: "1" }] }] };
+    if (p.startsWith("/api/v5/account/positions")) {
+      const rows = shrunk
+        ? [leg("long", "1", "60000"), leg("short", "1", "68000")]
+        : [leg("long", "2", "60000"), leg("short", "1", "68000")];
+      return { code: "0", data: rows };
+    }
+    if (p.startsWith("/api/v5/trade/orders-algo-pending")) return { code: "0", data: algos[P] ?? [] };
+    if (p.startsWith("/api/v5/trade/orders-pending")) return { code: "0", data: [] };
+    if (p === "/api/v5/trade/order" && m === "POST") { shrunk = true; return { code: "0", data: [{ sCode: "0", ordId: "adj" }] }; }
+    if (p === "/api/v5/trade/order-algo" || p === "/api/v5/trade/cancel-algos" || p === "/api/v5/trade/amend-algos") return { code: "0", data: [{ sCode: "0" }] };
+    return { code: "0", data: [] };
+  });
+  const long = await runAdjust(50, "market", null, false, "long");
+  if (long.aborted) throw new Error(String(long.abort_msg));
+  const sell = hit("/api/v5/trade/order", "OKX").map((c) => c.body as any).pop();
+  if (sell.posSide !== "long" || sell.side !== "sell" || sell.reduceOnly !== true || sell.sz !== "1.0" || sell.ordType !== "market") throw new Error(JSON.stringify(sell));
+  const touched = hit("/api/v5/trade/cancel-algos").flatMap((c) => JSON.stringify(c.body));
+  if (touched.some((s) => s.includes("sl-short"))) throw new Error("ajuste da long mexeu no stop da short");
+
+  shrunk = false;
+  const short = await runAdjust(50, "limit", 65000, false, "short");
+  if (short.aborted) throw new Error(String(short.abort_msg));
+  const buy = hit("/api/v5/trade/order", "OKX").map((c) => c.body as any).pop();
+  if (buy.posSide !== "short" || buy.side !== "buy" || buy.reduceOnly !== true || buy.ordType !== "limit" || buy.px !== "65000" || buy.sz !== "0.5") throw new Error(JSON.stringify(buy));
+  const again = hit("/api/v5/trade/cancel-algos").flatMap((c) => JSON.stringify(c.body));
+  if (again.some((s) => s.includes("sl-long"))) throw new Error("ajuste da short mexeu no stop da long");
 });

@@ -206,6 +206,35 @@ test("reduce fica ligado na sessão", async ({ page }) => {
   await expect(page.locator(id)).toHaveClass(/on/);
 });
 
+test("ajustar escolhe a perna quando as duas estão abertas", async ({ page }) => {
+  await page.click("#d-tabs [data-tab=reduce]");
+  await expect(page.locator("#d-adj-leg-note")).toHaveText("Escolha long ou short.");
+  await expect(page.locator("#d-adj-leg [data-leg=long]")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("#d-adj-leg [data-leg=short]")).toHaveAttribute("aria-pressed", "false");
+  await page.click("#d-adj-preview");
+  await expect(page.locator("#adj-banner-err")).toHaveText("Escolha long ou short.");
+  expect(await okxPosts("/api/v5/trade/order")).toHaveLength(0);
+
+  await page.click("#d-adj-leg [data-leg=long]");
+  await page.click("#d-adj-preview");
+  await expect(page.locator("#d-adj-send")).toBeEnabled();
+  const sent = page.waitForResponse((r) => r.url().includes(":8000/adjust") && r.request().postData()?.includes('"dry":false'));
+  await page.click("#d-adj-send");
+  expect((await sent).ok()).toBeTruthy();
+  let orders = await okxPosts("/api/v5/trade/order");
+  every(orders, (b) => b.posSide === "long" && b.side === "sell" && b.reduceOnly === true && b.ordType === "market" && b.sz === "1.0", "ajuste long");
+
+  await resetMock();
+  await page.click("#d-adj-leg [data-leg=short]");
+  await page.click("#d-adj-preview");
+  const sentShort = page.waitForResponse((r) => r.url().includes(":8000/adjust") && r.request().postData()?.includes('"dry":false'));
+  await page.click("#d-adj-send");
+  expect((await sentShort).ok()).toBeTruthy();
+  orders = await okxPosts("/api/v5/trade/order");
+  every(orders, (b) => b.posSide === "short" && b.side === "buy" && b.reduceOnly === true && b.sz === "0.5", "ajuste short");
+  await page.screenshot({ path: "/opt/cursor/artifacts/painel-desktop-1440-ajustar.png", fullPage: false });
+});
+
 test("screenshots desktop e o arquivo guarda o reduce verde", async ({ page }) => {
   await setKind(page, "limit");
   await setSize(page, "pct", "50");
