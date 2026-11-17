@@ -394,7 +394,7 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
 #amend-cancel{background:transparent;color:var(--text);border:1px solid var(--line)}
 #amend-ok{background:var(--accent);color:#1a1400;border:0}
 #amend-ok:disabled{opacity:.45}
-.sheet .err{margin:0 0 10px}
+.sheet .err{margin:0 0 10px;white-space:pre-line}
 </style>
 <script>
 (function () {
@@ -2958,7 +2958,7 @@ async function submitScaleReduce() {
     const payload = { ...reducePayload(prev, legFor(side)), reduce: true, from: inp.from, to: inp.to, n: inp.n, priceSkew: !priceEven, sizeSkew: !sizeEven };
     const { res, data } = await api("/scale", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok || data.aborted || data.ok === false) {
-      $("scale-msg").textContent = reduceRejected(data) || "Redução bloqueada. Nada enviado.";
+      $("scale-msg").textContent = scaleFailText(data);
       show($("scale-msg"), true);
       $("scale-ok").disabled = false;
       return;
@@ -3017,6 +3017,14 @@ function closeScaleSheet() {
   scaleOpen = false;
   show($("scale-sheet"), false);
 }
+function scaleFailText(data) {
+  const head = (data && (data.abort_msg || data.error)) || "";
+  const rows = ((data && data.accounts) || []).filter((a) => a && a.error).map((a) => `${a.name}: ${a.error}`);
+  const parts = [];
+  if (head) parts.push(head);
+  for (const row of rows) if (!head.includes(row)) parts.push(row);
+  return parts.join("\n") || "Escala bloqueada. Nada enviado.";
+}
 async function submitScale() {
   if (sheetKind === "hedge") return sendHedge();
   if (sheetKind === "scale-reduce" || reducing) return submitScaleReduce();
@@ -3032,11 +3040,12 @@ async function submitScale() {
       const stop = parseNum($("stop").value);
       if (stop > 0) payload.stop = stop;
     } else {
+      payload.sizeMode = "risk";
       payload.stop = plan.stop; payload.risk = plan.risk;
     }
     const { res, data } = await api("/scale", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok || data.aborted || data.ok === false) {
-      $("scale-msg").textContent = data.abort_msg || data.error || "Escala bloqueada. Nada enviado.";
+      $("scale-msg").textContent = scaleFailText(data);
       show($("scale-msg"), true);
       $("scale-ok").disabled = false;
       return;

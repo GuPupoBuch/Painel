@@ -89,6 +89,46 @@ async function markPx(): Promise<number> {
 }
 // Python '%g' (6 algarismos significativos, sem zeros à direita)
 const pyG = (x: number) => String(parseFloat(x.toPrecision(6)));
+const pxTick = (x: number) => Math.round(x * 10) / 10;
+const pxStr = (x: number) => {
+  const t = pxTick(x);
+  return Number.isInteger(t) ? String(t) : t.toFixed(1);
+};
+const szStr = (ct: number) => (Math.round(ct * 10) / 10).toFixed(1);
+function venueMsg(row: J | null | undefined, top: J | null | undefined): string {
+  const code = row && row.sCode != null && String(row.sCode) !== "0" ? String(row.sCode) : "";
+  const msg = (row && (row.sMsg || row.msg)) || (top && top.msg) || "";
+  return [code, msg].filter(Boolean).join(" ") || "perna recusada";
+}
+function accBrief(accounts: J[] | undefined): string[] {
+  return (accounts || []).map((a) => {
+    const why = a.error ? ":" + String(a.error).replace(/\s+/g, " ").slice(0, 160) : "";
+    return `${a.name}=${a.status}${why}`;
+  });
+}
+async function priceBand(): Promise<{ buy: number; sell: number } | null> {
+  try {
+    const r = await req("OKX", "GET", "/api/v5/public/price-limit?instId=" + INST);
+    const d = r?.data?.[0];
+    if (!d || d.enabled === false) return null;
+    const buy = parseFloat(d.buyLmt);
+    const sell = parseFloat(d.sellLmt);
+    if (!(buy > 0) || !(sell > 0) || !(sell < buy)) return null;
+    return { buy, sell };
+  } catch {
+    return null;
+  }
+}
+// buyLmt é o máximo de uma compra. sellLmt é o mínimo de uma venda.
+// Compra abaixo do mark e venda acima do mark são ordens normais e passam.
+function pricesOutside(prices: number[], band: { buy: number; sell: number } | null, buying: boolean): string | null {
+  if (!band) return null;
+  const bad = prices.filter((p) => buying ? p > band.buy + 1e-9 : p < band.sell - 1e-9);
+  if (!bad.length) return null;
+  const show = [...new Set(bad.map(pxStr))].slice(0, 4).join(", ");
+  const rule = buying ? `compra acima de ${pxStr(band.buy)}` : `venda abaixo de ${pxStr(band.sell)}`;
+  return `Preço fora do limite da OKX (${rule}). Fora: ${show}. Nada foi enviado.`;
+}
 type Side = "long" | "short";
 type Leg = { posSide: Side; pos: number; avg: number; mark: number; upl: number };
 const floor01 = (x: number) => Math.trunc(x / 0.1 + 1e-9) / 10;
@@ -570,15 +610,11 @@ async function ensureCf1(P: string, posSide: Side, trigger: number): Promise<{ e
   };
   if (cf1?.algoId) {
     const a = await req(P, "POST", "/api/v5/trade/amend-algos", {
-      instId: INST, algoId: cf1.algoId, newSlTriggerPx: stp, newSlTriggerPxType: "mark",
+      instId: INST, algoId: cf1.algoId, newSlTriggerPx: stp, newSlOrdPx: "-1", newSlTriggerPxType: "mark",
     });
     const ad = (a.data && a.data[0]) || {};
     const ok = a.code === "0" && (ad.sCode == null || ad.sCode === "0");
-    if (!ok) {
-      await req(P, "POST", "/api/v5/trade/cancel-algos", [{ algoId: cf1.algoId, instId: INST }]);
-      const err = await place();
-      if (err) return { err };
-    }
+    if (!ok) return { err: `falha ao mover o stop: ${venueMsg(ad, a)}` };
   } else {
     const err = await place();
     if (err) return { err };
@@ -711,7 +747,9 @@ async function runScale(side: Side, stop: number, riskPct: number, from: number,
   if (!(n >= 2 && n <= 50)) return { ...out, aborted: true, abort_msg: "A escala precisa de 2 a 50 ordens." };
   if (!(from > 0) || !(to > 0) || from === to) return { ...out, aborted: true, abort_msg: "ABORT preço inválido" };
   if (!(stop > 0)) return { ...out, aborted: true, abort_msg: "Stop inválido." };
-  const prices = scalePrices(from, to, n, priceSkew);
+  const prices = scalePrices(from, to, n, priceSkew).map(pxTick);
+  const bandMsg = pricesOutside(prices, await priceBand(), side === "long");
+  if (bandMsg) return { ...out, aborted: true, abort_msg: bandMsg };
   if (prices.some((p) => !stopOnSide(side, stop, p))) {
     return { ...out, aborted: true, abort_msg: side === "long" ? "No long, o stop precisa ficar abaixo de todas as pernas." : "No short, o stop precisa ficar acima de todas as pernas." };
   }
@@ -760,16 +798,16 @@ async function runScale(side: Side, stop: number, riskPct: number, from: number,
     for (let i = 0; i < r.legsOk.length; i += 20) {
       const chunk = r.legsOk.slice(i, i + 20).map((l) => ({
         instId: INST, tdMode: "cross", side: osSide, posSide: side, ordType: "limit",
-        sz: l.ct.toFixed(1), px: pyG(l.price),
+        sz: szStr(l.ct), px: pxStr(l.price),
       }));
       const e = await req(r.P, "POST", "/api/v5/trade/batch-orders", chunk);
       const data = Array.isArray(e.data) ? e.data : [];
       let bad = e.code !== "0" && e.code !== "2";
       data.forEach((d: J) => {
         if (d && d.sCode === "0" && d.ordId) placed.push(String(d.ordId));
-        else { bad = true; fail = fail || d?.sMsg || e.msg || "perna recusada"; }
+        else { bad = true; fail = fail || venueMsg(d, e); }
       });
-      if (!data.length && e.code !== "0") { bad = true; fail = fail || e.msg || "batch recusado"; }
+      if (!data.length && e.code !== "0") { bad = true; fail = fail || venueMsg(null, e); }
       if (bad) {
         if (placed.length) await cancelBatch(r.P, placed);
         return { ok: false, msg: fail || "perna recusada", placed: [] as string[] };
@@ -803,7 +841,9 @@ async function runScaleReduce(side: Side, from: number, to: number, n: number, p
   const out: J = { reduce: true, scale: true, side, from, to, n, priceSkew, sizeSkew, pct, dry, aborted: false, abort_msg: null, accounts: [], warning: false };
   if (!(n >= 2 && n <= 50)) return { ...out, aborted: true, abort_msg: "A escala precisa de 2 a 50 ordens." };
   if (!(from > 0) || !(to > 0) || from === to) return { ...out, aborted: true, abort_msg: "ABORT preço inválido" };
-  const prices = scalePrices(from, to, n, priceSkew);
+  const prices = scalePrices(from, to, n, priceSkew).map(pxTick);
+  const bandMsg = pricesOutside(prices, await priceBand(), side === "short");
+  if (bandMsg) return { ...out, aborted: true, abort_msg: bandMsg };
   const weights = prices.map((_, i) => (sizeSkew ? i + 1 : 1));
   const mark = await markPx();
   out.mark = mark;
@@ -867,16 +907,16 @@ async function runScaleReduce(side: Side, from: number, to: number, n: number, p
     for (let i = 0; i < r.parts.length; i += 20) {
       const chunk = r.parts.slice(i, i + 20).map((l) => ({
         instId: INST, tdMode: "cross", side: osSide, posSide: side, ordType: "limit",
-        reduceOnly: true, sz: l.ct.toFixed(1), px: pyG(l.price),
+        reduceOnly: true, sz: szStr(l.ct), px: pxStr(l.price),
       }));
       const e = await req(r.P, "POST", "/api/v5/trade/batch-orders", chunk);
       const data = Array.isArray(e.data) ? e.data : [];
       let bad = e.code !== "0" && e.code !== "2";
       data.forEach((d: J) => {
         if (d && d.sCode === "0" && d.ordId) placed.push(String(d.ordId));
-        else { bad = true; fail = fail || d?.sMsg || e.msg || "perna recusada"; }
+        else { bad = true; fail = fail || venueMsg(d, e); }
       });
-      if (!data.length && e.code !== "0") { bad = true; fail = fail || e.msg || "batch recusado"; }
+      if (!data.length && e.code !== "0") { bad = true; fail = fail || venueMsg(null, e); }
       if (bad) {
         if (placed.length) await cancelBatch(r.P, placed);
         return { ok: false, skipped: false, msg: fail || "perna recusada", placed: [] as string[] };
@@ -942,7 +982,7 @@ async function runAmend(kind: "limit" | "stop" | "trigger", prefix: string, id: 
     if (!markOk || !entryOk) return { ...out, aborted: true, abort_msg: "Stop ficaria do lado errado da entrada ou do mark." };
     if (dry) { out.raw = "DRY: nada enviado"; return out; }
     const e = await req(prefix, "POST", "/api/v5/trade/amend-algos", {
-      instId: INST, algoId: id, newSlTriggerPx: pyG(newPx), newSlTriggerPxType: "mark",
+      instId: INST, algoId: id, newSlTriggerPx: pyG(newPx), newSlOrdPx: "-1", newSlTriggerPxType: "mark",
     });
     const d = (e.data && e.data[0]) || {};
     const ok = e.code === "0" && (d.sCode == null || d.sCode === "0");
@@ -1270,7 +1310,9 @@ async function runScaleAmount(side: Side, from: number, to: number, n: number, p
   if (!(from > 0) || !(to > 0) || from === to) return { ...out, aborted: true, abort_msg: "ABORT preço inválido" };
   if (mode === "usd" && !(amount > 0)) return { ...out, aborted: true, abort_msg: "Valor em USD inválido." };
   if (mode === "pct" && !(amount >= 1 && amount <= 100)) return { ...out, aborted: true, abort_msg: "Percentual inválido: use um valor de 1 a 100." };
-  const prices = scalePrices(from, to, n, priceSkew);
+  const prices = scalePrices(from, to, n, priceSkew).map(pxTick);
+  const bandMsg = pricesOutside(prices, await priceBand(), side === "long");
+  if (bandMsg) return { ...out, aborted: true, abort_msg: bandMsg };
   if (stop != null && stop > 0 && prices.some((p) => !stopOnSide(side, stop, p))) {
     return { ...out, aborted: true, abort_msg: side === "long" ? "No long, o stop precisa ficar abaixo de todas as pernas." : "No short, o stop precisa ficar acima de todas as pernas." };
   }
@@ -1304,16 +1346,16 @@ async function runScaleAmount(side: Side, from: number, to: number, n: number, p
     let fail = "";
     for (let i = 0; i < r.parts.length; i += 20) {
       const chunk = r.parts.slice(i, i + 20).map((l) => ({
-        instId: INST, tdMode: "cross", side: osSide, posSide: side, ordType: "limit", sz: l.ct.toFixed(1), px: pyG(l.price),
+        instId: INST, tdMode: "cross", side: osSide, posSide: side, ordType: "limit", sz: szStr(l.ct), px: pxStr(l.price),
       }));
       const e = await req(r.P, "POST", "/api/v5/trade/batch-orders", chunk);
       const data = Array.isArray(e.data) ? e.data : [];
       let bad = e.code !== "0" && e.code !== "2";
       data.forEach((d: J) => {
         if (d && d.sCode === "0" && d.ordId) placed.push(String(d.ordId));
-        else { bad = true; fail = fail || d?.sMsg || e.msg || "perna recusada"; }
+        else { bad = true; fail = fail || venueMsg(d, e); }
       });
-      if (!data.length && e.code !== "0") { bad = true; fail = fail || e.msg || "batch recusado"; }
+      if (!data.length && e.code !== "0") { bad = true; fail = fail || venueMsg(null, e); }
       if (bad) {
         if (placed.length) await cancelBatch(r.P, placed);
         return { ok: false, msg: fail || "perna recusada", placed: [] as string[] };
@@ -1475,7 +1517,7 @@ if (import.meta.main) Deno.serve(async (req) => {
             maxChaseUnit: body.maxChaseUnit == null ? null : String(body.maxChaseUnit),
             maxChase: num(body.maxChase),
           });
-          console.log(JSON.stringify({ ev: ordType, ip, side, reduce, mode, dry, aborted: r.aborted, acc: (r.accounts || []).map((a: J) => `${a.name}=${a.status}`) }));
+          console.log(JSON.stringify({ ev: ordType, ip, side, reduce, mode, dry, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
           return json(200, { ok: !r.aborted, ...r });
         }
         if (reduce) {
@@ -1483,7 +1525,7 @@ if (import.meta.main) Deno.serve(async (req) => {
           const pct = num(body.pct);
           if (!contracts && (pct == null || !(pct >= 1 && pct <= 100))) return json(400, { ok: false, error: "Percentual inválido: use um valor de 1 a 100." });
           const r = await runReduce(side as "long" | "short", pct ?? 0, ordType, price, dry, contracts);
-          console.log(JSON.stringify({ ev: "reduce", ip, side, pct, contracts: !!contracts, dry, ordType, price, aborted: r.aborted, acc: (r.accounts || []).map((a: J) => `${a.name}=${a.status}`) }));
+          console.log(JSON.stringify({ ev: "reduce", ip, side, pct, contracts: !!contracts, dry, ordType, price, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
           return json(200, { ok: !r.aborted, ...r });
         }
         if (sizeMode === "usd" || sizeMode === "pct") {
@@ -1491,7 +1533,7 @@ if (import.meta.main) Deno.serve(async (req) => {
           if (amount == null) return json(400, { ok: false, error: sizeMode === "usd" ? "Valor em USD inválido." : "Percentual inválido: use um valor de 1 a 100." });
           const stop = num(body.stop);
           const r = await runSized(side as Side, ordType, price, dry, sizeMode, amount, stop);
-          console.log(JSON.stringify({ ev: "sized", ip, side, sizeMode, dry, ordType, aborted: r.aborted, acc: (r.accounts || []).map((a: J) => `${a.name}=${a.status}`) }));
+          console.log(JSON.stringify({ ev: "sized", ip, side, sizeMode, dry, ordType, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
           return json(200, { ok: !r.aborted, ...r });
         }
         const stop = num(body.stop);
@@ -1499,7 +1541,7 @@ if (import.meta.main) Deno.serve(async (req) => {
         const risk = num(body.risk);
         if (risk == null || !(risk > 0 && risk <= 5)) return json(400, { ok: false, error: "Risco inválido: use um valor maior que 0 e no máximo 5%." });
         const r = await runOrder(side as "long" | "short", stop, risk, dry, ordType, price);
-        console.log(JSON.stringify({ ev: "order", ip, side, stop, risk, dry, ordType, price, aborted: r.aborted, acc: (r.accounts || []).map((a: J) => `${a.name}=${Math.round(a.size_usd ?? 0)}${a.error ? "(" + a.error + ")" : ""}`) }));
+        console.log(JSON.stringify({ ev: "order", ip, side, stop, risk, dry, ordType, price, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
         return json(200, { ok: !r.aborted, ...r });
       } finally { orderBusy = false; }
     }
@@ -1520,7 +1562,7 @@ if (import.meta.main) Deno.serve(async (req) => {
         orderBusy = true;
         try {
           const r = await runScaleAmount(side as Side, from, to, Math.round(n), body.priceSkew === true, body.sizeSkew === true, dry, sizeMode, amount, num(body.stop));
-          console.log(JSON.stringify({ ev: "scale-sized", ip, side, sizeMode, n, dry, aborted: r.aborted }));
+          console.log(JSON.stringify({ ev: "scale-sized", ip, side, sizeMode, n, dry, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
           return json(200, { ok: !r.aborted, ...r });
         } finally { orderBusy = false; }
       }
@@ -1532,7 +1574,7 @@ if (import.meta.main) Deno.serve(async (req) => {
         orderBusy = true;
         try {
           const r = await runScaleReduce(side, from, to, Math.round(n), body.priceSkew === true, body.sizeSkew === true, pct, contracts, dry);
-          console.log(JSON.stringify({ ev: "scale-reduce", ip, side, n, dry, aborted: r.aborted, acc: (r.accounts || []).map((a: J) => `${a.name}=${a.status}`) }));
+          console.log(JSON.stringify({ ev: "scale-reduce", ip, side, n, dry, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
           return json(200, { ok: !r.aborted, ...r });
         } finally { orderBusy = false; }
       }
@@ -1544,7 +1586,7 @@ if (import.meta.main) Deno.serve(async (req) => {
       orderBusy = true;
       try {
         const r = await runScale(side, stop, risk, from, to, Math.round(n), body.priceSkew === true, body.sizeSkew === true, dry);
-        console.log(JSON.stringify({ ev: "scale", ip, side, n, dry, aborted: r.aborted, acc: (r.accounts || []).map((a: J) => `${a.name}=${a.status}`) }));
+        console.log(JSON.stringify({ ev: "scale", ip, side, sizeMode: sizeMode || "risk", n, dry, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
         return json(200, { ok: !r.aborted, ...r });
       } finally { orderBusy = false; }
     }
