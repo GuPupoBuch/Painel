@@ -105,7 +105,17 @@ html[data-tf="1M"] .tf[data-bar="1M"]{color:var(--text);border-bottom-color:var(
 .chart-wrap{position:relative;min-width:0;max-width:100%}
 #chart{width:100%;height:58vh;min-height:360px;border-radius:0;overflow:hidden;background:var(--bg);border:1px solid var(--line);overscroll-behavior:contain;scroll-margin-top:calc(132px + env(safe-area-inset-top));touch-action:pan-y}
 #chart.dragging{touch-action:none;cursor:ns-resize}
+#chart.line-hover,#chart.line-hover *,#chart.dragging,#chart.dragging *{cursor:ns-resize!important}
 body.dragging-order{overflow:hidden;touch-action:none}
+.chart-hint{
+  position:absolute;z-index:3;top:8px;left:8px;max-width:calc(100% - 72px);
+  pointer-events:none;padding:3px 8px;border-radius:2px;
+  background:rgba(8,10,12,.82);border:1px solid #2a3138;
+  color:#8b97a3;font-size:11px;font-weight:500;letter-spacing:.01em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.field.px-hit,input.px-hit{border-color:#d6b25e!important;box-shadow:0 0 0 2px rgba(214,178,94,.45)}
+#desk-order .field.px-hit,#desk-order input.px-hit{border-color:#00e29a!important;box-shadow:0 0 0 2px rgba(0,226,154,.32)}
 .drag-tag{
   position:absolute;z-index:4;left:8px;transform:translateY(-50%);
   pointer-events:none;padding:4px 8px;border-radius:8px;
@@ -422,6 +432,7 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
 </div>
 <div class="chart-wrap" id="chart-wrap">
 <div id="chart"><div id="chart-msg">Carregando gráfico…</div></div>
+<div id="chart-hint" class="chart-hint hidden"></div>
 <div id="drag-tag" class="drag-tag hidden"></div>
 </div>
 
@@ -801,15 +812,25 @@ function savedTf() {
   return "1m";
 }
 let chart = null, series = null, bar = savedTf(), lastPx = null;
-let posLines = [], previewLines = [], orderGroups = [];
+let posLines = [], previewLines = [], previewMeta = [], orderGroups = [];
 let entradaPreviewHold = false, adjPreviewHold = false;
 let drag = null, confirmState = null, dragBound = false;
+let lastPriceFocus = null, scaleArm = "from", chartGesture = null, flashTimer = null;
+const downPointers = new Set();
+const TAP_SLOP = 8;
 const TICK = 0.1, HIT_PX = 24;
 const STOP_COLOR = "#f5c84c", LIMIT_COLOR = "#e7e9ec", PREVIEW_COLOR = "#b7c9da";
 function snapPx(p) {
   const n = Number(p);
   if (!Number.isFinite(n)) return null;
   return Math.round(n * (1 / TICK)) / (1 / TICK);
+}
+function fmtTick(n) {
+  const s = snapPx(n);
+  if (!(s > 0)) return "";
+  const tenths = Math.round(s * 10);
+  const abs = Math.abs(tenths);
+  return Math.floor(abs / 10) + "." + (abs % 10);
 }
 function isDesk() { return window.matchMedia("(min-width: 1024px)").matches; }
 let lastCandles = [];
@@ -1076,48 +1097,60 @@ function drawOrderLines(accounts) {
 }
 function addPreview(price, title, opt) {
   const o = opt || {};
-  previewLines.push(series.createPriceLine({
+  const line = series.createPriceLine({
     price,
     color: o.color || PREVIEW_COLOR,
     lineWidth: o.lineWidth || 2,
     lineStyle: o.lineStyle == null ? 3 : o.lineStyle,
     axisLabelVisible: o.axisLabelVisible !== false,
     title: title || "",
-  }));
+  });
+  previewLines.push(line);
+  previewMeta.push({ line, role: o.role || "", price: Number(price), title: title || "" });
 }
 function drawPreviews() {
-  if (!series) return;
+  if (!series) { updateChartHint(); return; }
   previewLines.forEach(dropLine);
   previewLines = [];
+  previewMeta = [];
   if (isDesk()) drawDeskPreviews();
   else drawMobilePreviews();
+  if (drag && drag.kind === "preview") {
+    const found = previewMeta.find((m) => m.role === drag.role);
+    if (found) drag.preview = found;
+  }
   if (typeof updateDesk === "function") updateDesk();
+  updateChartHint();
 }
 function drawMobilePreviews() {
   const entradaOn = !$("pane-entrada").classList.contains("hidden");
   if (entradaOn && !entradaPreviewHold) {
     if (reducing && deskKind !== "hedge") paintReduceLines();
     else {
-      if (ordType === "limit") {
+      if (deskKind === "hedge" && hedgeOrd === "limit") {
         const p = parseNum($("price").value);
-        if (p > 0) addPreview(p, "prévia entrada " + fmtPx(p));
+        if (p > 0) addPreview(p, "prévia hedge " + fmtPx(p), { role: "hedge" });
+      } else if (ordType === "limit") {
+        const p = parseNum($("price").value);
+        if (p > 0) addPreview(p, "prévia entrada " + fmtPx(p), { role: "price" });
       }
       if (deskKind === "scale") {
         const plan = scalePlan();
         const col = side === "short" ? "#e5425c" : "#00e29a";
         if (plan) plan.legs.forEach((leg, i) => {
           const end = i === 0 || i === plan.legs.length - 1;
-          addPreview(leg.price, end ? "ESCALA" : "", { color: col, lineStyle: 1, lineWidth: end ? 2 : 1, axisLabelVisible: end });
+          const role = i === 0 ? "from" : (i === plan.legs.length - 1 ? "to" : "");
+          addPreview(leg.price, end ? "ESCALA" : "", { role, color: col, lineStyle: 1, lineWidth: end ? 2 : 1, axisLabelVisible: end });
         });
       }
       const s = parseNum($("stop").value);
-      if (s > 0 && deskKind !== "hedge") addPreview(s, "prévia stop");
+      if (s > 0 && deskKind !== "hedge") addPreview(s, "prévia stop", { role: "stop" });
     }
   }
   const adjOn = !$("pane-ajustar").classList.contains("hidden");
   if (adjOn && !adjPreviewHold && adjOrdType === "limit") {
     const p = parseNum($("adj-price").value);
-    if (p > 0) addPreview(p, "prévia redução " + fmtPx(p));
+    if (p > 0) addPreview(p, "prévia redução " + fmtPx(p), { role: "reduce" });
   }
 }
 function paintReduceLines() {
@@ -1126,16 +1159,17 @@ function paintReduceLines() {
   const opt = { color: prev.color, lineStyle: 1, lineWidth: 2 };
   if (prev.ladder && prev.ladder.length) {
     prev.ladder.forEach((leg, i) => {
-      if (!(leg.ct >= 0.1) && i !== 0 && i !== prev.ladder.length - 1) {
-        addPreview(leg.price, "", { color: prev.color, lineStyle: 1, lineWidth: 1, axisLabelVisible: false });
+      const end = i === 0 || i === prev.ladder.length - 1;
+      const role = i === 0 ? "from" : (i === prev.ladder.length - 1 ? "to" : "");
+      if (!(leg.ct >= 0.1) && !end) {
+        addPreview(leg.price, "", { role: "", color: prev.color, lineStyle: 1, lineWidth: 1, axisLabelVisible: false });
         return;
       }
-      const end = i === 0 || i === prev.ladder.length - 1;
-      addPreview(leg.price, end ? prev.chartTitle : "", { color: prev.color, lineStyle: 1, lineWidth: end ? 2 : 1, axisLabelVisible: end });
+      addPreview(leg.price, end ? prev.chartTitle : "", { role, color: prev.color, lineStyle: 1, lineWidth: end ? 2 : 1, axisLabelVisible: end });
     });
     return;
   }
-  if (prev.exit > 0) addPreview(prev.exit, prev.chartTitle, opt);
+  if (prev.exit > 0) addPreview(prev.exit, prev.chartTitle, { ...opt, role: deskKind === "limit" ? "price" : "" });
 }
 function drawDeskPreviews() {
   const stop = parseNum($("stop").value);
@@ -1143,7 +1177,7 @@ function drawDeskPreviews() {
   if (deskTab === "reduce") {
     if (!adjPreviewHold && adjOrdType === "limit") {
       const p = parseNum($("adj-price").value);
-      if (p > 0) addPreview(p, "prévia redução " + fmtPx(p), { color: "#b7c9da", lineStyle: 1 });
+      if (p > 0) addPreview(p, "prévia redução " + fmtPx(p), { role: "reduce", color: "#b7c9da", lineStyle: 1 });
     }
     return;
   }
@@ -1151,25 +1185,26 @@ function drawDeskPreviews() {
     paintReduceLines();
     return;
   }
-  if (stop > 0 && !entradaPreviewHold && deskKind !== "hedge") addPreview(stop, "prévia stop", { color: "#ffb0be", lineStyle: 3 });
+  if (stop > 0 && !entradaPreviewHold && deskKind !== "hedge") addPreview(stop, "prévia stop", { role: "stop", color: "#ffb0be", lineStyle: 3 });
   if (deskTab !== "post" || entradaPreviewHold) return;
   if (deskKind === "scale") {
     const plan = scalePlan();
     if (!plan) return;
     plan.legs.forEach((leg, i) => {
       const end = i === 0 || i === plan.legs.length - 1;
-      addPreview(leg.price, end ? "PLACE SCALE" : "", { color: col, lineStyle: 1, lineWidth: end ? 2 : 1, axisLabelVisible: end });
+      const role = i === 0 ? "from" : (i === plan.legs.length - 1 ? "to" : "");
+      addPreview(leg.price, end ? "PLACE SCALE" : "", { role, color: col, lineStyle: 1, lineWidth: end ? 2 : 1, axisLabelVisible: end });
     });
-    addPreview(plan.avg, "média", { color: col, lineStyle: 2, lineWidth: 1 });
+    addPreview(plan.avg, "média", { role: "", color: col, lineStyle: 2, lineWidth: 1 });
     return;
   }
   if (deskKind === "limit") {
     const p = parseNum($("price").value);
-    if (p > 0) addPreview(p, "LIMITE", { color: col, lineStyle: 1 });
+    if (p > 0) addPreview(p, "LIMITE", { role: "price", color: col, lineStyle: 1 });
   }
   if (deskKind === "hedge" && hedgeOrd === "limit") {
     const p = parseNum(($("d-hedge-price") && $("d-hedge-price").value) || ($("price") && $("price").value));
-    if (p > 0) addPreview(p, "hedge", { color: "#e5425c", lineStyle: 1 });
+    if (p > 0) addPreview(p, "hedge", { role: "hedge", color: "#e5425c", lineStyle: 1 });
   }
 }
 function redrawChartLines() {
@@ -1244,7 +1279,7 @@ function beginDrag(ev) {
   ev.stopPropagation();
   drag = {
     id: ev.pointerId != null ? ev.pointerId : 1,
-    origin: group.price, price: group.price, group, moved: false,
+    kind: "order", origin: group.price, price: group.price, group, moved: false,
   };
   $("chart").classList.add("dragging");
   document.body.classList.add("dragging-order");
@@ -1253,6 +1288,39 @@ function beginDrag(ev) {
     try { $("chart").setPointerCapture(ev.pointerId); } catch (e) {}
   }
   paintDrag(group.price);
+  return true;
+}
+const PREVIEW_DRAG = { price: 1, stop: 1, from: 1, to: 1, hedge: 1, reduce: 1, tp: 1 };
+function hitPreview(y) {
+  if (!series) return null;
+  let best = null, bestD = HIT_PX + 1;
+  for (const m of previewMeta) {
+    if (!m.role || !PREVIEW_DRAG[m.role]) continue;
+    const cy = series.priceToCoordinate(m.price);
+    if (cy == null) continue;
+    const d = Math.abs(cy - y);
+    if (d <= HIT_PX && d < bestD) { best = m; bestD = d; }
+  }
+  return best;
+}
+function beginPreviewDrag(ev) {
+  if (ev.button != null && ev.button !== 0) return false;
+  const meta = hitPreview(chartLocalY(ev));
+  if (!meta) return false;
+  ev.preventDefault();
+  ev.stopPropagation();
+  drag = {
+    id: ev.pointerId != null ? ev.pointerId : 1,
+    kind: "preview", role: meta.role, origin: meta.price, price: meta.price,
+    lastApplied: meta.price, preview: meta, moved: false,
+  };
+  $("chart").classList.add("dragging");
+  document.body.classList.add("dragging-order");
+  setChartDragLock(true);
+  if (ev.pointerId != null && $("chart").setPointerCapture) {
+    try { $("chart").setPointerCapture(ev.pointerId); } catch (e) {}
+  }
+  showDragTag(meta.price);
   return true;
 }
 function moveDrag(ev) {
@@ -1264,6 +1332,14 @@ function moveDrag(ev) {
   if (price == null) return;
   if (price !== drag.origin) drag.moved = true;
   drag.price = price;
+  if (drag.kind === "preview") {
+    if (price !== drag.lastApplied) {
+      drag.lastApplied = price;
+      setRolePrice(drag.role, price);
+    }
+    showDragTag(price);
+    return;
+  }
   paintDrag(price);
 }
 function endDrag(ev) {
@@ -1276,13 +1352,107 @@ function endDrag(ev) {
   document.body.classList.remove("dragging-order");
   setChartDragLock(false);
   hideDragTag();
+  if (state.kind === "preview") { drawPreviews(); return; }
   styleOrderLine(state.group, state.price);
   if (!state.moved || state.price === state.origin) return;
   openAmendSheet(state.group, state.origin, state.price);
 }
+function cancelDrag() {
+  if (!drag) return;
+  const state = drag;
+  drag = null;
+  $("chart").classList.remove("dragging");
+  document.body.classList.remove("dragging-order");
+  setChartDragLock(false);
+  hideDragTag();
+  if (state.kind === "preview") {
+    if (state.moved) setRolePrice(state.role, state.origin);
+    else drawPreviews();
+    return;
+  }
+  if (state.group) styleOrderLine(state.group, state.origin);
+}
+function pointOf(ev) {
+  const t = ev.touches && ev.touches[0] ? ev.touches[0]
+    : ev.changedTouches && ev.changedTouches[0] ? ev.changedTouches[0] : ev;
+  return { x: t.clientX, y: t.clientY };
+}
+function eventOnChart(ev) {
+  const el = $("chart");
+  if (!el) return false;
+  const p = pointOf(ev);
+  const r = el.getBoundingClientRect();
+  return p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
+}
+function updateLineCursor(ev) {
+  const el = $("chart");
+  if (!el || !series) return;
+  if (drag) { el.classList.add("line-hover"); return; }
+  if (!eventOnChart(ev)) { el.classList.remove("line-hover"); return; }
+  const y = chartLocalY(ev);
+  el.classList.toggle("line-hover", !!(hitOrder(y) || hitPreview(y)));
+}
 function onChartDown(ev) {
-  if (drag || confirmState || scaleOpen) { ev.preventDefault(); ev.stopPropagation(); return; }
-  beginDrag(ev);
+  if (ev.__painelDown) return;
+  ev.__painelDown = true;
+  if (confirmState || scaleOpen) { ev.preventDefault(); ev.stopPropagation(); return; }
+  if (ev.type !== "pointerdown" && typeof PointerEvent !== "undefined") {
+    if (drag) { ev.preventDefault(); ev.stopPropagation(); }
+    return;
+  }
+  if (drag) { ev.preventDefault(); ev.stopPropagation(); return; }
+  if (ev.target && ev.target.closest && ev.target.closest("button, input, select, a, textarea")) return;
+  if (ev.button != null && ev.button !== 0) return;
+  if (!eventOnChart(ev)) return;
+  if (ev.touches && ev.touches.length > 1) {
+    if (chartGesture) chartGesture.pinch = true;
+    else chartGesture = { pinch: true, moved: true, id: -1, x: 0, y: 0 };
+    cancelDrag();
+    return;
+  }
+  if (ev.pointerId != null) downPointers.add(ev.pointerId);
+  if (downPointers.size > 1) {
+    if (chartGesture) chartGesture.pinch = true;
+    else chartGesture = { pinch: true, moved: true, id: ev.pointerId, x: 0, y: 0 };
+    cancelDrag();
+    return;
+  }
+  if (beginDrag(ev) || beginPreviewDrag(ev)) { chartGesture = null; return; }
+  const p = pointOf(ev);
+  chartGesture = { id: ev.pointerId != null ? ev.pointerId : 1, x: p.x, y: p.y, moved: false, pinch: false };
+}
+function onChartMove(ev) {
+  if (drag) { moveDrag(ev); return; }
+  if (chartGesture && (ev.pointerId == null || ev.pointerId === chartGesture.id)) {
+    const p = pointOf(ev);
+    if (Math.hypot(p.x - chartGesture.x, p.y - chartGesture.y) > TAP_SLOP) chartGesture.moved = true;
+  }
+  if (ev.type === "pointermove" || ev.type === "mousemove") updateLineCursor(ev);
+}
+function onChartUp(ev) {
+  if (ev.__painelUp) return;
+  ev.__painelUp = true;
+  if (ev.pointerId != null) downPointers.delete(ev.pointerId);
+  if (ev.type === "pointercancel" || ev.type === "touchcancel") {
+    chartGesture = null;
+    if (drag) cancelDrag();
+    return;
+  }
+  if (ev.type !== "pointerup" && ev.type !== "mouseup" && ev.type !== "touchend") return;
+  if (drag) {
+    if (ev.type !== "pointerup" && typeof PointerEvent !== "undefined") return;
+    endDrag(ev);
+    chartGesture = null;
+    return;
+  }
+  if (ev.type !== "pointerup") return;
+  const g = chartGesture;
+  chartGesture = null;
+  if (!g || g.pinch || g.moved) return;
+  if (ev.pointerId != null && g.id !== ev.pointerId) return;
+  const p = pointOf(ev);
+  if (Math.hypot(p.x - g.x, p.y - g.y) > TAP_SLOP) return;
+  fillFromChart(ev);
 }
 function bindChartDrag() {
   if (dragBound) return;
@@ -1292,20 +1462,119 @@ function bindChartDrag() {
   wrap.addEventListener("pointerdown", onChartDown, opts);
   wrap.addEventListener("mousedown", onChartDown, opts);
   wrap.addEventListener("touchstart", onChartDown, opts);
-  wrap.addEventListener("pointermove", moveDrag, opts);
-  wrap.addEventListener("mousemove", moveDrag, opts);
-  wrap.addEventListener("touchmove", moveDrag, opts);
-  wrap.addEventListener("pointerup", endDrag, opts);
-  wrap.addEventListener("pointercancel", endDrag, opts);
-  wrap.addEventListener("mouseup", endDrag, opts);
-  wrap.addEventListener("touchend", endDrag, opts);
-  wrap.addEventListener("touchcancel", endDrag, opts);
-  window.addEventListener("pointermove", (ev) => { if (drag && ev.pointerId === drag.id) moveDrag(ev); }, opts);
+  wrap.addEventListener("pointermove", onChartMove, opts);
+  wrap.addEventListener("mousemove", onChartMove, opts);
+  wrap.addEventListener("touchmove", onChartMove, opts);
+  wrap.addEventListener("pointerup", onChartUp, opts);
+  wrap.addEventListener("pointercancel", onChartUp, opts);
+  wrap.addEventListener("mouseup", onChartUp, opts);
+  wrap.addEventListener("touchend", onChartUp, opts);
+  wrap.addEventListener("touchcancel", onChartUp, opts);
+  window.addEventListener("pointermove", onChartMove, opts);
   window.addEventListener("touchmove", (ev) => { if (drag) moveDrag(ev); }, opts);
-  window.addEventListener("pointerup", (ev) => { if (drag && ev.pointerId === drag.id) endDrag(ev); });
-  window.addEventListener("pointercancel", (ev) => { if (drag && ev.pointerId === drag.id) endDrag(ev); });
-  window.addEventListener("touchend", (ev) => { if (drag) endDrag(ev); });
-  window.addEventListener("touchcancel", (ev) => { if (drag) endDrag(ev); });
+  window.addEventListener("pointerup", onChartUp);
+  window.addEventListener("pointercancel", onChartUp);
+  window.addEventListener("touchend", onChartUp);
+  window.addEventListener("touchcancel", onChartUp);
+}
+function orderFormOpen() {
+  return document.body.classList.contains("in-app") || document.documentElement.classList.contains("in-app");
+}
+function fieldVisible(id) {
+  const el = $(id);
+  return !!(el && el.getClientRects().length);
+}
+function fieldsForRole(role) {
+  if (role === "price") return ["d-price", "price"];
+  if (role === "stop") return ["d-stop", "d-stop-2", "stop"];
+  if (role === "from") return ["d-from", "m-from"];
+  if (role === "to") return ["d-to", "m-to"];
+  if (role === "hedge") return ["d-hedge-price", "price"];
+  if (role === "reduce") return ["d-adj-price", "adj-price"];
+  return [];
+}
+function roleActive(role) { return fieldsForRole(role).some(fieldVisible); }
+function roleFromField(id) {
+  if (id === "price" || id === "d-price") return (deskKind === "hedge" && hedgeOrd === "limit") ? "hedge" : "price";
+  if (id === "stop" || id === "d-stop" || id === "d-stop-2") return "stop";
+  if (id === "d-from" || id === "m-from") return "from";
+  if (id === "d-to" || id === "m-to") return "to";
+  if (id === "d-hedge-price") return "hedge";
+  if (id === "adj-price" || id === "d-adj-price") return "reduce";
+  return null;
+}
+function visibleField(role) {
+  for (const id of fieldsForRole(role)) if (fieldVisible(id)) return $(id);
+  return $(fieldsForRole(role)[0] || "");
+}
+function defaultClickRole() {
+  if (!orderFormOpen()) return null;
+  const ajuste = !isDesk() && $("pane-ajustar") && !$("pane-ajustar").classList.contains("hidden");
+  if (isDesk() && deskTab === "reduce") return adjOrdType === "limit" ? "reduce" : null;
+  if (ajuste) return adjOrdType === "limit" ? "reduce" : null;
+  if (isDesk() && deskTab === "tpsl") return "stop";
+  if (deskKind === "hedge") return hedgeOrd === "limit" ? "hedge" : null;
+  if (deskKind === "scale") return scaleArm === "to" ? "to" : "from";
+  if (reducing && deskKind === "market") return null;
+  if (deskKind === "market") return "stop";
+  if (deskKind === "limit") return "price";
+  return null;
+}
+function clickTarget() {
+  if (!orderFormOpen()) return null;
+  if (lastPriceFocus && roleActive(lastPriceFocus)) return lastPriceFocus;
+  return defaultClickRole();
+}
+function hintName(role) {
+  if (role === "stop") return "stop";
+  if (role === "from") return "de";
+  if (role === "to") return "até";
+  if (role === "price" || role === "hedge" || role === "reduce" || role === "tp") return "preço";
+  return "";
+}
+function updateChartHint() {
+  const el = $("chart-hint");
+  if (!el) return;
+  const role = clickTarget();
+  if (!role) { show(el, false); el.textContent = ""; delete el.dataset.target; return; }
+  el.textContent = (isDesk() ? "Clique" : "Toque") + " no gráfico: " + hintName(role);
+  el.dataset.target = role;
+  show(el, true);
+}
+function flashField(el) {
+  if (!el) return;
+  const box = (el.closest && el.closest(".field")) || el;
+  document.querySelectorAll(".px-hit").forEach((n) => n.classList.remove("px-hit"));
+  box.classList.add("px-hit");
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => box.classList.remove("px-hit"), 900);
+}
+function setRolePrice(role, price) {
+  const text = fmtTick(price);
+  if (!text) return;
+  for (const id of fieldsForRole(role)) {
+    const el = $(id);
+    if (el) el.value = text;
+  }
+  entradaPreviewHold = false;
+  if (role === "reduce") { invalidateAdjPreview(); return; }
+  drawPreviews();
+}
+function fillFromChart(ev) {
+  if (!orderFormOpen() || drag || confirmState || scaleOpen) return;
+  const y = chartLocalY(ev);
+  if (hitOrder(y)) return;
+  const price = yToSnap(y);
+  if (!(price > 0)) return;
+  const pinned = !!(lastPriceFocus && roleActive(lastPriceFocus));
+  const role = clickTarget();
+  if (!role) return;
+  setRolePrice(role, price);
+  flashField(visibleField(role));
+  if (!pinned && deskKind === "scale" && (role === "from" || role === "to")) {
+    scaleArm = role === "from" ? "to" : "from";
+    updateChartHint();
+  }
 }
 function openAmendSheet(group, origin, next) {
   if (confirmState) return;
@@ -1389,6 +1658,7 @@ function setLogin(need) {
   document.body.classList.toggle("in-app", !need);
   document.documentElement.classList.toggle("in-app", !need);
   if (need) renderHeadPnl(null);
+  if (typeof updateChartHint === "function") updateChartHint();
 }
 function setSide(n) {
   side = n;
@@ -2113,6 +2383,7 @@ function paintKind() {
     else on = deskTab === b.dataset.tab;
     b.classList.toggle("on", on);
   });
+  if (typeof updateChartHint === "function") updateChartHint();
 }
 function setReducing(on) {
   reducing = !!on;
@@ -2123,6 +2394,7 @@ function setReducing(on) {
   drawPreviews();
 }
 function setDeskKind(kind) {
+  if (kind === "scale" && deskKind !== "scale") scaleArm = "from";
   deskKind = kind;
   if ($("d-kind")) $("d-kind").value = kind;
   if (kind === "hedge") reducing = false;
@@ -2472,9 +2744,29 @@ $("risk").addEventListener("input", () => { if (typeof updateDesk === "function"
 
 document.addEventListener("focusin", (ev) => {
   const t = ev.target;
+  const role = roleFromField(t && t.id);
+  if (role) { lastPriceFocus = role; updateChartHint(); }
   if (!t || t.tagName !== "INPUT" || !window.matchMedia("(max-width: 959px)").matches) return;
   setTimeout(() => t.scrollIntoView({ block: "center", inline: "nearest" }), 60);
 });
+
+// Leitura do gráfico para o teste automatizado. Não envia ordem.
+window.__painel = {
+  ready() { return !!(chart && series && lastCandles.length); },
+  priceAt(y) { return yToSnap(y); },
+  yFor(p) {
+    if (!series) return null;
+    const y = series.priceToCoordinate(Number(p));
+    return y == null ? null : y;
+  },
+  nearLine(y) { return !!(hitOrder(y) || hitPreview(y)); },
+  range() {
+    if (!chart) return null;
+    const r = chart.timeScale().getVisibleLogicalRange();
+    return r ? { from: r.from, to: r.to } : null;
+  },
+  fmt(p) { return fmtTick(p); },
+};
 
 window.addEventListener("DOMContentLoaded", () => {
   if (initChart()) loadCandles();
