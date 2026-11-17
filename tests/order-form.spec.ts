@@ -195,6 +195,83 @@ test("escala com e sem reduce, hedge esconde o toggle", async ({ page }) => {
   every(orders, (b) => b.posSide === "short" && b.side === "sell" && !b.reduceOnly, "hedge vende short");
 });
 
+test("escala de 10 pernas: fora da faixa não envia, e USD crescente entra nas duas pernas", async ({ page }) => {
+  const wide = await desk(page);
+  expect(wide).toBeTruthy();
+  await fetch("http://127.0.0.1:8788/__band", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ buyLmt: "64099.5", sellLmt: "63461.4" }),
+  });
+  await setKind(page, "scale");
+  await setReduce(page, false);
+  await setSize(page, "risco");
+  await page.fill("#d-from", "62710.5");
+  await page.fill("#d-to", "62425");
+  await page.locator("input#d-orders").fill("10");
+  await page.click("#d-size-even");
+  await page.fill("#d-stop", "60000");
+  await page.fill("#d-risk", "1");
+  const blockedWait = page.waitForResponse((r) => r.url().includes(":8000/scale") && r.request().method() === "POST");
+  await page.click("#d-long");
+  await page.waitForSelector("#scale-sheet:not(.hidden)");
+  await page.click("#scale-ok");
+  const blockedRes = await blockedWait;
+  const blocked = await blockedRes.json();
+  expect(blocked.sizeMode == null || blocked.aborted).toBeTruthy();
+  const blockedBody = blockedRes.request().postData() || "";
+  expect(blockedBody).toContain('"sizeMode":"risk"');
+  expect(blockedBody).not.toContain('"sizeMode":"usd"');
+  await expect(page.locator("#scale-msg")).toContainText("faixa da OKX");
+  await expect(page.locator("#scale-msg")).toContainText("62710.5");
+  expect(await okxPosts("/api/v5/trade/batch-orders")).toHaveLength(0);
+  expect(await okxPosts("/api/v5/trade/order")).toHaveLength(0);
+
+  await page.click("#scale-cancel");
+  await resetMock();
+  await fetch("http://127.0.0.1:8788/__failmsg", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ msg: "Order price is not within the price limit" }),
+  });
+  await page.fill("#d-from", "63500");
+  await page.fill("#d-to", "63800");
+  const refusedWait = page.waitForResponse((r) => r.url().includes(":8000/scale") && r.request().method() === "POST");
+  await page.click("#d-long");
+  await page.click("#scale-ok");
+  expect((await refusedWait).ok()).toBeTruthy();
+  await expect(page.locator("#scale-msg")).toContainText("pupo:");
+  await expect(page.locator("#scale-msg")).toContainText("51006");
+  await expect(page.locator("#scale-msg")).toContainText("not within the price limit");
+
+  await page.click("#scale-cancel");
+  await resetMock();
+  await setSize(page, "usd", "10000");
+  await page.fill("#d-from", "63500");
+  await page.fill("#d-to", "63800");
+  const usdWait = page.waitForResponse((r) => r.url().includes(":8000/scale") && r.request().method() === "POST");
+  await page.click("#d-long");
+  await page.click("#scale-ok");
+  const usdRes = await usdWait;
+  const usdJson = await usdRes.json();
+  const usdBody = JSON.parse(usdRes.request().postData() || "{}");
+  expect(usdRes.ok()).toBeTruthy();
+  expect(usdJson.aborted, String(usdJson.abort_msg || "")).toBeFalsy();
+  expect(usdBody.sizeMode).toBe("usd");
+  expect(usdBody.usd).toBe(10000);
+  expect(usdBody.n).toBe(10);
+  expect(usdBody.sizeSkew).toBe(true);
+  expect(usdBody.side).toBe("long");
+  const batches = await okxPosts("/api/v5/trade/batch-orders");
+  expect(batches.length).toBeGreaterThan(0);
+  for (const chunk of batches) {
+    const rows = chunk as unknown as Body[];
+    expect(rows).toHaveLength(10);
+    expect(parseFloat(String(rows[0].sz))).toBeLessThan(parseFloat(String(rows[9].sz)));
+    for (const b of rows) expect(b.side === "buy" && b.posSide === "long" && !b.reduceOnly && b.ordType === "limit").toBeTruthy();
+  }
+});
+
 test("reduce fica ligado na sessão", async ({ page }) => {
   await setKind(page, "limit");
   await setReduce(page, true);

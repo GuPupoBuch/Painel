@@ -3,6 +3,8 @@ import http from "node:http";
 const calls = [];
 const placed = [];
 const reduced = {};
+let band = { buyLmt: "200000", sellLmt: "1000", enabled: true };
+let failBatchMsg = null;
 let n = 1;
 const keys = {
   "key-pupo": "pupo",
@@ -57,11 +59,22 @@ const server = http.createServer((req, res) => {
     if (url.pathname === "/__reset") {
       calls.length = 0; placed.length = 0;
       for (const k of Object.keys(reduced)) delete reduced[k];
+      band = { buyLmt: "200000", sellLmt: "1000", enabled: true };
+      failBatchMsg = null;
+      return send({ ok: true });
+    }
+    if (url.pathname === "/__band" && req.method === "POST") {
+      band = { buyLmt: String(body.buyLmt), sellLmt: String(body.sellLmt), enabled: true };
+      return send({ ok: true });
+    }
+    if (url.pathname === "/__failmsg" && req.method === "POST") {
+      failBatchMsg = body && body.msg ? String(body.msg) : null;
       return send({ ok: true });
     }
     if (url.pathname === "/__calls") return send(calls);
     calls.push({ account, method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), body });
     if (url.pathname === "/api/v5/public/mark-price") return send({ code: "0", data: [{ markPx: "64000" }] });
+    if (url.pathname === "/api/v5/public/price-limit") return send({ code: "0", data: [band] });
     if (url.pathname === "/api/v5/account/balance") return send({ code: "0", data: [{ details: [{ ccy: "BTC", eq: "1" }] }] });
     if (url.pathname === "/api/v5/account/positions") return send({ code: "0", data: legs(account) });
     if (url.pathname === "/api/v5/trade/orders-pending") return send({ code: "0", data: [] });
@@ -95,6 +108,9 @@ const server = http.createServer((req, res) => {
     }
     if (url.pathname === "/api/v5/trade/batch-orders" && req.method === "POST") {
       const rows = Array.isArray(body) ? body : [];
+      if (failBatchMsg) {
+        return send({ code: "1", msg: "All operations failed", data: rows.map(() => ({ sCode: "51006", sMsg: failBatchMsg, ordId: "" })) });
+      }
       return send({ code: "0", data: rows.map(() => ({ sCode: "0", ordId: "b" + (n++) })) });
     }
     if (url.pathname === "/api/v5/trade/cancel-batch-orders") return send({ code: "0", data: [] });
