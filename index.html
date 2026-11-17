@@ -3529,6 +3529,10 @@ function initDesk() {
   $("d-adj-best").onclick = () => { fillAdjMark(); $("d-adj-price").value = $("adj-price").value; invalidateAdjPreview(); };
   $("d-adj-preview").onclick = () => $("adj-preview").click();
   $("d-adj-send").onclick = () => $("adj-send").click();
+  // o Reduzir desktop acompanha o habilitado/desabilitado do botão interno (sem prévia pronta o clique seria ignorado)
+  const syncAdjSend = () => { $("d-adj-send").disabled = $("adj-send").disabled; };
+  new MutationObserver(syncAdjSend).observe($("adj-send"), { attributes: true, attributeFilter: ["disabled"] });
+  syncAdjSend();
   $("scale-cancel").onclick = () => closeScaleSheet();
   $("scale-ok").onclick = () => submitScale();
   $("scale-sheet").addEventListener("click", (ev) => { if (ev.target === $("scale-sheet")) closeScaleSheet(); });
