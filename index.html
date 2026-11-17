@@ -467,14 +467,25 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
       <select id="d-symbol" aria-label="Símbolo"><option>BTC-USD-SWAP</option></select>
       <select id="d-filter" aria-label="Contas na tela"></select>
     </div>
+    <div class="d-k">Grupo</div>
+    <div class="unit-row" id="d-groups">
+      <button type="button" data-group="limite" class="on">Limite</button>
+      <button type="button" data-group="mercado">Mercado</button>
+      <button type="button" data-group="hedge">Hedge</button>
+    </div>
     <div class="d-k">Tipo</div>
     <select id="d-kind" class="d-in kind" aria-label="Tipo de ordem">
-      <option value="limit">LIMITE · ORDEM</option>
-      <option value="market">MERCADO</option>
+      <option value="limit">ORDEM</option>
+      <option value="limit-build">MONTAR POSIÇÃO</option>
+      <option value="scale">ESCALA</option>
+      <option value="limit-adjust">AJUSTAR POSIÇÃO %</option>
+      <option value="chase">CHASE</option>
+      <option value="market">ORDEM</option>
+      <option value="market-build">MONTAR POSIÇÃO</option>
+      <option value="market-adjust">AJUSTAR POSIÇÃO %</option>
       <option value="trigger">STOP A MERCADO</option>
-      <option value="chase">CHASE LIMITE</option>
-      <option value="scale">LIMITE · ESCALA</option>
-      <option value="hedge">HEDGE</option>
+      <option value="hedge">ORDEM</option>
+      <option value="hedge-scale">ESCALA</option>
     </select>
     <div class="d-tabs" id="d-tabs">
       <button type="button" class="d-tab on" data-tab="post">Ordem</button>
@@ -565,6 +576,7 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
         <div class="d-avg">Média <b id="d-avg">—</b></div>
       </div>
       <div id="d-hedge" class="hidden">
+        <p class="d-note" id="d-hedge-now">Vendido agora —</p>
         <div class="d-k" id="d-hedge-k">Quanto % vendido</div>
         <div class="d-togs" id="d-hedge-quick">
           <button type="button" class="d-tog" data-h="0">0</button>
@@ -582,7 +594,7 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
           <button type="button" class="d-tog on" id="d-mode-short">% vendido</button>
           <button type="button" class="d-tog" id="d-mode-net">% comprado</button>
         </div>
-        <div class="d-togs" style="margin-top:8px">
+        <div class="d-togs" id="d-hedge-ord" style="margin-top:8px">
           <button type="button" class="d-tog on" id="d-hedge-mkt">Mercado</button>
           <button type="button" class="d-tog" id="d-hedge-lmt">Limite</button>
         </div>
@@ -704,13 +716,23 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
         <button type="button" class="side long on" id="btn-long" aria-pressed="true"><span class="go-k">LONG</span><span class="go-sub">—</span></button>
         <button type="button" class="side short" id="btn-short" aria-pressed="false"><span class="go-k">SHORT</span><span class="go-sub">—</span></button>
       </div>
+      <div class="unit-row" id="m-groups">
+        <button type="button" data-group="limite" class="on">Limite</button>
+        <button type="button" data-group="mercado">Mercado</button>
+        <button type="button" data-group="hedge">Hedge</button>
+      </div>
       <select id="m-kind" class="kind" aria-label="Tipo de ordem">
-        <option value="limit">LIMITE · ORDEM</option>
-        <option value="market">MERCADO</option>
+        <option value="limit">ORDEM</option>
+        <option value="limit-build">MONTAR POSIÇÃO</option>
+        <option value="scale">ESCALA</option>
+        <option value="limit-adjust">AJUSTAR POSIÇÃO %</option>
+        <option value="chase">CHASE</option>
+        <option value="market">ORDEM</option>
+        <option value="market-build">MONTAR POSIÇÃO</option>
+        <option value="market-adjust">AJUSTAR POSIÇÃO %</option>
         <option value="trigger">STOP A MERCADO</option>
-        <option value="chase">CHASE LIMITE</option>
-        <option value="scale">LIMITE · ESCALA</option>
-        <option value="hedge">HEDGE</option>
+        <option value="hedge">ORDEM</option>
+        <option value="hedge-scale">ESCALA</option>
       </select>
       <div class="unit-row" id="m-size-modes">
         <button type="button" data-size="usd">USD</button>
@@ -768,6 +790,7 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
           <button type="button" class="pct" data-h="75">75%</button>
           <button type="button" class="pct" data-h="100">100%</button>
         </div>
+        <p class="all-note" id="m-hedge-now">Vendido agora —</p>
         <label for="m-hedge-pct" id="m-hedge-label">Quanto % vendido</label>
         <input id="m-hedge-pct" type="text" inputmode="decimal" autocomplete="off" value="50">
         <div class="otypes">
@@ -775,7 +798,7 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
           <button type="button" class="otype" id="m-mode-net">% comprado</button>
         </div>
         <div id="m-hedge-table"></div>
-        <div class="otypes">
+        <div class="otypes" id="m-hedge-ord">
           <button type="button" class="otype on" id="m-hedge-mkt">Mercado</button>
           <button type="button" class="otype" id="m-hedge-lmt">Limite</button>
         </div>
@@ -1185,7 +1208,8 @@ function drawOrderLines(accounts) {
     for (const g of clusterClose(flat.filter((o) => o.kind === kind))) {
       const names = [...new Set(g.items.map((x) => x.account))];
       const label = kind === "trigger" ? "stop mkt " : kind === "stop" ? "stop " : "limite ";
-      const title = names.length > 1 ? label + names.join("+") + " " + fmtPx(g.price) : label + names[0];
+      const pct = orderBookPct(kind, g.items);
+      const title = (names.length > 1 ? label + names.join("+") + " " + fmtPx(g.price) : label + names[0]) + (pct == null ? "" : " " + fmtPct(pct));
       const line = series.createPriceLine({
         price: g.price,
         color: orderLineColor(kind, g.items),
@@ -1258,6 +1282,16 @@ function drawMobilePreviews() {
         const p = parseNum($("price").value);
         if (p > 0) addPreview(p, "LIMITE", { role: "price", lineStyle: 1, color: side === "short" ? "#e5425c" : "#00e29a" });
       }
+      if (deskKind === "hedge-scale") {
+        const ladder = hedgeScalePlan();
+        if (ladder) {
+          ladder.legs.forEach((leg, i) => {
+            const end = i === ladder.legs.length - 1;
+            addPreview(leg.price, fmtPct(leg.pct), { role: i === 0 ? "from" : end ? "to" : "", color: "#e5425c", lineStyle: 1, lineWidth: end ? 2 : 1, axisLabelVisible: true });
+          });
+          if (ladder.avg > 0) addPreview(ladder.avg, "média", { role: "", color: "#e5425c", lineStyle: 2, lineWidth: 1 });
+        }
+      }
       if (deskKind === "scale") {
         const plan = scalePlan();
         const col = side === "short" ? "#e5425c" : "#00e29a";
@@ -1319,6 +1353,16 @@ function drawDeskPreviews() {
   }
   if (stop > 0 && !entradaPreviewHold && stopPreviewOn()) addPreview(stop, "prévia stop", { role: "stop", color: "#ffb0be", lineStyle: 2 });
   if (deskTab !== "post" || entradaPreviewHold) return;
+  if (deskKind === "hedge-scale") {
+    const ladder = hedgeScalePlan();
+    if (!ladder) return;
+    ladder.legs.forEach((leg, i) => {
+      const end = i === ladder.legs.length - 1;
+      addPreview(leg.price, fmtPct(leg.pct), { role: i === 0 ? "from" : end ? "to" : "", color: "#e5425c", lineStyle: 1, lineWidth: end ? 2 : 1, axisLabelVisible: true });
+    });
+    if (ladder.avg > 0) addPreview(ladder.avg, "média", { role: "", color: "#e5425c", lineStyle: 2, lineWidth: 1 });
+    return;
+  }
   if (deskKind === "scale") {
     const plan = scalePlan();
     if (!plan) return;
@@ -1653,7 +1697,7 @@ function defaultClickRole() {
   if (ajuste) return adjOrdType === "limit" ? "reduce" : null;
   if (isDesk() && deskTab === "tpsl") return "stop";
   if (deskKind === "hedge") return hedgeOrd === "limit" ? "hedge" : null;
-  if (deskKind === "scale") return scaleArm === "to" ? "to" : "from";
+  if (deskKind === "scale" || deskKind === "hedge-scale") return scaleArm === "to" ? "to" : "from";
   if (deskKind === "trigger") return "trigger";
   if (reducing && deskKind === "market") return null;
   if (deskKind === "market") return "stop";
@@ -1951,7 +1995,7 @@ async function postOrder(payload) {
 $("send").onclick = async () => {
   if (sending) return;
   show($("banner-err"), false); show($("banner-warn"), false);
-  if (deskKind === "hedge") { openHedgeSheet(); return; }
+  if (deskKind === "hedge" || deskKind === "hedge-scale") { openHedgeSheet(); return; }
   if (deskKind === "scale") { openScaleSheet(); return; }
   if (deskKind === "trigger" || deskKind === "chase") return sendAlgo(deskKind);
   if (reducing) return sendReduce();
@@ -2200,6 +2244,53 @@ $("adj-pct").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.
 
 // Tamanho igual ao da função painel: ct = trunc(eq * risco / den / 0,1) / 10,
 // den = |100 * (1/entrada − 1/stop)|, USD = ct * 100. Só para mostrar. O pedido não muda.
+function harmonicAvg(prices, weights) {
+  let wsum = 0, inv = 0;
+  for (let i = 0; i < prices.length; i++) {
+    const w = weights[i] > 0 ? weights[i] : 0;
+    if (!(prices[i] > 0) || !(w > 0)) continue;
+    wsum += w;
+    inv += w / prices[i];
+  }
+  return inv > 0 ? wsum / inv : 0;
+}
+function bookTotals() {
+  let valor = 0, shortCt = 0;
+  for (const a of (lastAccounts || [])) {
+    if (a.error) continue;
+    const m = Number(a.mark) || lastPx || 0;
+    const eq = Number(a.eq) || 0;
+    valor += eq * m;
+    const leg = (a.legs || []).find((l) => l.posSide === "short");
+    shortCt += Number(leg && (leg.ct ?? leg.pos)) || 0;
+  }
+  return { valor, shortCt };
+}
+function soldPct(shortCt) {
+  const b = bookTotals();
+  if (!(b.valor > 0)) return null;
+  return shortCt * 100 / b.valor * 100;
+}
+function orderBookPct(kind, items) {
+  const b = bookTotals();
+  if (!(b.valor > 0)) return null;
+  if (kind === "stop") {
+    const cut = items.filter((x) => x.posSide === "short").reduce((s, x) => s + ((x.usd || 0) / 100), 0);
+    if (!(cut > 0)) return null;
+    return Math.max(0, soldPct(b.shortCt - cut));
+  }
+  if (kind === "limit") {
+    let extra = 0;
+    for (const x of items) {
+      const ct = (x.usd || 0) / 100;
+      if (x.posSide === "short" && x.side === "sell") extra += ct;
+      if (x.posSide === "short" && x.reduceOnly) extra -= ct;
+    }
+    if (!extra) return null;
+    return Math.max(0, soldPct(b.shortCt + extra));
+  }
+  return null;
+}
 function sizeFromRisk(eq, entry, stop, riskPct) {
   if (!(eq > 0) || !(entry > 0) || !(stop > 0) || !(riskPct > 0)) return null;
   const den = Math.abs(100 * (1 / entry - 1 / stop));
@@ -2222,6 +2313,44 @@ function sizesAt(entry) {
   }
   return { rows, totalUsd, totalCt, any, entry, stop, risk };
 }
+function lossToStop(ct, entry, stop) {
+  return ct * 100 * Math.abs(1 / entry - 1 / stop);
+}
+function scaleRiskCts(eq, prices, stop, riskPct, even) {
+  const weights = prices.map((_, i) => (even ? 1 : i + 1));
+  const avg = harmonicAvg(prices, weights);
+  const total = sizeFromRisk(eq, avg, stop, riskPct);
+  const cts = prices.map(() => 0);
+  if (!total) return { avg, cts };
+  const cap = eq * (riskPct / 100);
+  const lossOf = (lots) => lots.reduce((s, ct, i) => s + (ct >= 0.1 ? lossToStop(ct, prices[i], stop) : 0), 0);
+  if (even) {
+    const each = Math.floor(total.ct / prices.length / 0.1 + 1e-9) * 0.1;
+    cts.fill(each);
+    let rem = roundLot(total.ct - each * prices.length);
+    while (rem >= 0.1 - 1e-9) {
+      const i = cts.length - 1;
+      cts[i] = roundLot(cts[i] + 0.1);
+      if (lossOf(cts) > cap + 1e-9) { cts[i] = roundLot(Math.max(0, cts[i] - 0.1)); break; }
+      rem = roundLot(rem - 0.1);
+    }
+    return { avg, cts };
+  }
+  const skewed = splitLots(total.ct, weights);
+  let guard = 0;
+  while (lossOf(skewed) > cap + 1e-9 && guard++ < 1000) {
+    let idx = -1, dens = -1;
+    for (let i = 0; i < skewed.length; i++) {
+      if (skewed[i] < 0.1) continue;
+      const per = lossToStop(0.1, prices[i], stop);
+      if (per > dens) { dens = per; idx = i; }
+    }
+    if (idx < 0) break;
+    skewed[idx] = roundLot(skewed[idx] - 0.1);
+    if (skewed[idx] < 0.1 - 1e-9) skewed[idx] = 0;
+  }
+  return { avg, cts: skewed };
+}
 function scalePlan() {
   const fromEl = isDesk() ? $("d-from") : $("m-from");
   const toEl = isDesk() ? $("d-to") : $("m-to");
@@ -2239,23 +2368,23 @@ function scalePlan() {
     prices.push(from + (to - from) * u);
   }
   const weights = prices.map((_, i) => sizeEven ? 1 : i + 1);
-  const wsum = weights.reduce((s, w) => s + w, 0);
-  const legs = prices.map((price, i) => {
-    const share = risk > 0 ? risk * weights[i] / wsum : 0;
-    let usd = 0, ct = 0;
-    const per = [];
-    for (const a of accountsForSize()) {
-      const sz = sizeFromRisk(a.eq, price, stop, share);
-      per.push({ name: a.name, sz });
-      if (sz && sz.ct > 0) { usd += sz.usd; ct += sz.ct; }
-    }
-    return { price, share, usd, ct, per, weight: weights[i] };
-  });
+  const per = prices.map(() => []);
+  const legCt = prices.map(() => 0);
+  let avg = 0;
+  for (const a of accountsForSize()) {
+    const sized = scaleRiskCts(a.eq, prices, stop, risk, sizeEven);
+    avg = sized.avg;
+    sized.cts.forEach((ct, i) => {
+      legCt[i] += ct;
+      per[i].push({ name: a.name, sz: ct >= 0.1 ? { ct, usd: ct * 100 } : null });
+    });
+  }
+  const legs = prices.map((price, i) => ({
+    price, ct: legCt[i], usd: legCt[i] * 100, per: per[i], weight: weights[i],
+  }));
   const totalUsd = legs.reduce((s, l) => s + l.usd, 0);
-  const avg = totalUsd > 0
-    ? legs.reduce((s, l) => s + l.price * l.usd, 0) / totalUsd
-    : prices.reduce((s, p) => s + p, 0) / prices.length;
-  return { legs, avg, stop, risk, totalUsd, n, from, to };
+  const lossBtc = legs.reduce((s, l) => s + l.per.reduce((a, p) => a + (p.sz ? lossToStop(p.sz.ct, l.price, stop) : 0), 0), 0);
+  return { legs, avg, stop, risk, totalUsd, n, from, to, lossBtc };
 }
 function fmtSize(sz) {
   if (!sz || !(sz.ct > 0)) return "—";
@@ -2559,7 +2688,11 @@ function paintActions() {
   if (sending) return;
   const el = $("send");
   if (!el) return;
-  if (deskKind === "hedge") { el.textContent = "CONFIRMAR HEDGE"; el.classList.add("short"); return; }
+  if (deskKind === "hedge" || deskKind === "hedge-scale") {
+    el.textContent = deskKind === "hedge-scale" ? "CONFIRMAR ESCALA" : "CONFIRMAR HEDGE";
+    el.classList.add("short");
+    return;
+  }
   el.classList.toggle("short", side === "short");
   const mine = side === "short" ? shortSub : longSub;
   const verb = reducing ? "REDUZIR" : (deskKind === "scale" ? "ESCALA" : deskKind === "trigger" ? "STOP" : deskKind === "chase" ? "CHASE" : (ordType === "limit" ? "LIMITE" : "MERCADO"));
@@ -2627,7 +2760,8 @@ function updateDesk() {
   const btc = eqs.reduce((s, a) => s + (Number(a.eq) || 0), 0);
   const mark = lastPx || (eqs[0] && eqs[0].mark);
   $("d-equity").textContent = btc > 0 ? fmtBtc(btc) + " BTC" + (mark ? " · " + fmtUsd(btc * mark) : "") : "—";
-  if (deskKind === "hedge") paintHedgeTable();
+  if (deskKind === "hedge" || deskKind === "hedge-scale") paintHedgeTable();
+  paintHedgeAvg();
   const stops = [];
   for (const a of visibleAccounts(lastAccounts)) for (const s of a.stops || []) stops.push(`<div><span>${esc(a.name)}</span><span>${fmtPx(s)}</span></div>`);
   if ($("d-stop-list")) $("d-stop-list").innerHTML = stops.join("") || '<div class="d-empty">Nenhum stop aberto.</div>';
@@ -2702,7 +2836,11 @@ function copyField(from, to) {
   $(to).dispatchEvent(new Event("input", { bubbles: true }));
 }
 function sizeHint() {
-  if (deskKind === "hedge") return "Não mexe na long. Os stops só saem se o short zerar.";
+  if (deskKind === "hedge" || deskKind === "hedge-scale") {
+    return reducing
+      ? "Reduce ligado: essa % fecha o short de cada conta e aumenta a exposição."
+      : "Alvo de % da carteira vendida. Carteira = saldo BTC × mark. 1 ct = 100 USD.";
+  }
   if (reducing && sizeMode === "pct") return "% da perna existente, em cada conta. LONG reduz a short. SHORT reduz a long.";
   if (reducing) return "O USD se reparte na proporção de cada perna. LONG reduz a short. SHORT reduz a long.";
   if (sizeMode === "risco") return "O tamanho sai do risco e da distância até o stop, em cada conta.";
@@ -2718,8 +2856,8 @@ function paintQtyLabel() {
   if ($("d-size-k")) $("d-size-k").textContent = "Tamanho";
 }
 function paintKind() {
-  const hedge = deskKind === "hedge";
-  const scale = deskKind === "scale";
+  const hedge = deskKind === "hedge" || deskKind === "hedge-scale";
+  const scale = deskKind === "scale" || deskKind === "hedge-scale";
   const showSize = !hedge;
   const showQty = showSize && sizeMode !== "risco";
   const showRisk = showSize && !reducing && sizeMode === "risco";
@@ -2747,12 +2885,17 @@ function paintKind() {
   if ($("m-trigger-row")) show($("m-trigger-row"), deskKind === "trigger");
   if ($("d-chase-box")) show($("d-chase-box"), deskKind === "chase");
   if ($("m-chase-row")) show($("m-chase-row"), deskKind === "chase");
-  if ($("d-mode-togs")) show($("d-mode-togs"), !hedge);
-  if ($("m-mode-togs")) show($("m-mode-togs"), !hedge);
+  if ($("d-mode-togs")) show($("d-mode-togs"), true);
+  if ($("m-mode-togs")) show($("m-mode-togs"), true);
   if ($("d-pnl")) show($("d-pnl"), reducing && !hedge);
   if ($("m-pnl")) show($("m-pnl"), reducing && !hedge);
-  if ($("d-reduce-toggle")) show($("d-reduce-toggle"), !hedge);
-  if ($("m-reduce-toggle")) show($("m-reduce-toggle"), !hedge);
+  if ($("d-reduce-toggle")) show($("d-reduce-toggle"), true);
+  if ($("m-reduce-toggle")) show($("m-reduce-toggle"), true);
+  if ($("d-hedge-ord")) show($("d-hedge-ord"), deskKind === "hedge");
+  if ($("m-hedge-ord")) show($("m-hedge-ord"), deskKind === "hedge");
+  if ($("d-hedge-px")) show($("d-hedge-px"), deskKind === "hedge" && hedgeOrd === "limit");
+  paintHedgeAvg();
+  if ($("d-hedge-go")) $("d-hedge-go").textContent = deskKind === "hedge-scale" ? "Confirmar escala" : "Confirmar hedge";
   paintQtyLabel();
   const hint = sizeHint();
   if ($("d-size-note")) { show($("d-size-note"), !hedge); $("d-size-note").textContent = hint; }
@@ -2780,8 +2923,8 @@ function paintKind() {
 }
 function setReducing(on) {
   const next = !!on;
-  if (next && deskKind === "hedge") return;
-  if (next && !reducing && sizeMode === "risco") sizeMode = "pct";
+  const hedgeNow = deskKind === "hedge" || deskKind === "hedge-scale";
+  if (next && !hedgeNow && !reducing && sizeMode === "risco") sizeMode = "pct";
   reducing = next;
   try { sessionStorage.setItem("painel_reduce", reducing ? "1" : "0"); } catch (e) {}
   if (reducing) deskTab = "post";
@@ -2790,14 +2933,45 @@ function setReducing(on) {
   updateSendLabel();
   drawPreviews();
 }
+function groupOf(type) {
+  if (type === "market" || type === "market-build" || type === "market-adjust" || type === "trigger") return "mercado";
+  if (type === "hedge" || type === "hedge-scale") return "hedge";
+  return "limite";
+}
+function syncGroups(type) {
+  const g = groupOf(type);
+  document.querySelectorAll("#d-groups button, #m-groups button").forEach((b) => b.classList.toggle("on", b.dataset.group === g));
+  for (const id of ["d-kind", "m-kind"]) {
+    const sel = $(id);
+    if (!sel) continue;
+    for (const opt of sel.options) opt.hidden = groupOf(opt.value) !== g;
+  }
+}
+function applyMenu(type, fromGroup) {
+  if (type === "limit-adjust") { setAdjOrdType("limit"); setDeskTab("reduce"); syncGroups(type); if ($("d-kind")) $("d-kind").value = type; if ($("m-kind")) $("m-kind").value = type; return; }
+  if (type === "market-adjust") { setAdjOrdType("market"); setDeskTab("reduce"); syncGroups(type); if ($("d-kind")) $("d-kind").value = type; if ($("m-kind")) $("m-kind").value = type; return; }
+  if (type === "limit-build") { setDeskTab("post"); setDeskKind("limit"); setSizeMode("risco"); syncGroups(type); if ($("d-kind")) $("d-kind").value = type; if ($("m-kind")) $("m-kind").value = type; return; }
+  if (type === "market-build") { setDeskTab("post"); setDeskKind("market"); setSizeMode("risco"); syncGroups(type); if ($("d-kind")) $("d-kind").value = type; if ($("m-kind")) $("m-kind").value = type; return; }
+  setDeskTab("post");
+  if (fromGroup && (type === "limit" || type === "market") && sizeMode === "risco") setSizeMode("usd");
+  setDeskKind(type === "hedge-scale" ? "hedge-scale" : type);
+  syncGroups(type);
+  if ($("d-kind")) $("d-kind").value = type;
+  if ($("m-kind")) $("m-kind").value = type;
+}
 function setDeskKind(kind) {
-  if (kind === "scale" && deskKind !== "scale") scaleArm = "from";
+  if ((kind === "scale" || kind === "hedge-scale") && deskKind !== kind) scaleArm = "from";
   deskKind = kind;
-  if ($("d-kind")) $("d-kind").value = kind;
-  if ($("m-kind")) $("m-kind").value = kind;
+  if ($("d-kind") && groupOf($("d-kind").value) === groupOf(kind) && ($("d-kind").value === kind || $("d-kind").value.endsWith("-build"))) {
+    /* mantém MONTAR */
+  } else {
+    if ($("d-kind")) $("d-kind").value = kind;
+    if ($("m-kind")) $("m-kind").value = kind;
+  }
   if (kind === "market") ordType = "market";
   else if (kind === "limit") { ordType = "limit"; if (!(parseNum($("price").value) > 0)) fillMark(); }
   entradaPreviewHold = false;
+  syncGroups($("d-kind") && $("d-kind").value || kind);
   paintKind();
   updateSendLabel();
   drawPreviews();
@@ -2821,6 +2995,7 @@ function hedgePctValue() {
 function hedgeRows() {
   const target = hedgePctValue();
   const mark = lastPx || 0;
+  const hedgeNow = deskKind === "hedge" || deskKind === "hedge-scale";
   return (lastAccounts || []).map((a) => {
     const legs = a.legs || [];
     const longCt = Number(legs.find((l) => l.posSide === "long")?.ct ?? (a.side === "long" ? Math.abs(a.net) : 0)) || 0;
@@ -2832,8 +3007,14 @@ function hedgeRows() {
     let hedgePct = hedgeMode === "short" ? target : (valor ? (longUsd + valor * (100 - target) / 100) / valor * 100 : 0);
     if (hedgePct < 0) hedgePct = 0;
     if (hedgePct > 1000) hedgePct = 1000;
-    const alvo = Math.round((hedgePct / 100) * valor / 100 * 10 + 1e-9) / 10;
-    const delta = Math.round((alvo - shortCt) * 10 + 1e-9) / 10;
+    let alvo = Math.round((hedgePct / 100) * valor / 100 * 10 + 1e-9) / 10;
+    let delta = Math.round((alvo - shortCt) * 10 + 1e-9) / 10;
+    if (hedgeNow && reducing) {
+      const closeCt = roundLot(shortCt * Math.min(100, Math.max(0, target)) / 100);
+      delta = -closeCt;
+      alvo = roundLot(shortCt + delta);
+      hedgePct = valor > 0 ? alvo * 100 / valor * 100 : 0;
+    }
     const atual = valor > 0 ? shortUsd / valor * 100 : 0;
     const net = valor > 0 ? 100 + (longUsd - shortUsd) / valor * 100 : 0;
     const action = Math.abs(delta) < 0.1 ? "no alvo" : delta > 0 ? "vender" : "reduzir";
@@ -2857,13 +3038,68 @@ function paintHedgeTable() {
     const atual = valor > 0 ? shortUsd / valor * 100 : 0;
     const alvo = valor > 0 ? alvoUsd / valor * 100 : 0;
     html += line({ name: "Total", atual, alvo, delta, action: delta >= 0 ? "vender" : "reduzir" }, true);
+    const now = "Vendido agora " + fmtPct(atual) + " da carteira";
+    if ($("d-hedge-now")) $("d-hedge-now").textContent = now;
+    if ($("m-hedge-now")) $("m-hedge-now").textContent = now;
   }
   const empty = '<div class="d-empty">Sem contas.</div>';
   if ($("d-hedge-table")) $("d-hedge-table").innerHTML = html || empty;
   if ($("m-hedge-table")) $("m-hedge-table").innerHTML = html || empty;
 }
 let sheetKind = "scale";
+function hedgeScalePlan() {
+  const inp = scaleInputs();
+  if (!(inp.from > 0) || !(inp.to > 0) || !(inp.n >= 2)) return null;
+  const prices = [];
+  for (let i = 0; i < inp.n; i++) {
+    const t = inp.n === 1 ? 0 : i / (inp.n - 1);
+    const u = priceEven ? t : t * t;
+    prices.push(inp.from + (inp.to - inp.from) * u);
+  }
+  const weights = prices.map((_, i) => sizeEven ? 1 : i + 1);
+  const rows = hedgeRows();
+  const valor = rows.reduce((s, r) => s + (r.valor || 0), 0);
+  const shortCt = rows.reduce((s, r) => s + ((r.shortUsd || 0) / 100), 0);
+  const delta = rows.reduce((s, r) => s + r.delta, 0);
+  const atual = valor > 0 ? shortCt * 100 / valor * 100 : 0;
+  const alvo = (hedgeMode === "short" && !reducing) || !(valor > 0)
+    ? hedgePctValue()
+    : rows.reduce((s, r) => s + ((r.alvo || 0) / 100) * (r.valor || 0), 0) / valor * 100;
+  const cts = splitLots(Math.abs(delta), weights);
+  const totalCt = cts.reduce((s, c) => s + c, 0);
+  let walked = 0;
+  const legs = prices.map((price, i) => {
+    const ct = cts[i] || 0;
+    walked += ct;
+    const last = i === prices.length - 1;
+    const pct = last || !(totalCt > 0) ? alvo : atual + (alvo - atual) * (walked / totalCt);
+    return { price, ct, pct };
+  });
+  const sized = cts.some((c) => c > 0) ? cts : weights;
+  return { legs, valor, shortCt, delta, atual, alvo, avg: harmonicAvg(prices, sized) };
+}
+function paintHedgeAvg() {
+  if (!$("d-avg") || deskKind !== "hedge-scale") return;
+  const plan = hedgeScalePlan();
+  $("d-avg").textContent = plan && plan.avg > 0 ? fmtPx(plan.avg) : "—";
+}
 function openHedgeSheet() {
+  if (deskKind === "hedge-scale") {
+    const plan = hedgeScalePlan();
+    if (!plan) { formError("Preencha os dois preços e a quantidade de ordens."); return; }
+    sheetKind = "hedge-scale";
+    $("scale-title").textContent = "Escala de hedge";
+    $("scale-note").textContent = reducing
+      ? "Cada perna reduz o short. A % é o que fica vendido se o preço chegar ali e as anteriores também."
+      : "Cada perna vende short. A % é o acumulado se todas até ali executarem.";
+    $("scale-list").innerHTML = plan.legs.map((l) => `<li>${fmtPx(l.price)} · ${fmtPct(l.pct)} · ${fmtCt(l.ct)} ct</li>`).join("");
+    $("scale-msg").textContent = "";
+    show($("scale-msg"), false);
+    $("scale-ok").disabled = false;
+    scaleOpen = true;
+    show($("scale-sheet"), true);
+    return;
+  }
   const rows = hedgeRows();
   if (!rows.length) { $("banner-err").textContent = "Sem contas para o hedge."; show($("banner-err"), true); return; }
   sheetKind = "hedge";
@@ -2878,15 +3114,20 @@ function openHedgeSheet() {
 }
 async function sendHedge() {
   const price = parseNum(isDesk() ? ($("d-hedge-price") && $("d-hedge-price").value) : $("price").value);
-  if (hedgeOrd === "limit" && !(price > 0)) {
+  if (sheetKind !== "hedge-scale" && hedgeOrd === "limit" && !(price > 0)) {
     $("scale-msg").textContent = "Preenche um preço limite.";
     show($("scale-msg"), true);
     return;
   }
   $("scale-ok").disabled = true;
   try {
-    const payload = { target_pct: hedgePctValue(), mode: hedgeMode, ordType: hedgeOrd };
-    if (hedgeOrd === "limit") payload.price = price;
+    const payload = { target_pct: hedgePctValue(), mode: hedgeMode, ordType: sheetKind === "hedge-scale" ? "limit" : hedgeOrd };
+    if (reducing) payload.reduce = true;
+    if (sheetKind === "hedge-scale") {
+      const inp = scaleInputs();
+      payload.from = inp.from; payload.to = inp.to; payload.n = inp.n;
+      payload.priceSkew = !priceEven; payload.sizeSkew = !sizeEven;
+    } else if (hedgeOrd === "limit") payload.price = price;
     const { res, data } = await api("/hedge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok || data.aborted || data.ok === false) {
       $("scale-msg").textContent = data.abort_msg || data.error || "Hedge bloqueado.";
@@ -3061,7 +3302,7 @@ function openScaleSheet() {
   }
   const head = [...byName.entries()].map(([name, sz]) => `<li><span class="name">${esc(name)}</span> · ${fmtCt(sz.ct)} ct · ${fmtUsd(sz.usd)}</li>`).join("");
   const legs = plan.legs.map((l) => `<li>${fmtPx(l.price)} · ${l.usd > 0 ? fmtUsd(l.usd) : "—"}</li>`).join("");
-  $("scale-list").innerHTML = head + `<li>Stop ${fmtPx(plan.stop)} · média ${fmtPx(plan.avg)} · risco ${fmtPct(plan.risk)}</li>` + legs;
+  $("scale-list").innerHTML = head + `<li>Stop ${fmtPx(plan.stop)} · média ${fmtPx(plan.avg)} · risco ${fmtPct(plan.risk)} · perda ${fmtBtcPnl(plan.lossBtc)} BTC</li>` + legs;
   $("scale-msg").textContent = "";
   show($("scale-msg"), false);
   $("scale-ok").disabled = false;
@@ -3082,7 +3323,7 @@ function scaleFailText(data) {
   return parts.join("\n") || "Escala bloqueada. Nada enviado.";
 }
 async function submitScale() {
-  if (sheetKind === "hedge") return sendHedge();
+  if (sheetKind === "hedge" || sheetKind === "hedge-scale") return sendHedge();
   if (sheetKind === "scale-reduce" || reducing) return submitScaleReduce();
   const inp = scaleInputs();
   const plan = sizeMode === "risco" ? scalePlan() : null;
@@ -3117,7 +3358,16 @@ async function submitScale() {
 function initDesk() {
   if (!$("d-kind")) return;
   fillFilters();
-  $("d-kind").onchange = () => setDeskKind($("d-kind").value);
+  $("d-kind").onchange = () => applyMenu($("d-kind").value);
+  const onGroup = (ev) => {
+    const b = ev.target.closest("[data-group]");
+    if (!b) return;
+    const first = b.dataset.group === "mercado" ? "market" : b.dataset.group === "hedge" ? "hedge" : "limit";
+    applyMenu(first, true);
+  };
+  if ($("d-groups")) $("d-groups").onclick = onGroup;
+  if ($("m-groups")) $("m-groups").onclick = onGroup;
+  syncGroups("limit");
   $("d-filter").onchange = () => setDeskFilter($("d-filter").value);
   $("d-filter-pos").onchange = () => setDeskFilter($("d-filter-pos").value);
   $("d-filter-ord").onchange = () => setDeskFilter($("d-filter-ord").value);
@@ -3126,7 +3376,7 @@ function initDesk() {
     if (!b || !b.dataset.tab) return;
     setDeskTab(b.dataset.tab);
   };
-  if ($("m-kind")) $("m-kind").onchange = () => setDeskKind($("m-kind").value);
+  if ($("m-kind")) $("m-kind").onchange = () => applyMenu($("m-kind").value);
   $("d-risk").addEventListener("input", () => copyField("d-risk", "risk"));
   $("d-risk-range").addEventListener("input", () => { $("d-risk").value = $("d-risk-range").value; copyField("d-risk", "risk"); });
   $("d-max").onclick = () => { $("d-risk").value = "5"; $("d-risk-range").value = "5"; copyField("d-risk", "risk"); };
@@ -3142,7 +3392,7 @@ function initDesk() {
   };
   $("d-minus").onclick = () => nudge(-1);
   $("d-plus").onclick = () => nudge(1);
-  const touchScale = () => { entradaPreviewHold = false; drawPreviews(); };
+  const touchScale = () => { entradaPreviewHold = false; drawPreviews(); paintHedgeAvg(); };
   $("d-from").addEventListener("input", touchScale);
   $("d-to").addEventListener("input", touchScale);
   $("d-orders").addEventListener("input", () => { $("d-orders-n").textContent = $("d-orders").value; touchScale(); });
@@ -3204,17 +3454,33 @@ function initDesk() {
   $("d-mode-net").onclick = () => setHedgeMode("net");
   $("m-mode-short").onclick = () => setHedgeMode("short");
   $("m-mode-net").onclick = () => setHedgeMode("net");
+  const markHedgeChips = (raw) => {
+    const n = parseNum(raw);
+    document.querySelectorAll("#d-hedge-quick [data-h], #m-hedge-quick [data-h]").forEach((b) => {
+      b.classList.toggle("on", n != null && Number(b.dataset.h) === n);
+    });
+  };
   const setHedgePct = (v) => {
     $("d-hedge-pct").value = String(v);
     $("m-hedge-pct").value = String(v);
-    document.querySelectorAll("#d-hedge-quick .d-tog, #m-hedge-quick .pct").forEach((b) => b.classList.toggle("on", b.dataset.h === String(v)));
+    markHedgeChips(v);
     updateDesk();
     drawPreviews();
   };
   $("d-hedge-quick").onclick = (ev) => { const b = ev.target.closest("[data-h]"); if (b) setHedgePct(b.dataset.h); };
   $("m-hedge-quick").onclick = (ev) => { const b = ev.target.closest("[data-h]"); if (b) setHedgePct(b.dataset.h); };
-  $("d-hedge-pct").addEventListener("input", () => { $("m-hedge-pct").value = $("d-hedge-pct").value; updateDesk(); });
-  $("m-hedge-pct").addEventListener("input", () => { $("d-hedge-pct").value = $("m-hedge-pct").value; updateDesk(); });
+  $("d-hedge-pct").addEventListener("input", () => {
+    if (document.activeElement !== $("m-hedge-pct")) $("m-hedge-pct").value = $("d-hedge-pct").value;
+    markHedgeChips($("d-hedge-pct").value);
+    updateDesk();
+    drawPreviews();
+  });
+  $("m-hedge-pct").addEventListener("input", () => {
+    if (document.activeElement !== $("d-hedge-pct")) $("d-hedge-pct").value = $("m-hedge-pct").value;
+    markHedgeChips($("m-hedge-pct").value);
+    updateDesk();
+    drawPreviews();
+  });
   $("d-hedge-mkt").onclick = () => { hedgeOrd = "market"; $("d-hedge-mkt").classList.add("on"); $("d-hedge-lmt").classList.remove("on"); show($("d-hedge-px"), false); drawPreviews(); };
   $("d-hedge-lmt").onclick = () => { hedgeOrd = "limit"; $("d-hedge-lmt").classList.add("on"); $("d-hedge-mkt").classList.remove("on"); show($("d-hedge-px"), true); if (lastPx) $("d-hedge-price").value = String(Math.round(lastPx * 10) / 10); drawPreviews(); };
   $("d-hedge-price").addEventListener("input", () => drawPreviews());
@@ -3291,6 +3557,8 @@ window.__painel = {
     return r ? { from: r.from, to: r.to } : null;
   },
   fmt(p) { return fmtTick(p); },
+  scalePlan() { return typeof scalePlan === "function" ? scalePlan() : null; },
+  hedgeLadder() { return typeof hedgeScalePlan === "function" ? hedgeScalePlan() : null; },
 };
 
 window.addEventListener("DOMContentLoaded", () => {

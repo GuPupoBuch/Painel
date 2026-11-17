@@ -731,6 +731,51 @@ async function runReduce(legSide: Side, pct: number, ordType: "market" | "limit"
   return out;
 }
 
+function harmonicAvg(prices: number[], weights: number[]): number {
+  let wsum = 0, inv = 0;
+  for (let i = 0; i < prices.length; i++) {
+    const w = weights[i] > 0 ? weights[i] : 0;
+    if (!(prices[i] > 0) || !(w > 0)) continue;
+    wsum += w;
+    inv += w / prices[i];
+  }
+  return inv > 0 ? wsum / inv : 0;
+}
+// Risco da escala inteira, entre a média harmônica (contrato inverso) e o stop.
+// Tamanho igual: mesmos contratos. Crescente: os pesos 1..n, no mesmo risco total.
+function scaleRiskLots(eq: number, prices: number[], stop: number, riskPct: number, sizeSkew: boolean): { avg: number; cts: number[] } {
+  const weights = prices.map((_, i) => (sizeSkew ? i + 1 : 1));
+  const avg = harmonicAvg(prices, weights);
+  const total = ctFromRisk(eq, avg, stop, riskPct);
+  const cap = eq * (riskPct / 100);
+  const lossOf = (cts: number[]) => cts.reduce((s, ct, i) => s + (ct >= 0.1 ? lossBtc(ct, prices[i], stop) : 0), 0);
+  if (!sizeSkew) {
+    const each = Math.floor(total / prices.length / 0.1 + 1e-9) * 0.1;
+    const cts = prices.map(() => each);
+    let rem = roundLot(total - each * prices.length);
+    while (rem >= 0.1 - 1e-9) {
+      const i = cts.length - 1;
+      cts[i] = roundLot(cts[i] + 0.1);
+      if (lossOf(cts) > cap + 1e-9) { cts[i] = roundLot(Math.max(0, cts[i] - 0.1)); break; }
+      rem = roundLot(rem - 0.1);
+    }
+    return { avg, cts };
+  }
+  const cts = splitLots(total, weights);
+  let guard = 0;
+  while (lossOf(cts) > cap + 1e-9 && guard++ < 1000) {
+    let idx = -1, dens = -1;
+    for (let i = 0; i < cts.length; i++) {
+      if (cts[i] < 0.1) continue;
+      const per = lossBtc(0.1, prices[i], stop);
+      if (per > dens) { dens = per; idx = i; }
+    }
+    if (idx < 0) break;
+    cts[idx] = roundLot(cts[idx] - 0.1);
+    if (cts[idx] < 0.1 - 1e-9) cts[idx] = 0;
+  }
+  return { avg, cts };
+}
 function scalePrices(from: number, to: number, n: number, priceSkew: boolean): number[] {
   const out: number[] = [];
   for (let i = 0; i < n; i++) {
@@ -764,16 +809,16 @@ async function runScale(side: Side, stop: number, riskPct: number, from: number,
   const mark = await markPx();
   out.mark = mark;
   const weights = prices.map((_, i) => sizeSkew ? i + 1 : 1);
-  const wsum = weights.reduce((s, w) => s + w, 0);
+  out.avg = harmonicAvg(prices, weights);
   const osSide = side === "short" ? "sell" : "buy";
   const R = await Promise.all(ACC.map(async ([P, name]) => {
     try {
       const [eq, legs] = await Promise.all([eq_of(P), legsOf(P)]);
       const gross = legs.reduce((s, l) => s + l.pos, 0);
+      const sized = scaleRiskLots(eq, prices, stop, riskPct, sizeSkew);
       const planned = prices.map((price, i) => {
-        const share = riskPct * weights[i] / wsum;
-        const ct = ctFromRisk(eq, price, stop, share);
-        return { price, share, ct, loss: ct >= 0.1 ? lossBtc(ct, price, stop) : 0 };
+        const ct = sized.cts[i] || 0;
+        return { price, ct, loss: ct >= 0.1 ? lossBtc(ct, price, stop) : 0 };
       });
       const legsOk = planned.filter((l) => l.ct >= 0.1);
       const loss = legsOk.reduce((s, l) => s + l.loss, 0);
@@ -1030,7 +1075,7 @@ function hedgeNumbers(eq: number, mark: number, longCt: number, shortCt: number,
   return { valor, longUsd, shortUsd, hedgePct, alvoCt, delta, atual, net, clamped };
 }
 
-async function runHedge(targetPct: number, mode: "short" | "net", ordType: "market" | "limit", price: number | null, dry: boolean, only: string[] | null) {
+async function runHedge(targetPct: number, mode: "short" | "net", ordType: "market" | "limit", price: number | null, dry: boolean, only: string[] | null, reduce = false) {
   const out: J = { target_pct: targetPct, mode, ordType, price: ordType === "limit" ? price : null, dry, aborted: false, abort_msg: null, accounts: [] };
   if (!(targetPct >= 0 && targetPct <= CAP)) return { ...out, aborted: true, abort_msg: "Alvo fora do intervalo." };
   if (ordType === "limit" && !(price != null && price > 0)) return { ...out, aborted: true, abort_msg: "Preço inválido." };
@@ -1048,11 +1093,20 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
     const h = hedgeNumbers(eq, mark, longCt, shortCt, targetPct, mode);
     let action: "vender" | "reduzir" | "nada" = "nada";
     let err: string | null = null;
+    let hedgePct = h.hedgePct;
+    let alvoCt = h.alvoCt;
+    let delta = h.delta;
+    if (reduce) {
+      const closeCt = roundLot(shortCt * Math.min(100, Math.max(0, targetPct)) / 100);
+      delta = -closeCt;
+      alvoCt = roundLot(shortCt + delta);
+      hedgePct = h.valor > 0 ? alvoCt * 100 / h.valor * 100 : 0;
+    }
     if (!(eq > 0)) err = "saldo zerado";
-    else if (Math.abs(h.delta) < 0.1) action = "nada";
-    else if (h.delta > 0) action = "vender";
+    else if (Math.abs(delta) < 0.1) action = "nada";
+    else if (delta > 0) action = "vender";
     else action = "reduzir";
-    return { P, name, eq, longCt, shortCt, ...h, action, err };
+    return { P, name, eq, longCt, shortCt, ...h, hedgePct, alvoCt, delta, action, err };
   }));
   out.accounts = R.map((r) => ({
     prefix: r.P, name: r.name, eq: r.eq, valor_usd: r.valor, long_usd: r.longUsd, short_usd: r.shortUsd,
@@ -1447,6 +1501,78 @@ function cors(req: Request): Record<string, string> {
 }
 const num = (x: unknown) => { const n = parseFloat(String(x ?? "").replace(",", ".")); return Number.isFinite(n) ? n : null; };
 
+async function runHedgeScale(targetPct: number, mode: "short" | "net", from: number, to: number, n: number, priceSkew: boolean, sizeSkew: boolean, dry: boolean, reduce: boolean) {
+  const out: J = { scale: true, target_pct: targetPct, mode, from, to, n, reduce, dry, aborted: false, abort_msg: null, accounts: [] };
+  if (!(n >= 2 && n <= 50)) return { ...out, aborted: true, abort_msg: "A escala precisa de 2 a 50 ordens." };
+  if (!(from > 0) || !(to > 0) || from === to) return { ...out, aborted: true, abort_msg: "ABORT preço inválido" };
+  const prices = scalePrices(from, to, n, priceSkew).map(pxTick);
+  const weights = prices.map((_, i) => (sizeSkew ? i + 1 : 1));
+  let mark = 0;
+  try { mark = await markPx(); } catch { return { ...out, aborted: true, abort_msg: "Mark indisponível." }; }
+  out.mark = mark;
+  const R = await Promise.all(ACC.map(async ([P, name]) => {
+    const eq = await eq_of(P);
+    const legs = await legsOf(P);
+    const longCt = legs.find((l) => l.posSide === "long")?.pos ?? 0;
+    const shortCt = legs.find((l) => l.posSide === "short")?.pos ?? 0;
+    const valor = eq * mark;
+    let delta = 0;
+    let alvo = valor > 0 ? shortCt * 100 / valor * 100 : 0;
+    if (reduce) {
+      delta = -roundLot(shortCt * Math.min(100, Math.max(0, targetPct)) / 100);
+      alvo = valor > 0 ? (shortCt + delta) * 100 / valor * 100 : 0;
+    } else {
+      const h = hedgeNumbers(eq, mark, longCt, shortCt, targetPct, mode);
+      delta = h.delta;
+      alvo = h.hedgePct;
+    }
+    const sell = delta > 0;
+    const atual = valor > 0 ? shortCt * 100 / valor * 100 : 0;
+    const parts = splitLots(Math.abs(delta), weights).map((ct, i) => ({ price: prices[i], ct })).filter((p) => p.ct >= 0.1);
+    const totalCt = parts.reduce((s, p) => s + p.ct, 0);
+    let walked = 0;
+    const cum = parts.map((p, i) => {
+      walked = roundLot(walked + p.ct);
+      const last = i === parts.length - 1;
+      const pct = last || !(totalCt > 0) ? alvo : atual + (alvo - atual) * (walked / totalCt);
+      return { price: p.price, ct: p.ct, pct };
+    });
+    const err = !(eq > 0) ? "saldo zerado" : null;
+    return { P, name, eq, atual, alvo, delta, parts: cum, sell, err };
+  }));
+  out.accounts = R.map((r) => ({
+    prefix: r.P, name: r.name, atual_pct: r.atual, alvo_pct: r.alvo, delta_ct: r.delta,
+    legs: r.parts, status: r.err ? "bloqueado" : r.parts.length ? "ok" : "no alvo", error: r.err,
+  }));
+  if (dry) { out.raw = "DRY: nada enviado"; return out; }
+  if (!R.some((r) => !r.err && r.parts.length)) return { ...out, aborted: true, abort_msg: "ABORT: nenhuma ordem enviada" };
+  const O = await Promise.all(R.map(async (r) => {
+    if (r.err || !r.parts.length) return { ok: true, msg: r.err };
+    const chunk = r.parts.map((l) => {
+      const order: J = {
+        instId: INST, tdMode: "cross", side: r.sell ? "sell" : "buy", posSide: "short",
+        ordType: "limit", sz: szStr(l.ct), px: pxStr(l.price),
+      };
+      if (!r.sell) order.reduceOnly = true;
+      return order;
+    });
+    const e = await req(r.P, "POST", "/api/v5/trade/batch-orders", chunk);
+    const data = Array.isArray(e.data) ? e.data : [];
+    const bad = data.some((d: J) => !(d && d.sCode === "0" && d.ordId)) || (e.code !== "0" && e.code !== "2");
+    return { ok: !bad, msg: bad ? venueMsg(data.find((d: J) => d.sCode !== "0"), e) : null };
+  }));
+  out.accounts = R.map((r, i) => {
+    const row = out.accounts[i];
+    if (r.err || !r.parts.length) return row;
+    row.status = O[i].ok ? "ok" : "falhou";
+    row.error = O[i].ok ? null : O[i].msg;
+    return row;
+  });
+  if (out.accounts.some((a: J) => a.status === "falhou")) out.aborted = true;
+  if (out.aborted) out.abort_msg = "Alguma conta não entrou na escala de hedge.";
+  return out;
+}
+
 if (import.meta.main) Deno.serve(async (req) => {
   const c = cors(req);
   const json = (code: number, obj: unknown) => new Response(JSON.stringify(obj), { status: code, headers: { ...c, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
@@ -1653,18 +1779,26 @@ if (import.meta.main) Deno.serve(async (req) => {
       const rawType = String(body.ordType ?? "market").trim().toLowerCase();
       const ordType = rawType === "" ? "market" : rawType;
       if (ordType !== "market" && ordType !== "limit") return json(400, { ok: false, error: "Tipo inválido: use market ou limit." });
+      const only = Array.isArray(body.accounts) ? body.accounts.map((x: unknown) => String(x)) : null;
+      const dry = body.dry === true;
+      const reduce = body.reduce === true;
+      const from = num(body.from), to = num(body.to), nScale = num(body.n);
+      const scaling = from != null && to != null && nScale != null;
       let price: number | null = null;
-      if (ordType === "limit") {
+      if (!scaling && ordType === "limit") {
         price = num(body.price);
         if (price == null || !(price > 0)) return json(400, { ok: false, error: "Preço inválido." });
       }
-      const only = Array.isArray(body.accounts) ? body.accounts.map((x: unknown) => String(x)) : null;
-      const dry = body.dry === true;
       if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
       orderBusy = true;
       try {
-        const r = await runHedge(target, mode, ordType, price, dry, only);
-        console.log(JSON.stringify({ ev: "hedge", ip, target, mode, dry, ordType, aborted: r.aborted }));
+        if (from != null && to != null && nScale != null) {
+          const r = await runHedgeScale(target, mode as "short" | "net", from, to, Math.round(nScale), body.priceSkew === true, body.sizeSkew === true, dry, reduce);
+          console.log(JSON.stringify({ ev: "hedge-scale", ip, target, reduce, n: nScale, dry, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
+          return json(200, { ok: !r.aborted, ...r });
+        }
+        const r = await runHedge(target, mode as "short" | "net", ordType as "market" | "limit", price, dry, only, reduce);
+        console.log(JSON.stringify({ ev: "hedge", ip, target, mode, reduce, dry, ordType, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
         return json(200, { ok: !r.aborted, ...r });
       } finally { orderBusy = false; }
     }
@@ -1679,5 +1813,5 @@ export const __test = {
   setReq(fn: typeof req) { req = fn; },
   reset() { orderBusy = false; },
   ctFromRisk, ctFromEquityPct, lossBtc, scalePrices, hedgeNumbers, realizedPnlBtc, allocateReduce, splitLots, contractMap,
-  runOrder, runReduce, runAdjust, runScale, runScaleReduce, runScaleAmount, runSized, runAlgo, runAmend, runCancel, runHedge, fetchPositions, ACC,
+  runOrder, runReduce, runAdjust, runScale, runScaleReduce, runScaleAmount, runSized, runAlgo, runAmend, runCancel, runHedge, runHedgeScale, harmonicAvg, scaleRiskLots, fetchPositions, ACC,
 };
