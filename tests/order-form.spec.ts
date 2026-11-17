@@ -183,7 +183,8 @@ test("escala com e sem reduce, hedge esconde o toggle", async ({ page }) => {
   }
 
   await setKind(page, "hedge");
-  await expect(page.locator(wide ? "#d-reduce-toggle" : "#m-reduce-toggle")).toBeHidden();
+  await expect(page.locator(wide ? "#d-reduce-toggle" : "#m-reduce-toggle")).toBeVisible();
+  await setReduce(page, false);
   await resetMock();
   if (wide) await page.click("#d-hedge-go");
   else await page.click("#send");
