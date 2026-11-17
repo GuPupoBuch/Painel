@@ -511,6 +511,7 @@ Deno.test("escala por USD reparte e não exige risco; posições listam trigger 
 });
 
 Deno.test("ajuste com as duas pernas pede o lado e mexe só na perna escolhida", async () => {
+  // posSide é a perna reduzida. O painel manda a oposta ao botão: LONG envia short, SHORT envia long.
   reset(); install();
   balances = { OKX: 1 };
   positions = { OKX: [leg("long", "2", "60000"), leg("short", "1", "68000")] };
