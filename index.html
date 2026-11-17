@@ -290,10 +290,11 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   #desk-order input,#desk-order select.d-in{width:100%;height:28px;min-height:0;padding:0 8px;background:#101214;color:#d7dde3;border:1px solid #1f2428;border-radius:2px;font-size:13px}
   #desk-order .field input{height:22px;min-height:0;padding:0;border:0;background:transparent}
   #desk-order input:focus,#desk-order .field:focus-within{border-color:#00e29a;outline:none}
-  .d-size{font-family:var(--mono);font-size:20px;font-weight:650;letter-spacing:0;font-variant-numeric:tabular-nums;line-height:1.1}
-  .size-box{position:relative;margin-top:8px;padding:16px 36px 6px 8px;background:#101214;border:1px solid #1f2428;min-height:48px}
-  .size-box .field-k{position:absolute;top:4px;left:8px}
-  .size-box .field-u{position:absolute;right:8px;bottom:6px}
+  .d-size{font-family:var(--mono);font-size:15px;font-weight:650;letter-spacing:0;font-variant-numeric:tabular-nums;line-height:1.35}
+  .size-box{position:relative;margin-top:8px;padding:8px;background:#101214;border:1px solid #1f2428;display:flex;flex-direction:column;gap:2px}
+  .size-box .field-k{position:static;display:block;margin:0 0 2px}
+  .size-pair{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+  .size-h{margin-top:6px;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#7d8792}
   .d-size-rows{margin-top:4px;font-size:11px;color:#9aa6b2;font-family:var(--mono);font-variant-numeric:tabular-nums}
   #d-size-rows > div,.h-row{display:flex;justify-content:space-between;gap:8px;padding:3px 0}
   #d-hedge-table .h-row{color:#d7dde3;border-top:1px solid #1f2428}
@@ -478,9 +479,8 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
         <input id="d-risk-range" class="d-range" type="range" min="0.1" max="5" step="0.1" value="1" aria-label="Risco">
       </div>
       <div class="size-box" id="d-size-box">
-        <span class="field-k">Tamanho</span>
+        <span class="field-k" id="d-size-k">Tamanho</span>
         <div id="d-size" class="d-size">—</div>
-        <span class="field-u">USD</span>
       </div>
       <div id="d-size-rows" class="d-size-rows"></div>
       <div id="d-price-box">
@@ -774,7 +774,7 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
       <div class="action-dock">
         <div id="banner-err" class="err hidden"></div>
         <div id="banner-warn" class="warn hidden"></div>
-        <p class="all-note">A ordem vai para as 4 contas.</p>
+        <p class="all-note" id="m-size-note">A ordem vai para as 4 contas.</p>
         <button type="button" class="send" id="send">LONG A MERCADO</button>
       </div>
     </div>
@@ -2162,25 +2162,34 @@ function computeReducePreview(posSide) {
     chartTitle: label + " " + fmtBtcChart(btc),
   };
 }
+function legRows(title, prev) {
+  const head = `<div class="size-h">${esc(title)}</div>`;
+  if (!prev || prev.error) return head + `<div class="d-empty">${esc((prev && prev.error) || "—")}</div>`;
+  const body = prev.rows.map((r) => `<div><span>${esc(r.name)}</span><span>${r.has ? (r.ct >= 0.1 ? fmtCt(r.ct) + " ct" : "0 ct") : "sem perna"}</span></div>`).join("");
+  return head + body + `<div class="size-pair"><span>Total</span><b>${fmtCt(prev.totalCt)} ct</b></div>`;
+}
+function pnlBlock(prev, buttonName) {
+  if (!prev) return "";
+  const cls = prev.error && !(prev.totalCt >= 0.1) ? "" : (prev.btc >= 0 ? "pnl-up" : "pnl-dn");
+  const rows = prev.rows.map((r) => {
+    const col = r.ct > 0 ? (r.btc >= 0 ? "pnl-up" : "pnl-dn") : "";
+    const pnl = r.ct > 0 ? fmtBtcPnl(r.btc) + " BTC" : "—";
+    return `<div class="pnl-row"><span>${esc(r.name)}</span><span>${r.has ? (r.ct >= 0.1 ? fmtCt(r.ct) + " ct" : "0 ct") : "sem perna"}</span><span class="${col}">${pnl}</span></div>`;
+  }).join("");
+  const foot = `<div class="pnl-row tot"><span>Total</span><span>${fmtCt(prev.totalCt)} ct</span><span class="${cls}">${prev.error && !(prev.exit > 0) ? "—" : fmtBtcPnl(prev.btc) + " BTC"}</span></div>`;
+  const err = prev.error ? `<div class="d-empty">${esc(prev.error)}</div>` : "";
+  const value = prev.error && !(prev.exit > 0) ? "—" : `${fmtBtcPnl(prev.btc)} BTC (~${fmtUsdPnl(prev.usd)})`;
+  return `<div class="pnl-k">${esc(prev.label)} · botão ${esc(buttonName)}</div><div class="pnl-v ${cls}">${value}</div>${rows}${foot}${err}`;
+}
 function paintReduce() {
   const on = reducing && deskKind !== "hedge";
-  const prev = on ? computeReducePreview(legFor(side)) : null;
+  const longBtn = on ? computeReducePreview("short") : null;
+  const shortBtn = on ? computeReducePreview("long") : null;
+  const html = on ? pnlBlock(longBtn, "LONG") + pnlBlock(shortBtn, "SHORT") : "";
   for (const [k, v, rows] of [["d-pnl-k", "d-pnl-v", "d-pnl-rows"], ["m-pnl-k", "m-pnl-v", "m-pnl-rows"]]) {
-    if (!$(k)) continue;
-    if (!prev) { $(k).textContent = "PNL"; $(v).textContent = "—"; $(v).className = "pnl-v"; if ($(rows)) $(rows).innerHTML = ""; continue; }
-    $(k).textContent = prev.label;
-    const cls = prev.error && !(prev.totalCt >= 0.1) ? "" : (prev.btc >= 0 ? "pnl-up" : "pnl-dn");
-    $(v).className = "pnl-v " + cls;
-    $(v).textContent = prev.error && !(prev.exit > 0) ? "—" : `${fmtBtcPnl(prev.btc)} BTC (~${fmtUsdPnl(prev.usd)})`;
-    const body = prev.rows.map((r) => {
-      const col = r.ct > 0 ? (r.btc >= 0 ? "pnl-up" : "pnl-dn") : "";
-      const pnl = r.ct > 0 ? fmtBtcPnl(r.btc) + " BTC" : "—";
-      return `<div class="pnl-row"><span>${esc(r.name)}</span><span>${r.has ? (r.ct > 0 ? fmtCt(r.ct) + " ct" : "0 ct") : "sem perna"}</span><span class="${col}">${pnl}</span></div>`;
-    }).join("");
-    const foot = prev.rows.length ? `<div class="pnl-row tot"><span>Total</span><span>${fmtCt(prev.totalCt)} ct</span><span class="${cls}">${fmtBtcPnl(prev.btc)} BTC</span></div>` : "";
-    const eq = !prev.error && prev.unit !== "pct" && prev.pct != null ? `<div class="d-empty">Mesmo % nas contas: ${fmtPct(prev.pct)}</div>` : "";
-    const err = prev.error ? `<div class="d-empty">${esc(prev.error)}</div>` : "";
-    if ($(rows)) $(rows).innerHTML = body + foot + eq + err;
+    if ($(k)) $(k).textContent = "";
+    if ($(v)) { $(v).textContent = ""; $(v).className = "pnl-v"; }
+    if ($(rows)) $(rows).innerHTML = html;
   }
 }
 function paintActions() {
@@ -2262,14 +2271,16 @@ function updateDesk() {
       const maxW = plan ? Math.max(...plan.legs.map((l) => l.weight)) : 1;
       bars.innerHTML = plan ? plan.legs.map((l) => `<i style="height:${Math.max(8, Math.round(l.weight / maxW * 36))}px"></i>`).join("") : "";
     }
+  } else if (reducing) {
+    const longBtn = computeReducePreview("short");
+    const shortBtn = computeReducePreview("long");
+    const line = (name, prev) => `<div class="size-pair"><span>${name}</span><b>${prev && !prev.error ? fmtCt(prev.totalCt) + " ct" : "—"}</b></div>`;
+    $("d-size").innerHTML = line("LONG", longBtn) + line("SHORT", shortBtn);
+    $("d-size-rows").innerHTML = legRows("LONG fecha short", longBtn) + legRows("SHORT fecha long", shortBtn);
   } else {
-    const sized = reducing ? null : openSize();
-    const prev = reducing ? computeReducePreview(legFor(side)) : null;
-    const ct = reducing ? (prev && prev.totalCt) || 0 : sized.ct;
-    $("d-size").textContent = ct >= 0.1 ? fmtUsd(ct * 100) : "—";
-    $("d-size-rows").innerHTML = reducing && prev
-      ? prev.rows.map((r) => `<div><span>${esc(r.name)}</span><span>${r.ct >= 0.1 ? fmtCt(r.ct) + " ct" : "—"}</span></div>`).join("")
-      : renderSizeRows(sized.rows);
+    const sized = openSize();
+    $("d-size").textContent = sized.ct >= 0.1 ? fmtUsd(sized.ct * 100) : "—";
+    $("d-size-rows").innerHTML = renderSizeRows(sized.rows);
     if (deskKind === "scale" && $("d-bars")) {
       const plan = scalePlan();
       if ($("d-avg")) $("d-avg").textContent = plan ? fmtPx(plan.avg) : "—";
@@ -2359,14 +2370,19 @@ function copyField(from, to) {
 }
 function sizeHint() {
   if (deskKind === "hedge") return "Não mexe na long. Os stops só saem se o short zerar.";
-  if (reducing) {
-    const leg = legFor(side);
-    const how = sizeMode === "pct" ? "% de cada perna " + leg + "." : "O USD se reparte na proporção de cada perna " + leg + ".";
-    return "LONG reduz a short. SHORT reduz a long. " + how;
-  }
+  if (reducing && sizeMode === "pct") return "% da perna existente, em cada conta. LONG reduz a short. SHORT reduz a long.";
+  if (reducing) return "O USD se reparte na proporção de cada perna. LONG reduz a short. SHORT reduz a long.";
   if (sizeMode === "risco") return "O tamanho sai do risco e da distância até o stop, em cada conta.";
   if (sizeMode === "pct") return "% do saldo disponível de cada conta.";
   return "O USD se reparte entre as 4 contas na proporção do saldo.";
+}
+function paintQtyLabel() {
+  const k = sizeMode === "pct" ? (reducing ? "% da perna" : "% do saldo") : "Tamanho";
+  const u = sizeMode === "pct" ? "%" : "USD";
+  for (const id of ["d-qty-k", "m-qty-k"]) if ($(id)) $(id).textContent = k;
+  for (const id of ["d-qty-u", "m-qty-u"]) if ($(id)) $(id).textContent = u;
+  for (const id of ["d-qty", "m-qty"]) if ($(id)) $(id).setAttribute("aria-label", k);
+  if ($("d-size-k")) $("d-size-k").textContent = reducing ? "Fecha" : "Tamanho";
 }
 function paintKind() {
   const hedge = deskKind === "hedge";
@@ -2402,8 +2418,10 @@ function paintKind() {
   if ($("m-pnl")) show($("m-pnl"), reducing && !hedge);
   if ($("d-reduce-toggle")) show($("d-reduce-toggle"), !hedge);
   if ($("m-reduce-toggle")) show($("m-reduce-toggle"), !hedge);
+  paintQtyLabel();
   const hint = sizeHint();
   if ($("d-size-note")) { show($("d-size-note"), !hedge); $("d-size-note").textContent = hint; }
+  if ($("m-size-note")) $("m-size-note").textContent = hedge ? "Não mexe na long." : hint;
   if ($("d-reduce-which")) $("d-reduce-which").textContent = "";
   if ($("m-reduce-which")) $("m-reduce-which").textContent = "";
   for (const id of ["d-reduce-toggle", "m-reduce-toggle"]) {

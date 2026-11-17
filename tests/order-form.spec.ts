@@ -209,8 +209,19 @@ test("reduce fica ligado na sessão", async ({ page }) => {
 test("screenshots desktop e o arquivo guarda o reduce verde", async ({ page }) => {
   await setKind(page, "limit");
   await setSize(page, "pct", "50");
-  await setReduce(page, true);
   await setPrice(page, "64000");
+  await setReduce(page, false);
+  await expect(page.locator("#d-qty-k")).toHaveText("% do saldo");
+  await expect(page.locator("#d-size-note")).toContainText("saldo disponível");
+  await page.screenshot({ path: "/opt/cursor/artifacts/painel-desktop-1440-off.png", fullPage: false });
+  await setReduce(page, true);
+  await expect(page.locator("#d-qty-k")).toHaveText("% da perna");
+  await expect(page.locator("#d-size-note")).toContainText("% da perna");
   await expect(page.locator("#d-pnl")).toContainText("SHORT PNL");
+  await expect(page.locator("#d-pnl")).toContainText("LONG PNL");
+  await expect(page.locator("#d-long .go-sub")).toHaveText("2 @ 64.000");
+  await expect(page.locator("#d-short .go-sub")).toHaveText("4 @ 64.000");
+  await expect(page.locator("#d-size")).toContainText("2 ct");
+  await expect(page.locator("#d-size")).toContainText("4 ct");
   await page.screenshot({ path: "/opt/cursor/artifacts/painel-desktop-1440.png", fullPage: false });
 });
