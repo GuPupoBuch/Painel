@@ -110,8 +110,8 @@ test("alvo, chip, rótulos e payload da escala de hedge são o mesmo valor", asy
   await expect(page.locator("#d-hedge-quick [data-h='50']")).toHaveClass(/on/);
   await expect(page.locator("#d-hedge-ord")).toBeHidden();
 
-  await page.fill("#d-from", "63400");
-  await page.fill("#d-to", "64100");
+  await page.fill("#d-from", "64400");
+  await page.fill("#d-to", "65100");
   await page.locator("input#d-orders").fill("4");
   await page.fill("#d-hedge-pct", "40");
   await expect(page.locator("#d-hedge-quick [data-h='50']")).not.toHaveClass(/on/);
@@ -148,8 +148,8 @@ test("alvo, chip, rótulos e payload da escala de hedge são o mesmo valor", asy
   const sent = JSON.parse(res.request().postData() || "{}") as { target_pct: number; ordType: string; from: number; to: number; n: number };
   expect(sent.target_pct).toBe(40);
   expect(sent.ordType).toBe("limit");
-  expect(sent.from).toBe(63400);
-  expect(sent.to).toBe(64100);
+  expect(sent.from).toBe(64400);
+  expect(sent.to).toBe(65100);
   expect(sent.n).toBe(4);
   const body = await res.json();
   expect(body.aborted).toBeFalsy();

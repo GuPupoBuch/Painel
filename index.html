@@ -774,7 +774,7 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
       </div>
       <p class="d-note" id="d-adj-leg-note"></p>
       <div id="d-adj-pnl" class="pnl-line"></div>
-      <div class="d-k" id="d-adj-pct-k">% da perna</div>
+      <div class="d-k" id="d-adj-pct-k">% da posição</div>
       <div class="d-togs" id="d-pcts">
         <button type="button" class="d-tog" data-pct="25">25%</button>
         <button type="button" class="d-tog on" data-pct="50">50%</button>
@@ -783,7 +783,7 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
       </div>
       <label class="field">
         <span class="field-k">% personalizado</span>
-        <input id="d-adj-pct" type="text" inputmode="decimal" value="50" aria-label="% da perna">
+        <input id="d-adj-pct" type="text" inputmode="decimal" value="50" aria-label="% da posição">
         <span class="field-u">%</span>
       </label>
       <div class="d-togs" style="margin-top:8px">
@@ -984,7 +984,7 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
         <button type="button" class="pct" data-pct="75">75%</button>
         <button type="button" class="pct" data-pct="100">100%</button>
       </div>
-      <div><label for="adj-pct" id="m-adj-pct-k">% da perna</label><input id="adj-pct" type="text" inputmode="decimal" autocomplete="off" value="50" enterkeyhint="go" aria-label="% da perna"></div>
+      <div><label for="adj-pct" id="m-adj-pct-k">% da posição</label><input id="adj-pct" type="text" inputmode="decimal" autocomplete="off" value="50" enterkeyhint="go" aria-label="% da posição"></div>
       <p class="all-note">25, 50, 75, 100 ou um % personalizado da perna.</p>
       <div class="otypes">
         <button type="button" class="otype on" id="adj-btn-market" aria-pressed="true">Mercado</button>
@@ -1040,7 +1040,7 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
     <button type="button" class="d-tog" data-pp-pct="75">75%</button>
     <button type="button" class="d-tog" data-pp-pct="100">100%</button>
   </div>
-  <label class="field" id="pp-pct-box"><span class="field-k">% da perna</span><input id="pp-pct" type="text" inputmode="decimal" autocomplete="off" aria-label="% da perna a reduzir"><span class="field-u">%</span></label>
+  <label class="field" id="pp-pct-box"><span class="field-k">% da posição</span><input id="pp-pct" type="text" inputmode="decimal" autocomplete="off" aria-label="% da posição a reduzir"><span class="field-u">%</span></label>
   <div class="d-togs" id="pp-types">
     <button type="button" class="d-tog" data-pp-type="market">Mercado</button>
     <button type="button" class="d-tog" data-pp-type="limit">Limite</button>
@@ -1465,13 +1465,65 @@ function legOf(o) {
   return orderDir(o) === "sell" ? "short" : "long";
 }
 const orderLegDelta = (o) => ((o.reduceOnly || o.kind === "stop") ? -1 : 1) * (o.usd || 0) / 100;
+// Pernas (ct) se o preço andar do atual até `atPrice`: aplica, por conta, todas as ordens pendentes no caminho,
+// na ordem em que o preço as encontra (stop fecha a perna; abrir soma; reduce tira, sem passar de 0).
+// `extra` = ordens que ainda não existem (prévia da escala), no mesmo formato.
+function pendingFlat() {
+  const out = [];
+  for (const a of visibleAccounts(lastAccounts)) {
+    if (a.error) continue;
+    for (const o of accountOrders(a)) {
+      if (!(o.price > 0)) continue;
+      const leg = (a.legs || []).find((l) => l.posSide === o.posSide);
+      out.push({ ...o, usd: Number(o.sz) > 0 ? Number(o.sz) * 100 : (leg ? Number(leg.usd) || Number(leg.ct) * 100 : 0) });
+    }
+  }
+  return out;
+}
+function pathLegs(atPrice, extra) {
+  const m = lastPx || 0;
+  const legs = new Map();
+  for (const a of visibleAccounts(lastAccounts)) {
+    if (a.error) continue;
+    const st = { long: 0, short: 0 };
+    for (const l of a.legs || []) { const ct = Number(l.ct ?? l.pos) || 0; if (l.posSide === "long" || l.posSide === "short") st[l.posSide] += ct; }
+    if (!(a.legs || []).length && a.net) st[a.net > 0 ? "long" : "short"] += Math.abs(a.net);
+    legs.set(a.name, st);
+  }
+  if (m > 0 && atPrice > 0) {
+    const up = atPrice > m;
+    const onPath = (p) => (up ? p > m && p <= atPrice + 1e-9 : p < m && p >= atPrice - 1e-9);
+    const list = pendingFlat().concat(extra || []).filter((o) => onPath(o.price));
+    list.sort((x, y) => (up ? x.price - y.price : y.price - x.price));
+    for (const o of list) {
+      const st = legs.get(o.account);
+      if (!st) continue;
+      const leg = legOf(o);
+      const ct = (o.usd || 0) / 100;
+      if (o.kind === "stop") st[leg] = Number(o.sz) > 0 ? Math.max(0, st[leg] - Number(o.sz)) : 0;
+      else if (o.reduceOnly) st[leg] = Math.max(0, st[leg] - ct);
+      else st[leg] += ct;
+    }
+  }
+  let long = 0, short = 0;
+  for (const st of legs.values()) { long += st.long; short += st.short; }
+  return { long, short };
+}
+// preço mais longe do atual entre as ordens (a escala inteira executada)
+function furthestPrice(items) {
+  const m = lastPx || 0;
+  const ps = items.map((o) => o.price).filter((p) => p > 0);
+  if (!ps.length) return 0;
+  return ps.reduce((b, p) => (Math.abs(p - m) > Math.abs(b - m) ? p : b), ps[0]);
+}
 function hedgeAfterHtml(items) {
   const t = legTotals();
   const by = { long: 0, short: 0 };
   for (const o of items) by[legOf(o)] += orderLegDelta(o);
   const leg = by.short ? "short" : by.long ? "long" : null;
   if (!leg) return "";
-  const pct = walletPct((leg === "short" ? t.shortCt : t.longCt) + by[leg], t.valor);
+  const after = pathLegs(furthestPrice(items));
+  const pct = walletPct(after[leg], t.valor);
   // tamanho da ordem (ou da escala inteira) em % da carteira
   const size = walletPct(items.reduce((s, o) => s + (o.usd || 0) / 100, 0), t.valor);
   if (pct == null) return "";
@@ -1602,6 +1654,29 @@ function addPreview(price, title, opt) {
   previewLines.push(line);
   previewMeta.push({ line, role: o.role || "", price: Number(price), title: title || "" });
 }
+// % final da escala de hedge: o caminho até a última ordem (pendentes no caminho, inclusive stops) + o que a escala muda.
+// A escala foi dimensionada para levar o short do ponto de partida (o de agora, ou 0 depois do stop) até o alvo.
+// Sem outras pendentes no caminho, o final é o alvo; com elas, o final soma o que elas mudam.
+function hedgeScaleFinalPct(ladder) {
+  const far = furthestPrice(ladder.legs.map((l) => ({ price: l.price })));
+  const finalCt = Math.max(0, pathLegs(far).short + ladder.delta);
+  return { pct: walletPct(finalCt, ladder.valor) };
+}
+// Prévia da escala de hedge no gráfico: as ordens sem rótulo (só as pontas têm preço no eixo, para arrastar)
+// e uma linha só no preço médio, com o % final, como se fosse uma ordem só.
+function paintHedgeScalePreview(ladder) {
+  const sell = ladder.delta >= 0;
+  const color = sell ? "#e5425c" : "#00e29a";
+  ladder.legs.forEach((leg, i) => {
+    const end = i === 0 || i === ladder.legs.length - 1;
+    addPreview(leg.price, "", { role: i === 0 ? "from" : i === ladder.legs.length - 1 ? "to" : "", color, lineStyle: 1, lineWidth: 1, axisLabelVisible: end });
+  });
+  if (ladder.avg > 0) {
+    const fin = hedgeScaleFinalPct(ladder).pct;
+    const title = `média · ${fmtPct(Math.abs(ladder.delta) * 100 / (ladder.valor || 1) * 100)} da carteira · → ${fin == null ? "—" : fmtPct(fin)} vendido`;
+    addPreview(ladder.avg, title, { role: "", color, lineStyle: 2, lineWidth: 2 });
+  }
+}
 function drawPreviews() {
   if (!series) { updateChartHint(); return; }
   previewLines.forEach(dropLine);
@@ -1638,11 +1713,7 @@ function drawMobilePreviews() {
       if (deskKind === "hedge-scale") {
         const ladder = hedgeScalePlan();
         if (ladder) {
-          ladder.legs.forEach((leg, i) => {
-            const end = i === ladder.legs.length - 1;
-            addPreview(leg.price, fmtPct(leg.pct), { role: i === 0 ? "from" : end ? "to" : "", color: "#e5425c", lineStyle: 1, lineWidth: end ? 2 : 1, axisLabelVisible: true });
-          });
-          if (ladder.avg > 0) addPreview(ladder.avg, "média", { role: "", color: "#e5425c", lineStyle: 2, lineWidth: 1 });
+          paintHedgeScalePreview(ladder);
         }
       }
       if (deskKind === "scale") {
@@ -1709,11 +1780,7 @@ function drawDeskPreviews() {
   if (deskKind === "hedge-scale") {
     const ladder = hedgeScalePlan();
     if (!ladder) return;
-    ladder.legs.forEach((leg, i) => {
-      const end = i === ladder.legs.length - 1;
-      addPreview(leg.price, fmtPct(leg.pct), { role: i === 0 ? "from" : end ? "to" : "", color: "#e5425c", lineStyle: 1, lineWidth: end ? 2 : 1, axisLabelVisible: true });
-    });
-    if (ladder.avg > 0) addPreview(ladder.avg, "média", { role: "", color: "#e5425c", lineStyle: 2, lineWidth: 1 });
+    paintHedgeScalePreview(ladder);
     return;
   }
   if (deskKind === "scale") {
@@ -2530,8 +2597,8 @@ function paintAdjLeg() {
   const note = !sides.size
     ? "Nenhuma perna aberta."
     : !adjButton
-      ? "Escolha LONG ou SHORT. O percentual é % da perna."
-      : (adjButton === "long" ? "LONG reduz a short." : "SHORT reduz a long.") + " O percentual é % da perna.";
+      ? "Escolha LONG ou SHORT. O percentual é % da posição."
+      : (adjButton === "long" ? "LONG reduz a short." : "SHORT reduz a long.") + " O percentual é % da posição.";
   for (const id of ["d-adj-leg-note", "m-adj-leg-note"]) if ($(id)) $(id).textContent = note;
   paintAdjButton("d-adj-long", "long", sides.has("short"), adjSub("short"));
   paintAdjButton("m-adj-long", "long", sides.has("short"), adjSub("short"));
@@ -3139,7 +3206,7 @@ function setSizeMode(mode) {
   sizeMode = mode === "pct" || mode === "risco" ? mode : "usd";
   reduceUnit = sizeMode === "pct" ? "pct" : "usd";
   const u = sizeMode === "pct" ? "%" : "USD";
-  const k = sizeMode === "pct" ? (reducing ? "% da perna" : "% do saldo") : "Tamanho";
+  const k = sizeMode === "pct" ? (reducing ? "% da posição" : "% do saldo") : "Tamanho";
   for (const id of ["d-qty-u", "m-qty-u"]) if ($(id)) $(id).textContent = u;
   for (const id of ["d-qty-k", "m-qty-k"]) if ($(id)) $(id).textContent = k;
   document.querySelectorAll("#d-size-modes button, #m-size-modes button").forEach((b) => {
@@ -3419,7 +3486,7 @@ function sizeHint() {
       ? "Reduce ligado: essa % fecha o short de cada conta e aumenta a exposição."
       : "Alvo de % da carteira vendida. Carteira = saldo BTC × mark. 1 ct = 100 USD.";
   }
-  if (reducing && sizeMode === "pct") return "% da perna existente, em cada conta. LONG reduz a short. SHORT reduz a long.";
+  if (reducing && sizeMode === "pct") return "% da posição existente, em cada conta. LONG reduz a short. SHORT reduz a long.";
   if (reducing) return "O USD se reparte na proporção de cada perna. LONG reduz a short. SHORT reduz a long.";
   if (deskFilter !== "todas") {
     if (sizeMode === "risco") return `O tamanho sai do risco e da distância até o stop. A ordem vai só para ${contasTxt()}.`;
@@ -3430,7 +3497,7 @@ function sizeHint() {
   return "O USD se reparte entre as 4 contas na proporção do saldo.";
 }
 function paintQtyLabel() {
-  const k = sizeMode === "pct" ? (reducing ? "% da perna" : "% do saldo") : "Tamanho";
+  const k = sizeMode === "pct" ? (reducing ? "% da posição" : "% do saldo") : "Tamanho";
   const u = sizeMode === "pct" ? "%" : "USD";
   for (const id of ["d-qty-k", "m-qty-k"]) if ($(id)) $(id).textContent = k;
   for (const id of ["d-qty-u", "m-qty-u"]) if ($(id)) $(id).textContent = u;
@@ -3505,7 +3572,7 @@ function paintKind() {
     el.setAttribute("aria-pressed", tpslOn ? "true" : "false");
   }
   document.querySelectorAll("#d-tabs .d-tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === deskTab));
-  // abrir posição: só USD ou Risco. O % fica só com o Reduce, onde é "% da perna".
+  // abrir posição: só USD ou Risco. O % fica só com o Reduce, onde é "% da posição".
   if (!reducing && sizeMode === "pct") { setSizeMode("usd"); return; }
   document.querySelectorAll("#d-size-modes button, #m-size-modes button").forEach((b) => {
     b.classList.toggle("on", b.dataset.size === (reducing && sizeMode === "risco" ? "pct" : sizeMode));
@@ -3591,10 +3658,23 @@ function hedgeRows() {
   const target = hedgePctValue();
   const mark = lastPx || 0;
   const hedgeNow = deskKind === "hedge" || deskKind === "hedge-scale";
+  // escala de hedge: se a escala inteira fica além do stop de uma perna, o stop fecha a perna antes
+  // e a conta parte do que sobra depois dele (0). Mesma regra do backend (runHedgeScale).
+  const inp = deskKind === "hedge-scale" ? scaleInputs() : null;
+  const sp = inp && inp.from > 0 && inp.to > 0 && inp.n >= 2 ? skewPrices(inp.from, inp.to, inp.n) : null;
+  const stopOf = (a, leg) => {
+    const s = accountOrders(a).find((o) => o.kind === "stop" && legOf(o) === leg && o.price > 0);
+    return s ? s.price : null;
+  };
+  const beyond = (leg, stop) => stop > 0 && sp && sp.every((p) => (leg === "short" ? p >= stop : p <= stop));
   return visibleAccounts(lastAccounts).map((a) => {
     const legs = a.legs || [];
-    const longCt = Number(legs.find((l) => l.posSide === "long")?.ct ?? (a.side === "long" ? Math.abs(a.net) : 0)) || 0;
-    const shortCt = Number(legs.find((l) => l.posSide === "short")?.ct ?? (a.side === "short" ? Math.abs(a.net) : 0)) || 0;
+    let longCt = Number(legs.find((l) => l.posSide === "long")?.ct ?? (a.side === "long" ? Math.abs(a.net) : 0)) || 0;
+    let shortCt = Number(legs.find((l) => l.posSide === "short")?.ct ?? (a.side === "short" ? Math.abs(a.net) : 0)) || 0;
+    const shortNow = shortCt;
+    const afterStop = shortCt > 0 && beyond("short", stopOf(a, "short"));
+    if (afterStop) shortCt = 0;
+    if (longCt > 0 && beyond("long", stopOf(a, "long"))) longCt = 0;
     const eq = Number(a.eq) || 0;
     const m = mark || Number(a.mark) || 0;
     const valor = eq * m;
@@ -3613,7 +3693,8 @@ function hedgeRows() {
     const atual = valor > 0 ? shortUsd / valor * 100 : 0;
     const net = valor > 0 ? 100 + (longUsd - shortUsd) / valor * 100 : 0;
     const action = Math.abs(delta) < 0.1 ? "no alvo" : delta > 0 ? "vender" : "reduzir";
-    return { name: a.name, atual, alvo: hedgePct, net, delta, action, longUsd, shortUsd, valor };
+    const atualAgora = valor > 0 ? shortNow * 100 / valor * 100 : 0;
+    return { name: a.name, atual, atualAgora, afterStop, alvo: hedgePct, net, delta, action, longUsd, shortUsd, valor };
   });
 }
 function hedgeMove(r) {
@@ -3623,7 +3704,7 @@ function hedgeMove(r) {
 }
 function paintHedgeTable() {
   const rows = hedgeRows();
-  const line = (r, tot) => `<div class="h-row${tot ? " h-tot" : ""}"><b>${esc(r.name)}</b><span>${fmtPct(r.atual)} → ${fmtPct(r.alvo)} · ${hedgeMove(r)}</span></div>`;
+  const line = (r, tot) => `<div class="h-row${tot ? " h-tot" : ""}"><b>${esc(r.name)}</b><span>${fmtPct(r.atual)}${r.afterStop ? " depois do stop" : ""} → ${fmtPct(r.alvo)} · ${hedgeMove(r)}</span></div>`;
   let html = rows.map((r) => line(r, false)).join("");
   if (rows.length) {
     const valor = rows.reduce((s, r) => s + (r.valor || 0), 0);
@@ -3632,8 +3713,11 @@ function paintHedgeTable() {
     const delta = rows.reduce((s, r) => s + r.delta, 0);
     const atual = valor > 0 ? shortUsd / valor * 100 : 0;
     const alvo = valor > 0 ? alvoUsd / valor * 100 : 0;
-    html += line({ name: "Total", atual, alvo, delta, action: delta >= 0 ? "vender" : "reduzir" }, true);
-    const now = "Vendido agora " + fmtPct(atual) + " da carteira";
+    const afterStop = rows.some((r) => r.afterStop);
+    html += line({ name: "Total", atual, alvo, delta, afterStop, action: delta >= 0 ? "vender" : "reduzir" }, true);
+    // "agora" é o short de hoje, mesmo quando a escala parte do que sobra depois do stop
+    const agora = valor > 0 ? rows.reduce((s, r) => s + (r.atualAgora || 0) * (r.valor || 0), 0) / valor : 0;
+    const now = "Vendido agora " + fmtPct(agora) + " da carteira" + (afterStop ? ". A escala fica além do stop: o stop fecha o short antes e ela monta um short novo." : "");
     if ($("d-hedge-now")) $("d-hedge-now").textContent = now;
     if ($("m-hedge-now")) $("m-hedge-now").textContent = now;
   }
@@ -3679,10 +3763,14 @@ function openHedgeSheet() {
     if (!plan) { formError("Preencha os dois preços e a quantidade de ordens."); return; }
     sheetKind = "hedge-scale";
     $("scale-title").textContent = "Escala de hedge";
-    $("scale-note").textContent = reducing
-      ? "Cada perna reduz o short. A % é o que fica vendido se o preço chegar ali e as anteriores também."
-      : "Cada perna vende short. A % é o acumulado se todas até ali executarem.";
-    $("scale-list").innerHTML = plan.legs.map((l) => `<li>${fmtPx(l.price)} · ${fmtPct(l.pct)} · ${fmtCt(l.ct)} ct</li>`).join("");
+    const sell = plan.delta >= 0;
+    const fin = hedgeScaleFinalPct(plan).pct;
+    const afterStop = hedgeRows().some((r) => r.afterStop);
+    $("scale-note").textContent = (sell ? "Vende short" : "Recompra short") + ` em ${plan.legs.filter((l) => l.ct >= 0.1).length} ordens, para ${contasTxt()}.`
+      + (afterStop ? " A escala fica além do stop: o stop fecha o short antes e ela monta um short novo." : "");
+    // resumo como uma ordem só, no preço médio; abaixo, cada ordem só com preço e tamanho
+    const head = `<li class="${sell ? "blocked" : "ok"}">Média ${fmtPx(plan.avg)} · ${fmtCt(Math.abs(plan.delta))} ct · ${fmtPct(Math.abs(plan.delta) * 100 / (plan.valor || 1) * 100)} da carteira · → ${fin == null ? "—" : fmtPct(fin)} vendido</li>`;
+    $("scale-list").innerHTML = head + plan.legs.filter((l) => l.ct >= 0.1).map((l) => `<li>${fmtPx(l.price)} · ${fmtCt(l.ct)} ct</li>`).join("");
     $("scale-msg").textContent = "";
     show($("scale-msg"), false);
     $("scale-ok").disabled = false;

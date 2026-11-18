@@ -362,8 +362,8 @@ test("ajustar: LONG reduz a short e SHORT reduz a long", async ({ page }) => {
   await page.click("#d-groups [data-group=mercado]");
   await page.selectOption("#d-kind", "market-adjust");
   await expect(page.locator("#d-adj-leg")).toHaveCount(0);
-  await expect(page.locator("#d-adj-pct-k")).toHaveText("% da perna");
-  await expect(page.locator("#d-adj-leg-note")).toHaveText("Escolha LONG ou SHORT. O percentual é % da perna.");
+  await expect(page.locator("#d-adj-pct-k")).toHaveText("% da posição");
+  await expect(page.locator("#d-adj-leg-note")).toHaveText("Escolha LONG ou SHORT. O percentual é % da posição.");
   await expect(page.locator("#d-adj-long")).toBeEnabled();
   await expect(page.locator("#d-adj-short")).toBeEnabled();
   await expect(page.locator("#d-adj-long")).toHaveAttribute("aria-pressed", "false");
@@ -412,11 +412,11 @@ test("screenshots desktop e o arquivo guarda o reduce verde", async ({ page }) =
   await setSize(page, "usd", "1000");
   await expect(page.locator("#d-qty-k")).toHaveText("Tamanho");
   await page.screenshot({ path: "/opt/cursor/artifacts/painel-desktop-1440-off.png", fullPage: false });
-  // com Reduce o % volta, como % da perna; ao desligar o Reduce, o % some e fica USD
+  // com Reduce o % volta, como % da posição; ao desligar o Reduce, o % some e fica USD
   await setReduce(page, true);
   await setSize(page, "pct", "50");
-  await expect(page.locator("#d-qty-k")).toHaveText("% da perna");
-  await expect(page.locator("#d-size-note")).toContainText("% da perna");
+  await expect(page.locator("#d-qty-k")).toHaveText("% da posição");
+  await expect(page.locator("#d-size-note")).toContainText("% da posição");
   await expect(page.locator("#d-pnl")).toContainText("SHORT PNL (botão LONG)");
   await expect(page.locator("#d-pnl")).toContainText("2 ct");
   await expect(page.locator("#d-pnl")).toContainText("LONG PNL (botão SHORT)");

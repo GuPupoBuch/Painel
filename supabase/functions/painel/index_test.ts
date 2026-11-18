@@ -905,3 +905,35 @@ Deno.test("carteira selecionada: ordem só na carteira escolhida", async () => {
   if (setScope(["fulano"]) !== "bad") throw new Error("carteira desconhecida passou");
   setScope(null);
 });
+
+// Escala de hedge além do stop do short: o stop fecha o short antes, então a escala parte de 0% e VENDE até o alvo.
+// Antes ela partia do short de agora (112%) e mandava recompras acima do preço atual, que a OKX recusa.
+Deno.test("escala de hedge além do stop: parte de 0% e vende até o alvo; recompra acima do preço é barrada", async () => {
+  const { runHedgeScale } = __test as any;
+  reset(); install();
+  balances = { OKX: 0.009 };
+  positions = { OKX: [leg("short", "6.4", "64914", "64100"), leg("long", "1.5", "63282", "64100")] };
+  algos = { OKX: [algo("short", "sl-short", "65365"), algo("long", "sl-long", "61880")] };
+  const setScope = (__test as any).setScope; setScope(["pupo"]);
+  const r = await runHedgeScale(20, "short", 67316.7, 66240.1, 8, 0, 0, false, false);
+  setScope(null);
+  if (r.aborted) throw new Error(String(r.abort_msg));
+  const rows = hit("/api/v5/trade/batch-orders", "OKX").flatMap((c) => c.body as any[]);
+  if (!rows.length || rows.some((o) => o.side !== "sell" || o.posSide !== "short" || o.reduceOnly)) throw new Error("devia vender short: " + JSON.stringify(rows[0]));
+  const total = rows.reduce((s, o) => s + Number(o.sz), 0);
+  // 20% de 0,009 BTC × 64.100 = US$ 115 ≈ 1,2 ct (e não os 5,3 ct de recompra de antes)
+  if (Math.abs(total - 1.2) > 1e-9) throw new Error("tamanho " + total);
+  if (hit("/api/v5/trade/amend-algos").length || hit("/api/v5/trade/cancel-algos").length) throw new Error("mexeu no stop");
+  if (!(r.accounts as any[])[0].after_stop) throw new Error("não marcou que parte depois do stop");
+
+  // stop acima da escala: o short continua aberto, o alvo menor pede recompra, e recompra acima do preço atual não sai
+  reset(); install();
+  balances = { OKX: 0.009 };
+  positions = { OKX: [leg("short", "6.4", "64914", "64100")] };
+  algos = { OKX: [algo("short", "sl-short", "70000")] };
+  setScope(["pupo"]);
+  const bad = await runHedgeScale(20, "short", 67316.7, 66240.1, 8, 0, 0, false, false);
+  setScope(null);
+  if (!bad.aborted || !String(bad.abort_msg).includes("abaixo do preço atual")) throw new Error("devia barrar: " + bad.abort_msg);
+  if (hit("/api/v5/trade/batch-orders").length) throw new Error("enviou recompra acima do preço");
+});

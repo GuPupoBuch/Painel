@@ -25,8 +25,8 @@ test("mobile 390: reduce verde, 44px e stop a mercado", async ({ page }) => {
   await expect(page.locator("#m-reduce-toggle")).toHaveAttribute("aria-pressed", "true");
   await page.click("#m-size-modes button[data-size='pct']");
   await page.fill("#m-qty", "50");
-  await expect(page.locator("#m-qty-k")).toHaveText("% da perna");
-  await expect(page.locator("#m-size-note")).toContainText("% da perna");
+  await expect(page.locator("#m-qty-k")).toHaveText("% da posição");
+  await expect(page.locator("#m-size-note")).toContainText("% da posição");
   const box = await page.locator("#m-reduce-toggle").boundingBox();
   expect(box && box.height >= 44).toBeTruthy();
   await expect(page.locator("#m-pnl")).toContainText("SHORT PNL (botão LONG)");
@@ -37,8 +37,8 @@ test("mobile 390: reduce verde, 44px e stop a mercado", async ({ page }) => {
   await page.screenshot({ path: "/opt/cursor/artifacts/painel-mobile-390-reduce.png", fullPage: true });
   await page.click("#tab-ajustar");
   await expect(page.locator("#m-adj-leg")).toHaveCount(0);
-  await expect(page.locator("#m-adj-pct-k")).toHaveText("% da perna");
-  await expect(page.locator("#m-adj-leg-note")).toHaveText("Escolha LONG ou SHORT. O percentual é % da perna.");
+  await expect(page.locator("#m-adj-pct-k")).toHaveText("% da posição");
+  await expect(page.locator("#m-adj-leg-note")).toHaveText("Escolha LONG ou SHORT. O percentual é % da posição.");
   await expect(page.locator("#m-adj-long")).toBeEnabled();
   await expect(page.locator("#m-adj-short")).toBeEnabled();
   await page.click("#m-adj-long");
