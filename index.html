@@ -1699,8 +1699,8 @@ function adjustingNow() {
   return deskTab === "reduce" || document.body.classList.contains("tab-ajustar");
 }
 function orderLineColor(kind, items) {
-  // stop a mercado: compra em verde, venda em vermelho
-  if (kind === "trigger") {
+  // toda ordem: compra em verde, venda em vermelho (limite, escala, stop, stop a mercado, stop vinculado)
+  if (!(adjustingNow() && adjLeg)) {
     const dirs = new Set(items.map(orderDir).filter(Boolean));
     if (dirs.size === 1) return dirs.has("buy") ? "#00e29a" : "#f6465d";
   }
@@ -1950,7 +1950,7 @@ function styleOrderLine(group, price) {
   try {
     group.line.applyOptions({
       price,
-      color: group.kind === "limit" ? (isDesk() ? "#d7dde3" : LIMIT_COLOR) : (isDesk() ? "#f6465d" : STOP_COLOR),
+      color: orderLineColor(group.kind, group.orders || []),
       lineWidth: 1,
       lineStyle: group.kind === "limit" ? 0 : 2,
       axisLabelVisible: true,

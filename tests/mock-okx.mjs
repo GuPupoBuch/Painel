@@ -28,11 +28,13 @@ function legs(account) {
   }
   return rows;
 }
+// stop de uma perna só existe enquanto a perna está aberta
 function stops(name) {
+  const open = new Set(legs(name).map((l) => l.posSide));
   return [
     { instId: "BTC-USD-SWAP", algoId: "sl-long-" + name, posSide: "long", slTriggerPx: "58000", closeFraction: "1", ordType: "conditional" },
     { instId: "BTC-USD-SWAP", algoId: "sl-short-" + name, posSide: "short", slTriggerPx: "70000", closeFraction: "1", ordType: "conditional" },
-  ];
+  ].filter((x) => open.has(x.posSide));
 }
 function asPending(item) {
   const b = item.body || {};
@@ -89,7 +91,7 @@ const server = http.createServer((req, res) => {
     if (url.pathname === "/api/v5/trade/orders-pending") {
       return send({ code: "0", data: limits.filter((l) => l.account === account).map((l) => ({
         instId: "BTC-USD-SWAP", ordId: l.ordId, ordType: "limit", px: String(l.body.px), sz: String(l.body.sz),
-        side: l.body.side, posSide: l.body.posSide, reduceOnly: "false",
+        side: l.body.side, posSide: l.body.posSide, reduceOnly: l.body.reduceOnly ? "true" : "false",
         attachAlgoOrds: Array.isArray(l.body.attachAlgoOrds) ? l.body.attachAlgoOrds.map((a, i) => ({ attachAlgoId: l.ordId + "-sl" + i, slTriggerPx: String(a.slTriggerPx), slOrdPx: "-1" })) : [],
       })) });
     }
@@ -106,14 +108,14 @@ const server = http.createServer((req, res) => {
       return send({ code: "0", data: mine });
     }
     if (url.pathname === "/api/v5/trade/order" && req.method === "POST") {
-      if (body && body.reduceOnly && (body.posSide === "long" || body.posSide === "short")) {
+      if (body && body.reduceOnly && body.ordType !== "limit" && (body.posSide === "long" || body.posSide === "short")) {
         const key = account + ":" + body.posSide;
         const cur = parseFloat(reduced[key] ?? (body.posSide === "long" ? "2" : "1"));
         const next = Math.max(0, Math.round((cur - parseFloat(body.sz || "0")) * 10) / 10);
         reduced[key] = String(next);
       }
       const ordId = "ord-" + (n++);
-      if (body && body.ordType === "limit" && !body.reduceOnly) limits.push({ account, ordId, body });
+      if (body && body.ordType === "limit") limits.push({ account, ordId, body });
       return send({ code: "0", data: [{ sCode: "0", ordId }] });
     }
     if (url.pathname === "/api/v5/trade/order-algo" && req.method === "POST") {
@@ -135,7 +137,7 @@ const server = http.createServer((req, res) => {
         return send({ code: "1", msg: "All operations failed", data: rows.map(() => ({ sCode: "51006", sMsg: failBatchMsg, ordId: "" })) });
       }
       const ids = rows.map(() => "b" + (n++));
-      rows.forEach((r, i) => { if (r && r.ordType === "limit" && !r.reduceOnly) limits.push({ account, ordId: ids[i], body: r }); });
+      rows.forEach((r, i) => { if (r && r.ordType === "limit") limits.push({ account, ordId: ids[i], body: r }); });
       return send({ code: "0", data: ids.map((ordId) => ({ sCode: "0", ordId })) });
     }
     if (url.pathname === "/api/v5/trade/cancel-batch-orders") {
