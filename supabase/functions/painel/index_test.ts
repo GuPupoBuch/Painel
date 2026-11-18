@@ -1054,3 +1054,23 @@ Deno.test("hedge com Reduce: compra reduz o short, venda reduz a long (nunca abr
   if (r2.aborted || !b2 || b2.side !== "sell" || b2.posSide !== "long" || !b2.reduceOnly || b2.sz !== "50.0") throw new Error("long: " + JSON.stringify(b2) + " " + r2.abort_msg);
   if (hit("/api/v5/trade/order", "OKX").some((c) => (c.body as any).posSide === "short" && (c.body as any).side === "sell")) throw new Error("abriu short com Reduce");
 });
+
+// Hedge a limite: abaixo do preço só compra, acima só vende.
+Deno.test("hedge a limite respeita o lado do preço", async () => {
+  const { runHedge, setScope } = __test as any;
+  reset(); install();
+  balances = { OKX: 1 };
+  positions = { OKX: [leg("short", "1", "64000", "64100")] };
+  algos = {};
+  setScope(["pupo"]);
+  // alvo 50% pede venda; limite abaixo do mark (64.100) não sai
+  const bad = await runHedge(50, "short", "limit", 60000, false, null, false);
+  if (!(bad.accounts as any[])[0].error?.includes("abaixo do preço é compra") || hit("/api/v5/trade/order").length) throw new Error("vendeu abaixo: " + JSON.stringify(bad.accounts));
+  reset(); install();
+  balances = { OKX: 1 };
+  positions = { OKX: [leg("short", "1", "64000", "64100")] };
+  const ok = await runHedge(50, "short", "limit", 66000, false, null, false);
+  setScope(null);
+  const b = hit("/api/v5/trade/order", "OKX")[0]?.body as any;
+  if (ok.aborted || !b || b.side !== "sell" || b.px !== "66000") throw new Error("acima devia vender: " + JSON.stringify(b));
+});

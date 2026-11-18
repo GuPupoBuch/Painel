@@ -1316,6 +1316,12 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
     else if (legSide === "long") action = "reduzir long";
     else if (delta > 0) action = "vender";
     else action = "reduzir";
+    // hedge a limite: acima do preço atual só vende, abaixo só compra
+    if (!err && ordType === "limit" && action !== "nada") {
+      const selling = action === "vender" || action === "reduzir long";
+      if (selling && price! < mark) err = "abaixo do preço é compra: o alvo pede venda";
+      if (!selling && price! > mark) err = "acima do preço é venda: o alvo pede recompra";
+    }
     return { P, name, eq, longCt, shortCt, ...h, hedgePct, alvoCt, delta, action, err, afterStop, legSide };
   }));
   out.accounts = R.map((r) => ({

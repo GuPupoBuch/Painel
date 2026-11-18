@@ -713,8 +713,8 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
           <label class="field"><span class="field-k">De</span><input id="d-from" type="text" inputmode="decimal" placeholder="63000" aria-label="Preço inicial"><span class="field-u">USD</span></label>
           <label class="field"><span class="field-k">Até</span><input id="d-to" type="text" inputmode="decimal" placeholder="65000" aria-label="Preço final"><span class="field-u">USD</span></label>
         </div>
-        <div class="d-k">Ordens <span id="d-orders-n">8</span></div>
-        <input id="d-orders" class="d-range" type="range" min="2" max="50" value="8" aria-label="Quantidade de ordens">
+        <div class="d-k">Ordens <span id="d-orders-n">10</span></div>
+        <input id="d-orders" class="d-range" type="range" min="2" max="50" value="10" aria-label="Quantidade de ordens">
         <div class="skew" data-skew="price">
           <div class="skew-hd"><span>Distribuição</span><b id="d-skew-price-v">Igual</b></div>
           <input id="d-skew-price" class="skew-r" type="range" min="-100" max="100" step="1" value="0" aria-label="Distribuição das ordens: agrupar perto do preço mais baixo ou do mais alto" aria-valuetext="Igual">
@@ -767,6 +767,7 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
           <p class="d-note hidden">Vazio: executa agora, a mercado. Com preço: vira um stop a mercado do hedge, que executa quando o preço chegar ali.</p>
         </div>
         <div id="d-hedge-table" class="d-size-rows hidden"></div>
+        <p class="err hidden" id="d-hedge-msg"></p>
         <button type="button" id="d-hedge-go">Confirmar hedge</button>
         <p class="d-note hidden">Não mexe na long. Os stops ficam como estão e só saem se o short zerar. <span class="contas-txt">A ordem vai para as 4 contas.</span></p>
       </div>
@@ -941,7 +942,7 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
           <label class="field"><span class="field-k">Até</span><input id="m-to" type="text" inputmode="decimal" autocomplete="off" placeholder="65000"><span class="field-u">USD</span></label>
         </div>
         <label for="m-orders">Ordens</label>
-        <input id="m-orders" type="text" inputmode="numeric" autocomplete="off" value="8">
+        <input id="m-orders" type="text" inputmode="numeric" autocomplete="off" value="10">
       </div>
       <div id="m-hedge" class="hidden">
         <div class="pcts" id="m-hedge-quick">
@@ -959,6 +960,7 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
           <button type="button" class="otype" id="m-mode-net">% comprado</button>
         </div>
         <div id="m-hedge-table" class="hidden"></div>
+        <p class="err hidden" id="m-hedge-msg"></p>
         <div class="otypes" id="m-hedge-ord">
           <button type="button" class="otype on" id="m-hedge-mkt">Mercado</button>
           <button type="button" class="otype" id="m-hedge-lmt">Limite</button>
@@ -1652,7 +1654,10 @@ function drawOrderLines(accounts) {
       ordTags.push({ kind: "ord", price: () => group.price, items: g.items, html });
     }
   }
-  for (const b of buckets.values()) {
+  // outras ordens no gráfico (stops, stops a mercado): uma delas entre duas escalas separa os grupos
+  const otherPx = flat.filter((o) => o.kind !== "limit").map((o) => o.price);
+  for (const bk of buckets.values()) for (const run of splitRuns(bk.groups, otherPx)) {
+    const b = { ...bk, groups: run };
     const items = b.groups.flatMap((gr) => gr.orders);
     const after = hedgeAfterHtml(items);
     if (b.groups.length === 1) {
@@ -1672,6 +1677,23 @@ function drawOrderLines(accounts) {
     ordTags.push({ kind: "ord", price: avg, items, html: `<div class="ltag ord" style="--tc:${b.color}">${b.rTag}<span>Escala ×${b.groups.length}${b.dir}</span><span class="t-num">média ${fmtPx(avg())}</span>${after}${xBtn(items)}</div>` });
   }
   renderTags();
+}
+// Separa ordens a limite do mesmo lado em escalas diferentes: corta onde o salto entre preços vizinhos é bem
+// maior que o espaçamento normal (1,8× a mediana) ou onde há outra ordem no meio.
+function splitRuns(groups, otherPx) {
+  const gs = groups.slice().sort((a, b) => a.price - b.price);
+  if (gs.length < 3) return [gs];
+  const gaps = gs.slice(1).map((g, i) => g.price - gs[i].price);
+  const sorted = gaps.slice().sort((a, b) => a - b);
+  const med = sorted[Math.floor(sorted.length / 2)] || 0;
+  const runs = [[gs[0]]];
+  for (let i = 1; i < gs.length; i++) {
+    const lo = gs[i - 1].price, hi = gs[i].price;
+    const between = (otherPx || []).some((p) => p > lo && p < hi);
+    if ((med > 0 && hi - lo > med * 1.8) || between) runs.push([gs[i]]);
+    else runs[runs.length - 1].push(gs[i]);
+  }
+  return runs;
 }
 function adjustingNow() {
   return deskTab === "reduce" || document.body.classList.contains("tab-ajustar");
@@ -1735,15 +1757,46 @@ function openTitle(label) {
 }
 // Prévia da escala de hedge no gráfico: as ordens sem rótulo (só as pontas têm preço no eixo, para arrastar)
 // e uma linha só no preço médio, com o % final, como se fosse uma ordem só.
+// Hedge com preço (escala de hedge, ou hedge a limite): acima do preço atual só vende, abaixo só compra.
+// O stop a mercado do hedge fica livre. Se o alvo pede o lado contrário, trava com o motivo.
+// Devolve null quando não há preço; senão { side: "sell" | "buy" | null, ok, msg }.
+function hedgeSideLock() {
+  const m = lastPx;
+  if (!(m > 0)) return null;
+  let ps = null;
+  if (deskKind === "hedge-scale") {
+    const inp = scaleInputs();
+    if (inp.from > 0 && inp.to > 0 && inp.n >= 2) ps = skewPrices(inp.from, inp.to, inp.n);
+  } else if (deskKind === "hedge" && hedgeOrd === "limit") {
+    const p = parseNum(isDesk() ? ($("d-hedge-price") && $("d-hedge-price").value) : $("price").value);
+    if (p > 0) ps = [p];
+  }
+  if (!ps) return null;
+  const above = ps.every((p) => p > m), below = ps.every((p) => p < m);
+  if (!above && !below) return { side: null, ok: false, msg: "A escala cruza o preço atual: acima é venda, abaixo é compra." };
+  const side = above ? "sell" : "buy";
+  const t = hedgeTotals();
+  if (Math.abs(t.delta) < 0.1 || (t.delta > 0) === (side === "sell")) return { side, ok: true, msg: "" };
+  const base = t.valor > 0 ? t.rows.reduce((s, r) => s + (r.shortUsd || 0) / 100, 0) * 100 / t.valor * 100 : 0;
+  return {
+    side, ok: false,
+    msg: side === "buy"
+      ? `Abaixo do preço é compra (recompra do short): use um alvo abaixo de ${fmtPct(base)} vendido.`
+      : `Acima do preço é venda: use um alvo acima de ${fmtPct(base)} vendido.`,
+  };
+}
 function paintHedgeScalePreview(ladder) {
-  const sell = ladder.delta >= 0;
+  const lock = hedgeSideLock();
+  const sell = lock && lock.side ? lock.side === "sell" : ladder.delta >= 0;
   const color = sell ? "#e5425c" : "#00e29a";
   ladder.legs.forEach((leg, i) => {
     const end = i === 0 || i === ladder.legs.length - 1;
     addPreview(leg.price, "", { role: i === 0 ? "from" : i === ladder.legs.length - 1 ? "to" : "", color, lineStyle: 1, lineWidth: 1, axisLabelVisible: end });
   });
   if (ladder.avg > 0) {
-    const title = `média · ${fmtPct(Math.abs(ladder.delta) * 100 / (ladder.valor || 1) * 100)} da carteira · ${hedgeFinalTxt(ladder)}`;
+    const title = lock && !lock.ok
+      ? `média · ${sell ? "venda" : "compra"} · o alvo pede o lado contrário`
+      : `média · ${fmtPct(Math.abs(ladder.delta) * 100 / (ladder.valor || 1) * 100)} da carteira · ${hedgeFinalTxt(ladder)}`;
     addPreview(ladder.avg, title, { role: "", color, lineStyle: 2, lineWidth: 2 });
   }
 }
@@ -1876,7 +1929,8 @@ function drawDeskPreviews() {
   }
   if (deskKind === "hedge" && hedgeOrd === "limit") {
     const p = parseNum(($("d-hedge-price") && $("d-hedge-price").value) || ($("price") && $("price").value));
-    if (p > 0) addPreview(p, "hedge", { role: "hedge", color: "#e5425c", lineStyle: 1 });
+    const hl = hedgeSideLock();
+    if (p > 0) addPreview(p, hl && hl.side === "buy" ? "hedge · compra" : "hedge · venda", { role: "hedge", color: hl && hl.side === "buy" ? "#00e29a" : "#e5425c", lineStyle: 1 });
   }
   if (hedgeTrigger()) addPreview(hedgeTrigger(), hedgeTrgTitle(), { role: "", color: "#f6465d", lineStyle: 2 });
 }
@@ -3060,6 +3114,13 @@ function limitSideLock() {
   return null;
 }
 function paintSideLock() {
+  // hedge com preço: mostra o motivo e trava o botão quando o alvo pede o lado contrário ao preço
+  const hedging = deskKind === "hedge" || deskKind === "hedge-scale";
+  const hl = hedging ? hedgeSideLock() : null;
+  const hBlock = !!hl && !hl.ok;
+  for (const id of ["d-hedge-msg", "m-hedge-msg"]) if ($(id)) { $(id).textContent = hBlock ? hl.msg : ""; show($(id), hBlock); }
+  if ($("d-hedge-go")) $("d-hedge-go").disabled = hBlock;
+  if (hedging && $("send") && !sending) $("send").disabled = hBlock;
   const lock = limitSideLock();
   const can = (s) => !lock || lock.allowed === s;
   for (const [id, s] of [["d-long", "long"], ["btn-long", "long"], ["d-short", "short"], ["btn-short", "short"]]) {
