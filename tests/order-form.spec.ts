@@ -629,3 +629,28 @@ test("tamanho começa vazio e limpa ao trocar USD ↔ % (sem 1000% da posição)
   await setReduce(page, false);
   await expect(page.locator(qty)).toHaveValue("");
 });
+
+test("hedge a mercado: gatilho vazio executa agora; com gatilho vira stop a mercado", async ({ page }) => {
+  test.skip(!(await desk(page)), "só no desktop");
+  await page.click("#d-groups [data-group=hedge]");
+  await expect(page.locator("#d-hedge-trg")).toBeVisible();
+  await expect(page.locator("#d-hedge-go")).toHaveText("Confirmar hedge agora");
+  await page.fill("#d-hedge-pct", "50");
+  await page.fill("#d-hedge-trigger", "63000");
+  await expect(page.locator("#d-hedge-go")).toHaveText("Colocar stop do hedge em 63.000");
+  const wait = page.waitForResponse((r) => r.url().includes(":8000/hedge") && r.request().method() === "POST");
+  await page.click("#d-hedge-go");
+  await expect(page.locator("#scale-title")).toHaveText("Stop a mercado do hedge");
+  await page.click("#scale-ok");
+  const res = await wait;
+  const sent = JSON.parse(res.request().postData() || "{}");
+  expect(sent).toMatchObject({ ordType: "trigger", triggerPx: 63000, target_pct: 50 });
+  expect((await res.json()).aborted).toBeFalsy();
+  const algos = (await okxPosts("/api/v5/trade/order-algo")) as Body[];
+  expect(algos.length).toBeGreaterThan(0);
+  for (const b of algos) expect(b).toMatchObject({ ordType: "trigger", triggerPx: "63000", orderPx: "-1", posSide: "short", side: "sell" });
+  expect(await okxPosts("/api/v5/trade/order")).toHaveLength(0);
+  // Limite esconde o gatilho
+  await page.click("#d-hedge-lmt");
+  await expect(page.locator("#d-hedge-trg")).toBeHidden();
+});

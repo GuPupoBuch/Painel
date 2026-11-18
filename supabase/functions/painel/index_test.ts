@@ -966,3 +966,30 @@ Deno.test("stop vinculado da ordem a limite aparece; cancelar limite pelo ordId"
   if (!sent || (sent.body as any).ordId !== "L1" || (sent.body as any).instId !== "BTC-USD-SWAP") throw new Error(JSON.stringify(sent));
   if (calls.some((x) => x.p === "/api/v5/trade/cancel-algos")) throw new Error("cancelou algo em vez de limite");
 });
+
+// Hedge com gatilho: vira stop a mercado (order-algo trigger) e não mexe em nada agora.
+Deno.test("hedge com gatilho vira stop a mercado; além do stop do short parte de 0%", async () => {
+  const { runHedge, setScope } = __test as any;
+  reset(); install();
+  balances = { OKX: 1 };
+  positions = { OKX: [leg("short", "1", "64000", "64100")] };
+  algos = { OKX: [algo("short", "sl-short", "70000")] };
+  setScope(["pupo"]);
+  // abaixo do stop: short de agora (1 ct = 0,16%) → 50% de 1 BTC × 64.100 = 320,5 ct; vende 319,5 quando cair em 63.000
+  const r = await runHedge(50, "short", "trigger", 63000, false, null, false);
+  if (r.aborted) throw new Error(String(r.abort_msg));
+  const t = hit("/api/v5/trade/order-algo", "OKX").map((c) => c.body as any).find((b) => b.ordType === "trigger");
+  if (!t || t.side !== "sell" || t.posSide !== "short" || t.triggerPx !== "63000" || t.orderPx !== "-1" || t.reduceOnly) throw new Error(JSON.stringify(t));
+  if (hit("/api/v5/trade/order").length) throw new Error("executou na hora");
+  if (hit("/api/v5/trade/cancel-algos").length || hit("/api/v5/trade/amend-algos").length) throw new Error("mexeu nos stops");
+  // além do stop (71.000 ≥ 70.000): o stop fecha o short antes; o hedge parte de 0
+  reset(); install();
+  balances = { OKX: 1 };
+  positions = { OKX: [leg("short", "1", "64000", "64100")] };
+  algos = { OKX: [algo("short", "sl-short", "70000")] };
+  const r2 = await runHedge(50, "short", "trigger", 71000, false, null, false);
+  setScope(null);
+  if (r2.aborted) throw new Error(String(r2.abort_msg));
+  const acc = (r2.accounts as any[])[0];
+  if (!acc.after_stop || Math.abs(acc.delta_ct - acc.alvo_ct) > 1e-9) throw new Error(JSON.stringify(acc));
+});

@@ -758,6 +758,14 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
             <span class="field-u">USD</span>
           </label>
         </div>
+        <div id="d-hedge-trg" class="hedge-trg">
+          <label class="field">
+            <span class="field-k">Gatilho (opcional)</span>
+            <input id="d-hedge-trigger" type="text" inputmode="decimal" autocomplete="off" placeholder="vazio = agora" aria-label="Gatilho do hedge a mercado">
+            <span class="field-u">USD</span>
+          </label>
+          <p class="d-note">Vazio: executa agora, a mercado. Com preço: vira um stop a mercado do hedge, que executa quando o preço chegar ali.</p>
+        </div>
         <div id="d-hedge-table" class="d-size-rows"></div>
         <button type="button" id="d-hedge-go">Confirmar hedge</button>
         <p class="d-note">Não mexe na long. Os stops ficam como estão e só saem se o short zerar. <span class="contas-txt">A ordem vai para as 4 contas.</span></p>
@@ -954,6 +962,10 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
         <div class="otypes" id="m-hedge-ord">
           <button type="button" class="otype on" id="m-hedge-mkt">Mercado</button>
           <button type="button" class="otype" id="m-hedge-lmt">Limite</button>
+        </div>
+        <div id="m-hedge-trg" class="hedge-trg">
+          <label class="field" for="m-hedge-trigger"><span class="field-k">Gatilho (opcional)</span><input id="m-hedge-trigger" type="text" inputmode="decimal" autocomplete="off" placeholder="vazio = agora" aria-label="Gatilho do hedge a mercado"><span class="field-u">USD</span></label>
+          <p class="all-note">Vazio: executa agora. Com preço: vira um stop a mercado do hedge.</p>
         </div>
         <p class="all-note">Não mexe na long. Stops só saem se o short zerar.</p>
       </div>
@@ -1750,6 +1762,8 @@ function drawMobilePreviews() {
       if (deskKind === "trigger") {
         const p = triggerValue();
         if (p > 0) addPreview(p, openTitle("STOP"), { role: "trigger", lineStyle: 2, color: "#f6465d" });
+      } else if (deskKind === "hedge" && hedgeTrigger()) {
+        addPreview(hedgeTrigger(), hedgeTrgTitle(), { role: "", color: "#f6465d", lineStyle: 2 });
       } else if (deskKind === "hedge" && hedgeOrd === "limit") {
         const p = parseNum($("price").value);
         if (p > 0) addPreview(p, "prévia hedge " + fmtPx(p), { role: "hedge" });
@@ -1853,6 +1867,7 @@ function drawDeskPreviews() {
     const p = parseNum(($("d-hedge-price") && $("d-hedge-price").value) || ($("price") && $("price").value));
     if (p > 0) addPreview(p, "hedge", { role: "hedge", color: "#e5425c", lineStyle: 1 });
   }
+  if (hedgeTrigger()) addPreview(hedgeTrigger(), hedgeTrgTitle(), { role: "", color: "#f6465d", lineStyle: 2 });
 }
 function redrawChartLines() {
   if (!series) return;
@@ -3240,7 +3255,7 @@ function paintActions() {
   const el = $("send");
   if (!el) return;
   if (deskKind === "hedge" || deskKind === "hedge-scale") {
-    el.textContent = deskKind === "hedge-scale" ? "CONFIRMAR ESCALA" : "CONFIRMAR HEDGE";
+    el.textContent = deskKind === "hedge-scale" ? "CONFIRMAR ESCALA" : hedgeTrigger() ? `STOP DO HEDGE EM ${fmtPx(hedgeTrigger())}` : hedgeOrd === "market" ? "CONFIRMAR HEDGE AGORA" : "CONFIRMAR HEDGE";
     el.classList.add("short");
     return;
   }
@@ -3660,7 +3675,9 @@ function paintKind() {
   if ($("m-hedge-ord")) show($("m-hedge-ord"), deskKind === "hedge");
   if ($("d-hedge-px")) show($("d-hedge-px"), deskKind === "hedge" && hedgeOrd === "limit");
   paintHedgeAvg();
-  if ($("d-hedge-go")) $("d-hedge-go").textContent = deskKind === "hedge-scale" ? "Confirmar escala" : "Confirmar hedge";
+  if ($("d-hedge-go")) $("d-hedge-go").textContent = deskKind === "hedge-scale" ? "Confirmar escala"
+    : hedgeTrigger() ? `Colocar stop do hedge em ${fmtPx(hedgeTrigger())}` : hedgeOrd === "market" ? "Confirmar hedge agora" : "Confirmar hedge";
+  for (const id of ["d-hedge-trg", "m-hedge-trg"]) if ($(id)) show($(id), deskKind === "hedge" && hedgeOrd === "market");
   paintQtyLabel();
   const hint = sizeHint();
   if ($("d-size-note")) { show($("d-size-note"), !hedge); $("d-size-note").textContent = hint; }
@@ -3777,7 +3794,9 @@ function hedgeRows() {
   // escala de hedge: se a escala inteira fica além do stop de uma perna, o stop fecha a perna antes
   // e a conta parte do que sobra depois dele (0). Mesma regra do backend (runHedgeScale).
   const inp = deskKind === "hedge-scale" ? scaleInputs() : null;
-  const sp = inp && inp.from > 0 && inp.to > 0 && inp.n >= 2 ? skewPrices(inp.from, inp.to, inp.n) : null;
+  // hedge a mercado com gatilho: a mesma regra vale para o preço do gatilho
+  const trg = hedgeTrigger();
+  const sp = inp && inp.from > 0 && inp.to > 0 && inp.n >= 2 ? skewPrices(inp.from, inp.to, inp.n) : trg ? [trg] : null;
   const stopOf = (a, leg) => {
     const s = accountOrders(a).find((o) => o.kind === "stop" && legOf(o) === leg && o.price > 0);
     return s ? s.price : null;
@@ -3889,6 +3908,25 @@ function paintHedgeAvg() {
   const plan = hedgeScalePlan();
   $("d-avg").textContent = plan && plan.avg > 0 ? fmtPx(plan.avg) : "—";
 }
+// Hedge a mercado com gatilho (opcional): vazio = executa agora; com preço = stop a mercado do hedge naquele preço.
+function hedgeTrigger() {
+  if (deskKind !== "hedge" || hedgeOrd !== "market") return null;
+  const el = isDesk() ? $("d-hedge-trigger") : $("m-hedge-trigger");
+  const v = parseNum(el && el.value);
+  return v > 0 ? v : null;
+}
+function hedgeTotals() {
+  const rows = hedgeRows();
+  const valor = rows.reduce((s, r) => s + (r.valor || 0), 0);
+  const delta = rows.reduce((s, r) => s + (r.delta || 0), 0);
+  const alvo = valor > 0 ? rows.reduce((s, r) => s + (r.alvo || 0) * (r.valor || 0), 0) / valor : 0;
+  return { rows, valor, delta, alvo };
+}
+function hedgeTrgTitle() {
+  const t = hedgeTotals();
+  if (Math.abs(t.delta) < 0.1) return "stop do hedge · já no alvo";
+  return `stop do hedge · ${t.delta > 0 ? "vender" : "recomprar"} ${fmtCt(Math.abs(t.delta))} ct · → ${fmtPct(t.alvo)} vendido`;
+}
 function openHedgeSheet() {
   if (deskKind === "hedge-scale") {
     const plan = hedgeScalePlan();
@@ -3913,8 +3951,11 @@ function openHedgeSheet() {
   const rows = hedgeRows();
   if (!rows.length) { $("banner-err").textContent = "Sem contas para o hedge."; show($("banner-err"), true); return; }
   sheetKind = "hedge";
-  $("scale-title").textContent = "Hedge";
-  $("scale-note").textContent = `Confirmar manda só na perna short, para ${contasTxt()}. A long não muda.`;
+  const trg = hedgeTrigger();
+  $("scale-title").textContent = trg ? "Stop a mercado do hedge" : "Hedge";
+  $("scale-note").textContent = trg
+    ? `Fica pendente em ${fmtPx(trg)}: quando o preço chegar ali, executa a mercado na perna short, para ${contasTxt()}. Nada muda agora.`
+    : `Confirmar manda só na perna short, para ${contasTxt()}. A long não muda.`;
   $("scale-list").innerHTML = rows.map((r) => `<li><span class="name">${esc(r.name)}</span> · agora ${fmtPct(r.atual)} → ${fmtPct(r.alvo)} · ${esc(r.action)} ${fmtCt(Math.abs(r.delta))} ct</li>`).join("");
   $("scale-msg").textContent = "";
   show($("scale-msg"), false);
@@ -3938,6 +3979,7 @@ async function sendHedge() {
       payload.from = inp.from; payload.to = inp.to; payload.n = inp.n;
       Object.assign(payload, skewPayload());
     } else if (hedgeOrd === "limit") payload.price = price;
+    else if (hedgeTrigger()) { payload.ordType = "trigger"; payload.triggerPx = hedgeTrigger(); }
     const { res, data } = await api("/hedge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok || data.aborted || data.ok === false) {
       $("scale-msg").textContent = data.abort_msg || data.error || "Hedge bloqueado.";
@@ -4313,8 +4355,10 @@ function initDesk() {
     updateDesk();
     drawPreviews();
   });
-  $("d-hedge-mkt").onclick = () => { hedgeOrd = "market"; $("d-hedge-mkt").classList.add("on"); $("d-hedge-lmt").classList.remove("on"); show($("d-hedge-px"), false); drawPreviews(); };
-  $("d-hedge-lmt").onclick = () => { hedgeOrd = "limit"; $("d-hedge-lmt").classList.add("on"); $("d-hedge-mkt").classList.remove("on"); show($("d-hedge-px"), true); if (lastPx) $("d-hedge-price").value = String(Math.round(lastPx * 10) / 10); drawPreviews(); };
+  $("d-hedge-mkt").onclick = () => { hedgeOrd = "market"; $("d-hedge-mkt").classList.add("on"); $("d-hedge-lmt").classList.remove("on"); show($("d-hedge-px"), false); paintKind(); renderDesk(); drawPreviews(); };
+  // gatilho do hedge a mercado: atualiza tabela, botão e a linha no gráfico enquanto digita
+  for (const id of ["d-hedge-trigger", "m-hedge-trigger"]) if ($(id)) $(id).addEventListener("input", () => { paintKind(); renderDesk(); updateSendLabel(); drawPreviews(); });
+  $("d-hedge-lmt").onclick = () => { hedgeOrd = "limit"; $("d-hedge-lmt").classList.add("on"); $("d-hedge-mkt").classList.remove("on"); show($("d-hedge-px"), true); if (lastPx) $("d-hedge-price").value = String(Math.round(lastPx * 10) / 10); paintKind(); renderDesk(); drawPreviews(); };
   $("d-hedge-price").addEventListener("input", () => drawPreviews());
   $("d-hedge-go").onclick = () => openHedgeSheet();
   $("m-hedge-mkt").onclick = () => { hedgeOrd = "market"; $("m-hedge-mkt").classList.add("on"); $("m-hedge-lmt").classList.remove("on"); paintKind(); drawPreviews(); };

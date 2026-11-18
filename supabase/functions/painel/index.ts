@@ -1218,10 +1218,13 @@ function hedgeNumbers(eq: number, mark: number, longCt: number, shortCt: number,
   return { valor, longUsd, shortUsd, hedgePct, alvoCt, delta, atual, net, clamped };
 }
 
-async function runHedge(targetPct: number, mode: "short" | "net", ordType: "market" | "limit", price: number | null, dry: boolean, only: string[] | null, reduce = false) {
-  const out: J = { target_pct: targetPct, mode, ordType, price: ordType === "limit" ? price : null, dry, aborted: false, abort_msg: null, accounts: [] };
+// ordType "trigger": stop a mercado do hedge. `price` é o gatilho; quando o preço chegar lá, vende/recompra a mercado
+// o que falta para o alvo. Se o gatilho fica além do stop de uma perna, a conta parte do que sobra depois do stop.
+async function runHedge(targetPct: number, mode: "short" | "net", ordType: "market" | "limit" | "trigger", price: number | null, dry: boolean, only: string[] | null, reduce = false) {
+  const out: J = { target_pct: targetPct, mode, ordType, price: ordType === "limit" ? price : null, triggerPx: ordType === "trigger" ? price : null, dry, aborted: false, abort_msg: null, accounts: [] };
   if (!(targetPct >= 0 && targetPct <= CAP)) return { ...out, aborted: true, abort_msg: "Alvo fora do intervalo." };
   if (ordType === "limit" && !(price != null && price > 0)) return { ...out, aborted: true, abort_msg: "Preço inválido." };
+  if (ordType === "trigger" && !(price != null && price > 0)) return { ...out, aborted: true, abort_msg: "Preço de gatilho inválido." };
   let mark = 0;
   try { mark = await markPx(); } catch (e) { return { ...out, aborted: true, abort_msg: "Mark indisponível." }; }
   if (!(mark > 0)) return { ...out, aborted: true, abort_msg: "Mark indisponível." };
@@ -1232,8 +1235,14 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
   const R = await Promise.all(wanted.map(async ([P, name]) => {
     const eq = await eq_of(P);
     const legs = await legsOf(P);
-    const longCt = legs.find((l) => l.posSide === "long")?.pos ?? 0;
-    const shortCt = legs.find((l) => l.posSide === "short")?.pos ?? 0;
+    let longCt = legs.find((l) => l.posSide === "long")?.pos ?? 0;
+    let shortCt = legs.find((l) => l.posSide === "short")?.pos ?? 0;
+    let afterStop = false;
+    if (ordType === "trigger") {
+      const cs = await conds(P);
+      if (shortCt > 0 && beyondLegStop("short", price!, legStopPx(cs, "short"))) { shortCt = 0; afterStop = true; }
+      if (longCt > 0 && beyondLegStop("long", price!, legStopPx(cs, "long"))) { longCt = 0; afterStop = true; }
+    }
     const h = hedgeNumbers(eq, mark, longCt, shortCt, targetPct, mode);
     let action: "vender" | "reduzir" | "nada" = "nada";
     let err: string | null = null;
@@ -1250,17 +1259,29 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
     else if (Math.abs(delta) < 0.1) action = "nada";
     else if (delta > 0) action = "vender";
     else action = "reduzir";
-    return { P, name, eq, longCt, shortCt, ...h, hedgePct, alvoCt, delta, action, err };
+    return { P, name, eq, longCt, shortCt, ...h, hedgePct, alvoCt, delta, action, err, afterStop };
   }));
   out.accounts = R.map((r) => ({
     prefix: r.P, name: r.name, eq: r.eq, valor_usd: r.valor, long_usd: r.longUsd, short_usd: r.shortUsd,
     atual_pct: r.atual, alvo_pct: r.hedgePct, net_pct: r.net, alvo_ct: r.alvoCt, delta_ct: r.delta,
-    delta_usd: r.delta * CT_VAL, action: r.action, clamped: r.clamped, status: r.err ? "bloqueado" : r.action === "nada" ? "no alvo" : "ok", error: r.err,
+    delta_usd: r.delta * CT_VAL, after_stop: r.afterStop, action: r.action, clamped: r.clamped, status: r.err ? "bloqueado" : r.action === "nada" ? "no alvo" : "ok", error: r.err,
   }));
   if (dry) { out.raw = "DRY: nada enviado"; return out; }
   const O = await Promise.all(R.map(async (r) => {
     if (r.err || r.action === "nada") return { ok: true, skipped: true, hedge_pct: r.atual };
     const sz = Math.abs(r.delta);
+    if (ordType === "trigger") {
+      // stop a mercado: fica pendente; nada muda agora (nem os stops da perna)
+      const tb: J = {
+        instId: INST, tdMode: "cross", side: r.action === "vender" ? "sell" : "buy", posSide: "short",
+        ordType: "trigger", sz: sz.toFixed(1), triggerPx: pyG(price!), orderPx: "-1", triggerPxType: "last",
+      };
+      if (r.action === "reduzir") tb.reduceOnly = true;
+      const e = await req(r.P, "POST", "/api/v5/trade/order-algo", tb);
+      const d = (e.data && e.data[0]) || {};
+      const ok = e.code === "0" && (d.sCode == null || d.sCode === "0");
+      return { ok, skipped: false, hedge_pct: r.atual, sMsg: d.sMsg || e.msg || null };
+    }
     const clOrdId = ("h" + Date.now().toString(36) + r.P + Math.random().toString(36).slice(2, 6)).replace(/[^0-9A-Za-z]/g, "").slice(0, 32);
     const body: J = {
       instId: INST, tdMode: "cross", clOrdId,
@@ -1955,7 +1976,7 @@ const handler = async (req: Request): Promise<Response> => {
       if (mode !== "short" && mode !== "net") return json(400, { ok: false, error: "Modo inválido: use short ou net." });
       const rawType = String(body.ordType ?? "market").trim().toLowerCase();
       const ordType = rawType === "" ? "market" : rawType;
-      if (ordType !== "market" && ordType !== "limit") return json(400, { ok: false, error: "Tipo inválido: use market ou limit." });
+      if (ordType !== "market" && ordType !== "limit" && ordType !== "trigger") return json(400, { ok: false, error: "Tipo inválido: use market, limit ou trigger." });
       // body.accounts vira o escopo (nome ou prefixo); `only` fica para quem chama runHedge direto com prefixos
       const sc = accountScope(body.accounts);
       if (sc === "bad") return json(400, { ok: false, error: "Carteira desconhecida." });
@@ -1969,6 +1990,10 @@ const handler = async (req: Request): Promise<Response> => {
         price = num(body.price);
         if (price == null || !(price > 0)) return json(400, { ok: false, error: "Preço inválido." });
       }
+      if (!scaling && ordType === "trigger") {
+        price = num(body.triggerPx ?? body.price);
+        if (price == null || !(price > 0)) return json(400, { ok: false, error: "Preço de gatilho inválido." });
+      }
       if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
       orderBusy = true; scope = sc;
       try {
@@ -1977,7 +2002,7 @@ const handler = async (req: Request): Promise<Response> => {
           console.log(JSON.stringify({ ev: "hedge-scale", ip, target, reduce, n: nScale, dry, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
           return json(200, { ok: !r.aborted, ...r });
         }
-        const r = await runHedge(target, mode as "short" | "net", ordType as "market" | "limit", price, dry, only, reduce);
+        const r = await runHedge(target, mode as "short" | "net", ordType as "market" | "limit" | "trigger", price, dry, only, reduce);
         console.log(JSON.stringify({ ev: "hedge", ip, target, mode, reduce, dry, ordType, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
         return json(200, { ok: !r.aborted, ...r });
       } finally { orderBusy = false; scope = null; }
