@@ -721,7 +721,7 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
         <div class="d-avg">Média <b id="d-avg">—</b></div>
       </div>
       <div id="d-hedge" class="hidden">
-        <p class="d-note" id="d-hedge-now">Vendido agora —</p>
+        <p class="d-note" id="d-hedge-now">Posição atual: —</p>
         <div class="d-k" id="d-hedge-k">Quanto % vendido</div>
         <div class="d-togs" id="d-hedge-quick">
           <button type="button" class="d-tog" data-h="0">0</button>
@@ -935,7 +935,7 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
           <button type="button" class="pct" data-h="75">75%</button>
           <button type="button" class="pct" data-h="100">100%</button>
         </div>
-        <p class="all-note" id="m-hedge-now">Vendido agora —</p>
+        <p class="all-note" id="m-hedge-now">Posição atual: —</p>
         <label for="m-hedge-pct" id="m-hedge-label">Quanto % vendido</label>
         <input id="m-hedge-pct" type="text" inputmode="decimal" autocomplete="off" value="50">
         <div class="otypes">
@@ -3577,6 +3577,8 @@ function paintKind() {
   document.querySelectorAll("#d-size-modes button, #m-size-modes button").forEach((b) => {
     b.classList.toggle("on", b.dataset.size === (reducing && sizeMode === "risco" ? "pct" : sizeMode));
     if (b.dataset.size === "pct") b.classList.toggle("hidden", !reducing);
+    // com Reduce não existe tamanho por risco (o tamanho é uma fatia da posição): o botão some em vez de não responder
+    if (b.dataset.size === "risco") b.classList.toggle("hidden", reducing);
   });
   document.querySelectorAll("#d-px-type button, #m-px-type button").forEach((b) => b.classList.toggle("on", b.dataset.px === pxType));
   document.querySelectorAll("#d-chase-unit button, #m-chase-unit button").forEach((b) => b.classList.toggle("on", b.dataset.chase === chaseUnit));
@@ -3671,7 +3673,7 @@ function hedgeRows() {
     const legs = a.legs || [];
     let longCt = Number(legs.find((l) => l.posSide === "long")?.ct ?? (a.side === "long" ? Math.abs(a.net) : 0)) || 0;
     let shortCt = Number(legs.find((l) => l.posSide === "short")?.ct ?? (a.side === "short" ? Math.abs(a.net) : 0)) || 0;
-    const shortNow = shortCt;
+    const shortNow = shortCt, longNow = longCt;
     const afterStop = shortCt > 0 && beyond("short", stopOf(a, "short"));
     if (afterStop) shortCt = 0;
     if (longCt > 0 && beyond("long", stopOf(a, "long"))) longCt = 0;
@@ -3694,7 +3696,8 @@ function hedgeRows() {
     const net = valor > 0 ? 100 + (longUsd - shortUsd) / valor * 100 : 0;
     const action = Math.abs(delta) < 0.1 ? "no alvo" : delta > 0 ? "vender" : "reduzir";
     const atualAgora = valor > 0 ? shortNow * 100 / valor * 100 : 0;
-    return { name: a.name, atual, atualAgora, afterStop, alvo: hedgePct, net, delta, action, longUsd, shortUsd, valor };
+    const longAgora = valor > 0 ? longNow * 100 / valor * 100 : 0;
+    return { name: a.name, atual, atualAgora, longAgora, afterStop, alvo: hedgePct, net, delta, action, longUsd, shortUsd, valor };
   });
 }
 function hedgeMove(r) {
@@ -3717,7 +3720,9 @@ function paintHedgeTable() {
     html += line({ name: "Total", atual, alvo, delta, afterStop, action: delta >= 0 ? "vender" : "reduzir" }, true);
     // "agora" é o short de hoje, mesmo quando a escala parte do que sobra depois do stop
     const agora = valor > 0 ? rows.reduce((s, r) => s + (r.atualAgora || 0) * (r.valor || 0), 0) / valor : 0;
-    const now = "Vendido agora " + fmtPct(agora) + " da carteira" + (afterStop ? ". A escala fica além do stop: o stop fecha o short antes e ela monta um short novo." : "");
+    // posição de agora (antes de qualquer stop), em % da carteira
+    const longAg = valor > 0 ? rows.reduce((s, r) => s + (r.longAgora || 0) * (r.valor || 0), 0) / valor : 0;
+    const now = `Posição atual: ${fmtPct(longAg)} comprado · ${fmtPct(agora)} vendido` + (afterStop ? ". A escala fica além do stop: o stop fecha o short antes e ela monta um short novo." : "");
     if ($("d-hedge-now")) $("d-hedge-now").textContent = now;
     if ($("m-hedge-now")) $("m-hedge-now").textContent = now;
   }

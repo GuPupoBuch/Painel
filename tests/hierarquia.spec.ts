@@ -28,7 +28,7 @@ test("grupos no desktop e a escala de hedge no gráfico", async ({ page }) => {
   await page.screenshot({ path: "/opt/cursor/artifacts/hier-mercado-1440.png" });
 
   await page.click("#d-groups [data-group=hedge]");
-  await expect(page.locator("#d-hedge-now")).toContainText("Vendido agora");
+  await expect(page.locator("#d-hedge-now")).toContainText("Posição atual:");
   await page.screenshot({ path: "/opt/cursor/artifacts/hier-hedge-1440.png" });
 
   await page.selectOption("#d-kind", "hedge-scale");
@@ -80,7 +80,7 @@ test.describe("grupos no celular", () => {
     await expect(page.locator("#m-kind")).toHaveValue("market");
     await page.screenshot({ path: "/opt/cursor/artifacts/hier-mercado-390.png" });
     await page.click("#m-groups [data-group=hedge]");
-    await expect(page.locator("#m-hedge-now")).toContainText("Vendido agora");
+    await expect(page.locator("#m-hedge-now")).toContainText("Posição atual:");
     await page.screenshot({ path: "/opt/cursor/artifacts/hier-hedge-390.png" });
     await page.selectOption("#m-kind", "hedge-scale");
     await page.fill("#m-hedge-pct", "40");

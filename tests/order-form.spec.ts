@@ -568,3 +568,18 @@ test("modo Hedge: etiquetas em % da carteira; Limite continua igual", async ({ p
   await page.click('#d-groups [data-group="limite"]');
   await expect.poll(async () => (await tags()).some((t) => t.includes("% da carteira"))).toBeFalsy();
 });
+
+test("tamanho: abrindo é USD ou Risco; com Reduce é USD ou % (Risco some)", async ({ page }) => {
+  const root = (await desk(page)) ? "#d-size-modes" : "#m-size-modes";
+  await setKind(page, "market");
+  await setReduce(page, false);
+  await expect(page.locator(`${root} [data-size="risco"]`)).toBeVisible();
+  await expect(page.locator(`${root} [data-size="pct"]`)).toBeHidden();
+  await page.click(`${root} [data-size="risco"]`);
+  await expect(page.locator(`${root} [data-size="risco"]`)).toHaveClass(/on/);
+  await setReduce(page, true);
+  await expect(page.locator(`${root} [data-size="risco"]`)).toBeHidden();
+  await expect(page.locator(`${root} [data-size="pct"]`)).toBeVisible();
+  await setReduce(page, false);
+  await expect(page.locator(`${root} [data-size="risco"]`)).toBeVisible();
+});
