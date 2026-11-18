@@ -1699,6 +1699,11 @@ function adjustingNow() {
   return deskTab === "reduce" || document.body.classList.contains("tab-ajustar");
 }
 function orderLineColor(kind, items) {
+  // stop a mercado: compra em verde, venda em vermelho
+  if (kind === "trigger") {
+    const dirs = new Set(items.map(orderDir).filter(Boolean));
+    if (dirs.size === 1) return dirs.has("buy") ? "#00e29a" : "#f6465d";
+  }
   const base = kind === "limit" ? (isDesk() ? "#d7dde3" : LIMIT_COLOR) : (isDesk() ? "#f6465d" : STOP_COLOR);
   if (!adjustingNow() || !adjLeg || kind === "limit") return base;
   const sides = new Set(items.map((x) => x.posSide).filter(Boolean));
@@ -1816,18 +1821,18 @@ function drawPreviews() {
   paintSideLock();
 }
 function stopPreviewOn() {
-  return !reducing && deskKind !== "hedge" && (sizeMode === "risco" || tpslOn);
+  return !reducing && deskKind !== "hedge" && deskKind !== "hedge-scale" && (sizeMode === "risco" || tpslOn);
 }
 function drawMobilePreviews() {
   const entradaOn = !$("pane-entrada").classList.contains("hidden");
   if (entradaOn && !entradaPreviewHold) {
-    if (reducing && deskKind !== "hedge") paintReduceLines();
+    if (reducing && deskKind !== "hedge" && deskKind !== "hedge-scale") paintReduceLines();
     else {
       if (deskKind === "trigger") {
         const p = triggerValue();
         if (p > 0) addPreview(p, openTitle("STOP"), { role: "trigger", lineStyle: 2, color: "#f6465d" });
       } else if (deskKind === "hedge" && hedgeTrigger()) {
-        addPreview(hedgeTrigger(), hedgeTrgTitle(), { role: "", color: "#f6465d", lineStyle: 2 });
+        addPreview(hedgeTrigger(), hedgeTrgTitle(), { role: "", color: hedgeTrgColor(), lineStyle: 2 });
       } else if (deskKind === "hedge" && hedgeOrd === "limit") {
         const p = parseNum($("price").value);
         if (p > 0) addPreview(p, "prévia hedge " + fmtPx(p), { role: "hedge" });
@@ -1896,7 +1901,7 @@ function drawDeskPreviews() {
     }
     return;
   }
-  if (deskTab === "post" && reducing && deskKind !== "hedge" && !entradaPreviewHold) {
+  if (deskTab === "post" && reducing && deskKind !== "hedge" && deskKind !== "hedge-scale" && !entradaPreviewHold) {
     paintReduceLines();
     return;
   }
@@ -1932,7 +1937,7 @@ function drawDeskPreviews() {
     const hl = hedgeSideLock();
     if (p > 0) addPreview(p, hl && hl.side === "buy" ? "hedge · compra" : "hedge · venda", { role: "hedge", color: hl && hl.side === "buy" ? "#00e29a" : "#e5425c", lineStyle: 1 });
   }
-  if (hedgeTrigger()) addPreview(hedgeTrigger(), hedgeTrgTitle(), { role: "", color: "#f6465d", lineStyle: 2 });
+  if (hedgeTrigger()) addPreview(hedgeTrigger(), hedgeTrgTitle(), { role: "", color: hedgeTrgColor(), lineStyle: 2 });
 }
 function redrawChartLines() {
   if (!series) return;
@@ -3287,7 +3292,7 @@ function pnlAccounts(prev) {
   }).join("");
 }
 function paintReduce() {
-  const on = reducing && deskKind !== "hedge";
+  const on = reducing && deskKind !== "hedge" && deskKind !== "hedge-scale";
   const longBtn = on ? computeReducePreview("short") : null;
   const shortBtn = on ? computeReducePreview("long") : null;
   const lines = on ? pnlLine(longBtn, "LONG") + pnlLine(shortBtn, "SHORT") : "";
@@ -3994,6 +3999,11 @@ function hedgeTotals() {
   const delta = rows.reduce((s, r) => s + (r.delta || 0), 0);
   const alvo = valor > 0 ? rows.reduce((s, r) => s + (r.alvo || 0) * (r.valor || 0), 0) / valor : 0;
   return { rows, valor, delta, alvo };
+}
+// linha do stop do hedge: recompra (compra) em verde, venda em vermelho
+function hedgeTrgColor() {
+  const t = hedgeTotals();
+  return t.delta < 0 ? "#00e29a" : "#f6465d";
 }
 function hedgeTrgTitle() {
   const t = hedgeTotals();
