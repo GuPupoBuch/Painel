@@ -937,3 +937,32 @@ Deno.test("escala de hedge além do stop: parte de 0% e vende até o alvo; recom
   if (!bad.aborted || !String(bad.abort_msg).includes("abaixo do preço atual")) throw new Error("devia barrar: " + bad.abort_msg);
   if (hit("/api/v5/trade/batch-orders").length) throw new Error("enviou recompra acima do preço");
 });
+
+// Stop anexado a uma ordem a limite pendente aparece como "stop vinculado"; cancelar limite usa cancel-order com ordId.
+Deno.test("stop vinculado da ordem a limite aparece; cancelar limite pelo ordId", async () => {
+  const { runCancel } = __test as any;
+  reset(); install();
+  calls = [];
+  setReq(async (P, m, p, body) => {
+    calls.push({ P, m, p, body });
+    if (p.startsWith("/api/v5/public/mark-price")) return { code: "0", data: [{ markPx: "64100" }] };
+    if (p.startsWith("/api/v5/account/balance")) return { code: "0", data: [{ details: [{ ccy: "BTC", eq: "1" }] }] };
+    if (p.startsWith("/api/v5/account/positions")) return { code: "0", data: P === "OKX" ? [leg("short", "169.8", "64912", "64100")] : [] };
+    if (p.startsWith("/api/v5/trade/orders-pending")) return { code: "0", data: P === "OKX" ? [{
+      instId: "BTC-USD-SWAP", ordId: "L1", ordType: "limit", px: "66295.9", sz: "96.3", side: "sell", posSide: "short",
+      attachAlgoOrds: [{ attachAlgoId: "A1", slTriggerPx: "66858.5", slOrdPx: "-1" }],
+    }] : [] };
+    if (p.startsWith("/api/v5/trade/orders-algo-pending")) return { code: "0", data: [] };
+    if (p === "/api/v5/trade/cancel-order") return { code: "0", data: [{ sCode: "0", ordId: (body as any).ordId }] };
+    return { code: "0", data: [] };
+  });
+  const pos = await fetchPositions();
+  const okx = (pos.accounts as any[]).find((a) => a.prefix === "OKX");
+  const linked = okx.orders.find((o: any) => o.kind === "linked");
+  if (!linked || linked.price !== 66858.5 || linked.parentOrdId !== "L1" || linked.side !== "buy" || linked.posSide !== "short") throw new Error(JSON.stringify(linked));
+  const c = await runCancel("OKX", "", false, "L1");
+  if (c.aborted) throw new Error(String(c.abort_msg));
+  const sent = calls.find((x) => x.p === "/api/v5/trade/cancel-order");
+  if (!sent || (sent.body as any).ordId !== "L1" || (sent.body as any).instId !== "BTC-USD-SWAP") throw new Error(JSON.stringify(sent));
+  if (calls.some((x) => x.p === "/api/v5/trade/cancel-algos")) throw new Error("cancelou algo em vez de limite");
+});

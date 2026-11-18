@@ -437,9 +437,17 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
 .amend-move{margin:12px 0 10px;font-size:22px;font-weight:700;letter-spacing:-.02em}
 .sheet-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .sheet-actions button{min-height:48px;border-radius:8px;font-size:15px;font-weight:700}
-#amend-cancel,#scale-cancel{background:transparent;color:var(--text);border:1px solid var(--line)}
+#amend-cancel,#scale-cancel,#cancel-back{background:transparent;color:var(--text);border:1px solid var(--line)}
 #amend-ok,#scale-ok{background:var(--accent);color:#06121c;border:0}
-#amend-ok:disabled,#scale-ok:disabled{opacity:.45}
+#cancel-ok{background:var(--red);color:#fff;border:0}
+#amend-ok:disabled,#scale-ok:disabled,#cancel-ok:disabled{opacity:.45}
+/* ✕ na etiqueta da ordem no gráfico: a única parte da etiqueta que recebe clique */
+.ltag .t-x{
+  pointer-events:auto;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  width:20px;padding:0;border:0;border-left:1px solid var(--tc,var(--line));border-radius:0;
+  background:transparent;color:var(--muted);font-size:11px;line-height:18px;
+}
+.ltag .t-x:hover{background:var(--red);color:#fff}
 .sheet .err{margin:0 0 10px;white-space:pre-line}
 
 /* ---------- controles: seletores, toggles e botões ----------
@@ -638,7 +646,7 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
       </div>
       <label class="field" id="d-qty-box">
         <span class="field-k" id="d-qty-k">Tamanho</span>
-        <input id="d-qty" type="text" inputmode="decimal" value="1000" aria-label="Tamanho">
+        <input id="d-qty" type="text" inputmode="decimal" placeholder="0" aria-label="Tamanho">
         <span class="field-u" id="d-qty-u">USD</span>
       </label>
       <div id="d-risk-box">
@@ -886,7 +894,7 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
       </div>
       <label class="field" id="m-qty-box">
         <span class="field-k" id="m-qty-k">Tamanho</span>
-        <input id="m-qty" type="text" inputmode="decimal" autocomplete="off" value="1000" aria-label="Tamanho">
+        <input id="m-qty" type="text" inputmode="decimal" autocomplete="off" placeholder="0" aria-label="Tamanho">
         <span class="field-u" id="m-qty-u">USD</span>
       </label>
       <div id="price-row" class="price-row hidden">
@@ -1027,6 +1035,19 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
     <div class="sheet-actions">
       <button type="button" id="amend-cancel">Cancelar</button>
       <button type="button" id="amend-ok">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div id="cancel-sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="cancel-title">
+  <div class="sheet-card">
+    <h2 id="cancel-title">Cancelar ordem</h2>
+    <p class="d-note" id="cancel-note"></p>
+    <ul id="cancel-list" class="amend-list"></ul>
+    <div id="cancel-msg" class="err hidden"></div>
+    <div class="sheet-actions">
+      <button type="button" id="cancel-back">Voltar</button>
+      <button type="button" id="cancel-ok">Cancelar ordem</button>
     </div>
   </div>
 </div>
@@ -1296,11 +1317,12 @@ function dropLine(line) {
   if (!series || !line) return;
   try { series.removePriceLine(line); } catch (e) {}
 }
-function kindTitle(kind) { return kind === "trigger" ? "stop mkt" : kind === "chase" ? "chase" : kind === "stop" ? "stop" : "limite"; }
-function kindLabel(kind) { return kind === "trigger" ? "Stop mkt" : kind === "chase" ? "Chase" : kind === "stop" ? "Stop" : "Limite"; }
+function kindTitle(kind) { return kind === "trigger" ? "stop mkt" : kind === "chase" ? "chase" : kind === "stop" ? "stop" : kind === "linked" ? "stop vinculado" : "limite"; }
+function kindLabel(kind) { return kind === "trigger" ? "Stop mkt" : kind === "chase" ? "Chase" : kind === "stop" ? "Stop" : kind === "linked" ? "Stop vinculado" : "Limite"; }
 function orderKind(raw) {
   if (!raw || typeof raw !== "object") return null;
-  if (raw.kind === "stop" || raw.kind === "limit" || raw.kind === "trigger" || raw.kind === "chase") return raw.kind;
+  // "linked" = stop anexado a uma ordem a limite pendente; só vale depois que a ordem executar
+  if (raw.kind === "stop" || raw.kind === "limit" || raw.kind === "trigger" || raw.kind === "chase" || raw.kind === "linked") return raw.kind;
   if (raw.algoId || raw.slTriggerPx != null) return "stop";
   if (raw.ordId || raw.px != null) return "limit";
   return null;
@@ -1321,10 +1343,10 @@ function accountOrders(a) {
         });
         continue;
       }
-      if ((kind !== "stop" && kind !== "limit" && kind !== "trigger") || !(price > 0)) continue;
+      if ((kind !== "stop" && kind !== "limit" && kind !== "trigger" && kind !== "linked") || !(price > 0)) continue;
       out.push({
         account: a.name, prefix: a.prefix || null, kind, price,
-        ordId: raw.ordId || null, algoId: raw.algoId || null,
+        ordId: raw.ordId || null, algoId: raw.algoId || null, parentOrdId: raw.parentOrdId || null,
         side: raw.side || raw.posSide || a.side || null,
         posSide: raw.posSide || null, reduceOnly: raw.reduceOnly === true,
         sz: Number(raw.sz) || 0, triggerPxType: raw.triggerPxType || null,
@@ -1572,7 +1594,8 @@ function drawOrderLines(accounts) {
   const one = oneAccount();
   const hv = hedgeView();
   const buckets = new Map(); // modo Hedge: ordens a limite do mesmo lado/direção viram uma etiqueta só, no preço médio
-  for (const kind of ["stop", "trigger", "limit"]) {
+  cancelSets = [];
+  for (const kind of ["stop", "trigger", "limit", "linked"]) {
     for (const g of clusterClose(flat.filter((o) => o.kind === kind))) {
       const color = orderLineColor(kind, g.items);
       const line = series.createPriceLine({
@@ -1587,21 +1610,23 @@ function drawOrderLines(accounts) {
       orderGroups.push(group);
       const dirs = [...new Set(g.items.map(orderDir).filter(Boolean))];
       const dir = dirs.length === 1 ? (dirs[0] === "buy" ? " · compra" : " · venda") : "";
-      const reduce = g.items.every((o) => o.reduceOnly || o.kind === "stop");
+      const reduce = g.items.every((o) => o.reduceOnly || o.kind === "stop" || o.kind === "linked");
       const rTag = reduce ? '<span class="t-r" title="Reduce">R</span>' : "";
+      const x = xBtn(g.items);
       if (hv) {
         if (kind === "limit") {
           const key = legOf(g.items[0]) + "|" + (dirs[0] || "") + "|" + reduce;
-          if (!buckets.has(key)) buckets.set(key, { groups: [], color, dir, rTag });
+          if (!buckets.has(key)) buckets.set(key, { groups: [], color, dir, rTag, items: [] });
+          buckets.get(key).items.push(...g.items);
           buckets.get(key).groups.push(group);
           continue;
         }
-        const html = `<div class="ltag ord" style="--tc:${color}">${rTag}<span>${kindLabel(kind)}${dir}</span>${hedgeAfterHtml(g.items)}</div>`;
+        const html = `<div class="ltag ord" style="--tc:${color}">${rTag}<span>${kindLabel(kind)}${dir}</span>${hedgeAfterHtml(g.items)}${x}</div>`;
         ordTags.push({ kind: "ord", price: () => group.price, items: g.items, html });
         continue;
       }
       const pnlCell = one && reduce && g.items.some((o) => o.pnl) ? '<span class="t-num t-pnl"></span>' : "";
-      const html = `<div class="ltag ord" style="--tc:${color}">${rTag}<span>${kindLabel(kind)}${dir}</span>${one ? `<span class="t-num">${fmtK(g.usd)}</span>` : ""}${pnlCell}</div>`;
+      const html = `<div class="ltag ord" style="--tc:${color}">${rTag}<span>${kindLabel(kind)}${dir}</span>${one ? `<span class="t-num">${fmtK(g.usd)}</span>` : ""}${pnlCell}${x}</div>`;
       ordTags.push({ kind: "ord", price: () => group.price, items: g.items, html });
     }
   }
@@ -1610,7 +1635,7 @@ function drawOrderLines(accounts) {
     const after = hedgeAfterHtml(items);
     if (b.groups.length === 1) {
       const gr = b.groups[0];
-      ordTags.push({ kind: "ord", price: () => gr.price, items, html: `<div class="ltag ord" style="--tc:${b.color}">${b.rTag}<span>Limite${b.dir}</span>${after}</div>` });
+      ordTags.push({ kind: "ord", price: () => gr.price, items, html: `<div class="ltag ord" style="--tc:${b.color}">${b.rTag}<span>Limite${b.dir}</span>${after}${xBtn(items)}</div>` });
       continue;
     }
     // escala: uma etiqueta no preço médio (média harmônica pelo tamanho, contrato inverso); acompanha se uma linha for arrastada
@@ -1622,7 +1647,7 @@ function drawOrderLines(accounts) {
       }
       return inv > 0 ? w / inv : b.groups[0].price;
     };
-    ordTags.push({ kind: "ord", price: avg, items, html: `<div class="ltag ord" style="--tc:${b.color}">${b.rTag}<span>Escala ×${b.groups.length}${b.dir}</span><span class="t-num">média ${fmtPx(avg())}</span>${after}</div>` });
+    ordTags.push({ kind: "ord", price: avg, items, html: `<div class="ltag ord" style="--tc:${b.color}">${b.rTag}<span>Escala ×${b.groups.length}${b.dir}</span><span class="t-num">média ${fmtPx(avg())}</span>${after}${xBtn(items)}</div>` });
   }
   renderTags();
 }
@@ -1659,8 +1684,31 @@ function addPreview(price, title, opt) {
 // Sem outras pendentes no caminho, o final é o alvo; com elas, o final soma o que elas mudam.
 function hedgeScaleFinalPct(ladder) {
   const far = furthestPrice(ladder.legs.map((l) => ({ price: l.price })));
-  const finalCt = Math.max(0, pathLegs(far).short + ladder.delta);
-  return { pct: walletPct(finalCt, ladder.valor) };
+  const path = pathLegs(far);
+  const finalCt = Math.max(0, path.short + ladder.delta);
+  const pct = walletPct(finalCt, ladder.valor);
+  // % comprado (líquido) = 100% + long − short, na mesma carteira
+  const comprado = ladder.valor > 0 ? 100 + (path.long - finalCt) * 100 / ladder.valor * 100 : null;
+  return { pct, comprado };
+}
+// texto do resultado final no sentido do modo escolhido: "% vendido" ou "% comprado"
+function hedgeFinalTxt(ladder) {
+  const f = hedgeScaleFinalPct(ladder);
+  if (hedgeMode !== "short" && !reducing) return `→ ${f.comprado == null ? "—" : fmtPct(f.comprado)} comprado`;
+  return `→ ${f.pct == null ? "—" : fmtPct(f.pct)} vendido`;
+}
+// Prévia de abertura (limite, stop a mercado, escala): o tamanho que vai ser aberto, em US$ e ct
+function openTitle(label) {
+  if (reducing) return label;
+  let ct = 0;
+  if (deskKind === "scale" && sizeMode === "risco") {
+    const plan = scalePlan();
+    ct = plan ? plan.legs.reduce((s, l) => s + l.ct, 0) : 0;
+  } else {
+    const s = openSize();
+    ct = s ? s.ct : 0;
+  }
+  return ct >= 0.1 ? `${label} · ${fmtUsd(ct * 100)} (${fmtCt(ct)} ct)` : label;
 }
 // Prévia da escala de hedge no gráfico: as ordens sem rótulo (só as pontas têm preço no eixo, para arrastar)
 // e uma linha só no preço médio, com o % final, como se fosse uma ordem só.
@@ -1672,8 +1720,7 @@ function paintHedgeScalePreview(ladder) {
     addPreview(leg.price, "", { role: i === 0 ? "from" : i === ladder.legs.length - 1 ? "to" : "", color, lineStyle: 1, lineWidth: 1, axisLabelVisible: end });
   });
   if (ladder.avg > 0) {
-    const fin = hedgeScaleFinalPct(ladder).pct;
-    const title = `média · ${fmtPct(Math.abs(ladder.delta) * 100 / (ladder.valor || 1) * 100)} da carteira · → ${fin == null ? "—" : fmtPct(fin)} vendido`;
+    const title = `média · ${fmtPct(Math.abs(ladder.delta) * 100 / (ladder.valor || 1) * 100)} da carteira · ${hedgeFinalTxt(ladder)}`;
     addPreview(ladder.avg, title, { role: "", color, lineStyle: 2, lineWidth: 2 });
   }
 }
@@ -1702,13 +1749,13 @@ function drawMobilePreviews() {
     else {
       if (deskKind === "trigger") {
         const p = triggerValue();
-        if (p > 0) addPreview(p, "STOP", { role: "trigger", lineStyle: 2, color: "#f6465d" });
+        if (p > 0) addPreview(p, openTitle("STOP"), { role: "trigger", lineStyle: 2, color: "#f6465d" });
       } else if (deskKind === "hedge" && hedgeOrd === "limit") {
         const p = parseNum($("price").value);
         if (p > 0) addPreview(p, "prévia hedge " + fmtPx(p), { role: "hedge" });
       } else if (deskKind === "limit" || ordType === "limit") {
         const p = parseNum($("price").value);
-        if (p > 0) addPreview(p, "LIMITE", { role: "price", lineStyle: 1, color: side === "short" ? "#e5425c" : "#00e29a" });
+        if (p > 0) addPreview(p, openTitle("LIMITE"), { role: "price", lineStyle: 1, color: side === "short" ? "#e5425c" : "#00e29a" });
       }
       if (deskKind === "hedge-scale") {
         const ladder = hedgeScalePlan();
@@ -1722,7 +1769,7 @@ function drawMobilePreviews() {
         if (plan) plan.legs.forEach((leg, i) => {
           const end = i === 0 || i === plan.legs.length - 1;
           const role = i === 0 ? "from" : (i === plan.legs.length - 1 ? "to" : "");
-          addPreview(leg.price, end ? "ESCALA" : "", { role, color: col, lineStyle: 1, lineWidth: end ? 2 : 1, axisLabelVisible: end });
+          addPreview(leg.price, end ? openTitle("ESCALA") : "", { role, color: col, lineStyle: 1, lineWidth: end ? 2 : 1, axisLabelVisible: end });
         });
       }
       const s = parseNum($("stop").value);
@@ -1789,18 +1836,18 @@ function drawDeskPreviews() {
     plan.legs.forEach((leg, i) => {
       const end = i === 0 || i === plan.legs.length - 1;
       const role = i === 0 ? "from" : (i === plan.legs.length - 1 ? "to" : "");
-      addPreview(leg.price, end ? "PLACE SCALE" : "", { role, color: col, lineStyle: 1, lineWidth: end ? 2 : 1, axisLabelVisible: end });
+      addPreview(leg.price, end ? openTitle("ESCALA") : "", { role, color: col, lineStyle: 1, lineWidth: end ? 2 : 1, axisLabelVisible: end });
     });
     addPreview(plan.avg, "média", { role: "", color: col, lineStyle: 2, lineWidth: 1 });
     return;
   }
   if (deskKind === "limit") {
     const p = parseNum($("price").value);
-    if (p > 0) addPreview(p, "LIMITE", { role: "price", color: col, lineStyle: 1 });
+    if (p > 0) addPreview(p, openTitle("LIMITE"), { role: "price", color: col, lineStyle: 1 });
   }
   if (deskKind === "trigger") {
     const p = triggerValue();
-    if (p > 0) addPreview(p, "STOP", { role: "trigger", color: "#f6465d", lineStyle: 2 });
+    if (p > 0) addPreview(p, openTitle("STOP"), { role: "trigger", color: "#f6465d", lineStyle: 2 });
   }
   if (deskKind === "hedge" && hedgeOrd === "limit") {
     const p = parseNum(($("d-hedge-price") && $("d-hedge-price").value) || ($("price") && $("price").value));
@@ -1845,6 +1892,7 @@ function hitOrder(y) {
   if (!series) return null;
   let best = null, bestD = HIT_PX + 1;
   for (const g of orderGroups) {
+    if (g.kind === "linked") continue;
     const cy = series.priceToCoordinate(g.price);
     if (cy == null) continue;
     const d = Math.abs(cy - y);
@@ -3201,10 +3249,14 @@ function paintActions() {
   const verb = reducing ? "REDUZIR" : (deskKind === "scale" ? "ESCALA" : deskKind === "trigger" ? "STOP" : deskKind === "chase" ? "CHASE" : (ordType === "limit" ? "LIMITE" : "MERCADO"));
   el.innerHTML = `<span class="go-k">${side === "short" ? "SHORT" : "LONG"}</span><span class="go-sub">${verb} ${mine}</span>`;
 }
+function clearQty() { for (const id of ["d-qty", "m-qty"]) if ($(id)) $(id).value = ""; }
 function setSizeMode(mode) {
   if (mode === "risco" && reducing) mode = "pct";
+  // USD e % são unidades diferentes: ao trocar, o número antigo não vale mais (1000 USD não é 1000%)
+  const prevUnit = sizeMode === "pct" ? "pct" : sizeMode === "usd" ? "usd" : null;
   sizeMode = mode === "pct" || mode === "risco" ? mode : "usd";
   reduceUnit = sizeMode === "pct" ? "pct" : "usd";
+  if (prevUnit && sizeMode !== "risco" && prevUnit !== sizeMode) clearQty();
   const u = sizeMode === "pct" ? "%" : "USD";
   const k = sizeMode === "pct" ? (reducing ? "% da posição" : "% do saldo") : "Tamanho";
   for (const id of ["d-qty-u", "m-qty-u"]) if ($(id)) $(id).textContent = u;
@@ -3321,6 +3373,68 @@ function renderDesk() {
 // Reduz um % da perna daquela conta: a mercado (na hora), a limite (no preço escolhido) ou chase (segue o book até executar).
 // Long reduz vendendo; short reduz comprando. Limite segue a regra: venda acima do preço atual, compra abaixo.
 var pp = null;
+// ---------- ✕ nas ordens do gráfico: cancela as ordens daquela etiqueta (com confirmação) ----------
+// Limite pelo ordId; stop, stop a mercado e chase pelo algoId. O stop vinculado sai junto com a ordem a limite dele.
+var cancelSets = [], cancelNow = null;
+function cancellable(items) {
+  return items.filter((o) => o.prefix && ((o.kind === "limit" && o.ordId) || ((o.kind === "stop" || o.kind === "trigger" || o.kind === "chase") && o.algoId)));
+}
+function xBtn(items) {
+  const list = cancellable(items);
+  if (!list.length) return "";
+  const i = cancelSets.push(list) - 1;
+  return `<button type="button" class="t-x" data-x="${i}" aria-label="Cancelar ${list.length > 1 ? list.length + " ordens" : "ordem"}" title="Cancelar">✕</button>`;
+}
+function openCancelSheet(list) {
+  cancelNow = list;
+  const n = list.length;
+  $("cancel-title").textContent = n > 1 ? `Cancelar ${n} ordens` : "Cancelar ordem";
+  const stops = list.some((o) => o.kind === "stop");
+  $("cancel-note").textContent = stops ? "Sem esse stop, a posição fica sem proteção nesse preço." : "";
+  $("cancel-list").innerHTML = list.map((o) => `<li><span class="name">${esc(o.account)}</span> · ${kindLabel(o.kind)} · ${fmtPx(o.price)}${o.sz ? " · " + fmtCt(o.sz) + " ct" : ""}</li>`).join("");
+  $("cancel-ok").textContent = n > 1 ? `Cancelar ${n} ordens` : "Cancelar ordem";
+  $("cancel-ok").disabled = false;
+  show($("cancel-msg"), false);
+  show($("cancel-sheet"), true);
+  try { $("cancel-back").focus(); } catch (e) {}
+}
+function closeCancelSheet() { cancelNow = null; show($("cancel-sheet"), false); }
+async function confirmCancel() {
+  if (!cancelNow || sending) return;
+  sending = true;
+  $("cancel-ok").disabled = true;
+  const fails = [];
+  try {
+    for (const o of cancelNow) {
+      const body = { account: o.prefix };
+      if (o.kind === "limit") body.ordId = o.ordId; else body.algoId = o.algoId;
+      try {
+        const { res, data } = await api("/cancel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        if (!res.ok || data.aborted || data.ok === false) fails.push(`${o.account}: ${data.abort_msg || data.error || "não cancelou"}`);
+      } catch (e) { fails.push(`${o.account}: sem conexão`); }
+    }
+  } finally { sending = false; }
+  loadPositions();
+  if (fails.length) {
+    $("cancel-msg").textContent = fails.join("\n");
+    show($("cancel-msg"), true);
+    $("cancel-ok").disabled = false;
+    return;
+  }
+  closeCancelSheet();
+}
+$("line-tags").addEventListener("click", (ev) => {
+  const b = ev.target.closest(".t-x");
+  if (!b) return;
+  ev.stopPropagation();
+  const list = cancelSets[Number(b.dataset.x)];
+  if (list && list.length) openCancelSheet(list);
+});
+// o ✕ não pode começar um arraste no gráfico
+$("line-tags").addEventListener("pointerdown", (ev) => { if (ev.target.closest(".t-x")) ev.stopPropagation(); });
+$("cancel-back").onclick = closeCancelSheet;
+$("cancel-ok").onclick = confirmCancel;
+$("cancel-sheet").addEventListener("click", (ev) => { if (ev.target === $("cancel-sheet")) closeCancelSheet(); });
 function ppLeg() {
   if (!pp) return null;
   const a = (lastAccounts || []).find((x) => x.name === pp.acc);
@@ -3588,7 +3702,7 @@ function paintKind() {
 function setReducing(on) {
   const next = !!on;
   const hedgeNow = deskKind === "hedge" || deskKind === "hedge-scale";
-  if (next && !hedgeNow && !reducing && sizeMode === "risco") sizeMode = "pct";
+  if (next && !hedgeNow && !reducing && sizeMode === "risco") { sizeMode = "pct"; clearQty(); }
   reducing = next;
   try { sessionStorage.setItem("painel_reduce", reducing ? "1" : "0"); } catch (e) {}
   if (reducing) deskTab = "post";
@@ -3676,7 +3790,8 @@ function hedgeRows() {
     const shortNow = shortCt, longNow = longCt;
     const afterStop = shortCt > 0 && beyond("short", stopOf(a, "short"));
     if (afterStop) shortCt = 0;
-    if (longCt > 0 && beyond("long", stopOf(a, "long"))) longCt = 0;
+    const longAfterStop = longCt > 0 && beyond("long", stopOf(a, "long"));
+    if (longAfterStop) longCt = 0;
     const eq = Number(a.eq) || 0;
     const m = mark || Number(a.mark) || 0;
     const valor = eq * m;
@@ -3697,7 +3812,9 @@ function hedgeRows() {
     const action = Math.abs(delta) < 0.1 ? "no alvo" : delta > 0 ? "vender" : "reduzir";
     const atualAgora = valor > 0 ? shortNow * 100 / valor * 100 : 0;
     const longAgora = valor > 0 ? longNow * 100 / valor * 100 : 0;
-    return { name: a.name, atual, atualAgora, longAgora, afterStop, alvo: hedgePct, net, delta, action, longUsd, shortUsd, valor };
+    // % comprado (líquido = 100% + long − short) no ponto de partida e no alvo, para o modo "% comprado"
+    const netAlvo = valor > 0 ? 100 + (longUsd - hedgePct / 100 * valor) / valor * 100 : 0;
+    return { name: a.name, atual, atualAgora, longAgora, afterStop, longAfterStop, alvo: hedgePct, net, netAlvo, delta, action, longUsd, shortUsd, valor };
   });
 }
 function hedgeMove(r) {
@@ -3707,7 +3824,13 @@ function hedgeMove(r) {
 }
 function paintHedgeTable() {
   const rows = hedgeRows();
-  const line = (r, tot) => `<div class="h-row${tot ? " h-tot" : ""}"><b>${esc(r.name)}</b><span>${fmtPct(r.atual)}${r.afterStop ? " depois do stop" : ""} → ${fmtPct(r.alvo)} · ${hedgeMove(r)}</span></div>`;
+  // modo "% comprado": a linha fala em comprado (líquido); modo "% vendido" e Reduce: em vendido
+  const comprado = hedgeMode !== "short" && !reducing;
+  const line = (r, tot) => {
+    const note = r.afterStop || r.longAfterStop ? " depois do stop" : "";
+    const from = comprado ? r.net : r.atual, to = comprado ? r.netAlvo : r.alvo;
+    return `<div class="h-row${tot ? " h-tot" : ""}"><b>${esc(r.name)}</b><span>${fmtPct(from)}${note} → ${fmtPct(to)}${comprado ? " comprado" : ""} · ${hedgeMove(r)}</span></div>`;
+  };
   let html = rows.map((r) => line(r, false)).join("");
   if (rows.length) {
     const valor = rows.reduce((s, r) => s + (r.valor || 0), 0);
@@ -3717,12 +3840,16 @@ function paintHedgeTable() {
     const atual = valor > 0 ? shortUsd / valor * 100 : 0;
     const alvo = valor > 0 ? alvoUsd / valor * 100 : 0;
     const afterStop = rows.some((r) => r.afterStop);
-    html += line({ name: "Total", atual, alvo, delta, afterStop, action: delta >= 0 ? "vender" : "reduzir" }, true);
+    const longAfterStop = rows.some((r) => r.longAfterStop);
+    const wavg = (k) => (valor > 0 ? rows.reduce((s, r) => s + (r[k] || 0) * (r.valor || 0), 0) / valor : 0);
+    html += line({ name: "Total", atual, alvo, net: wavg("net"), netAlvo: wavg("netAlvo"), delta, afterStop, longAfterStop, action: delta >= 0 ? "vender" : "reduzir" }, true);
     // "agora" é o short de hoje, mesmo quando a escala parte do que sobra depois do stop
     const agora = valor > 0 ? rows.reduce((s, r) => s + (r.atualAgora || 0) * (r.valor || 0), 0) / valor : 0;
     // posição de agora (antes de qualquer stop), em % da carteira
     const longAg = valor > 0 ? rows.reduce((s, r) => s + (r.longAgora || 0) * (r.valor || 0), 0) / valor : 0;
-    const now = `Posição atual: ${fmtPct(longAg)} comprado · ${fmtPct(agora)} vendido` + (afterStop ? ". A escala fica além do stop: o stop fecha o short antes e ela monta um short novo." : "");
+    const now = `Posição atual: ${fmtPct(longAg)} comprado · ${fmtPct(agora)} vendido`
+      + (afterStop ? ". A escala fica além do stop: o stop fecha o short antes e ela monta um short novo." : "")
+      + (longAfterStop ? ". A escala fica além do stop da long: o stop fecha a long antes." : "");
     if ($("d-hedge-now")) $("d-hedge-now").textContent = now;
     if ($("m-hedge-now")) $("m-hedge-now").textContent = now;
   }
@@ -3769,12 +3896,12 @@ function openHedgeSheet() {
     sheetKind = "hedge-scale";
     $("scale-title").textContent = "Escala de hedge";
     const sell = plan.delta >= 0;
-    const fin = hedgeScaleFinalPct(plan).pct;
+    const finTxt = hedgeFinalTxt(plan);
     const afterStop = hedgeRows().some((r) => r.afterStop);
     $("scale-note").textContent = (sell ? "Vende short" : "Recompra short") + ` em ${plan.legs.filter((l) => l.ct >= 0.1).length} ordens, para ${contasTxt()}.`
       + (afterStop ? " A escala fica além do stop: o stop fecha o short antes e ela monta um short novo." : "");
     // resumo como uma ordem só, no preço médio; abaixo, cada ordem só com preço e tamanho
-    const head = `<li class="${sell ? "blocked" : "ok"}">Média ${fmtPx(plan.avg)} · ${fmtCt(Math.abs(plan.delta))} ct · ${fmtPct(Math.abs(plan.delta) * 100 / (plan.valor || 1) * 100)} da carteira · → ${fin == null ? "—" : fmtPct(fin)} vendido</li>`;
+    const head = `<li class="${sell ? "blocked" : "ok"}">Média ${fmtPx(plan.avg)} · ${fmtCt(Math.abs(plan.delta))} ct · ${fmtPct(Math.abs(plan.delta) * 100 / (plan.valor || 1) * 100)} da carteira · ${finTxt}</li>`;
     $("scale-list").innerHTML = head + plan.legs.filter((l) => l.ct >= 0.1).map((l) => `<li>${fmtPx(l.price)} · ${fmtCt(l.ct)} ct</li>`).join("");
     $("scale-msg").textContent = "";
     show($("scale-msg"), false);
