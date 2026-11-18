@@ -1046,12 +1046,25 @@ Deno.test("hedge com Reduce: compra reduz o short, venda reduz a long (nunca abr
   const r = await runHedge(10, "short", "market", null, false, null, true);
   const b = hit("/api/v5/trade/order", "OKX")[0]?.body as any;
   if (r.aborted || !b || b.side !== "buy" || b.posSide !== "short" || !b.reduceOnly || b.sz !== "35.9") throw new Error("short: " + JSON.stringify(b) + " " + r.abort_msg);
-  // alvo 25% = 160,3 ct → precisaria vender 60,3; com Reduce vende a long (até 50 ct), reduce-only, sem abrir short
+  // as duas pernas, a mercado, alvo acima do short: Reduce nunca aumenta o short → nada sai
   scene();
+  const r1 = await runHedge(25, "short", "market", null, false, null, true);
+  if (hit("/api/v5/trade/order").length || (r1.accounts as any[])[0].action !== "nada") throw new Error("devia ficar parado: " + JSON.stringify(r1.accounts));
+  // só long (300 ct = 46,8%), alvo 25% comprado = 160,3 ct → vende 139,7 da long, reduce-only
+  reset(); install();
+  balances = { OKX: 1 };
+  positions = { OKX: [leg("long", "300", "63000", "64100")] };
+  algos = {};
   const r2 = await runHedge(25, "short", "market", null, false, null, true);
-  setScope(null);
   const b2 = hit("/api/v5/trade/order", "OKX")[0]?.body as any;
-  if (r2.aborted || !b2 || b2.side !== "sell" || b2.posSide !== "long" || !b2.reduceOnly || b2.sz !== "50.0") throw new Error("long: " + JSON.stringify(b2) + " " + r2.abort_msg);
+  if (r2.aborted || !b2 || b2.side !== "sell" || b2.posSide !== "long" || !b2.reduceOnly || b2.sz !== "139.7") throw new Error("long: " + JSON.stringify(b2) + " " + r2.abort_msg);
+  // as duas pernas, limite acima do preço (venda): reduz a long até o alvo em % comprado
+  scene();
+  const r3 = await runHedge(5, "short", "limit", 66000, false, null, true);
+  setScope(null);
+  const b3 = hit("/api/v5/trade/order", "OKX")[0]?.body as any;
+  // long 50 ct = 7,8%; alvo 5% = 32,1 ct → vende 17,9
+  if (r3.aborted || !b3 || b3.side !== "sell" || b3.posSide !== "long" || !b3.reduceOnly || b3.sz !== "17.9") throw new Error("long limite: " + JSON.stringify(b3) + " " + r3.abort_msg);
   if (hit("/api/v5/trade/order", "OKX").some((c) => (c.body as any).posSide === "short" && (c.body as any).side === "sell")) throw new Error("abriu short com Reduce");
 });
 

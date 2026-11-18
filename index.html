@@ -107,6 +107,18 @@ html[data-tf="1M"] .tf[data-bar="1M"]{color:var(--text);border-bottom-color:var(
 #chart.dragging{touch-action:none;cursor:ns-resize}
 #chart.line-hover,#chart.line-hover *,#chart.dragging,#chart.dragging *{cursor:ns-resize!important}
 body.dragging-order{overflow:hidden;touch-action:none}
+/* botão de ligar/desligar as linhas de prévia, no canto do gráfico (à esquerda do eixo de preços) */
+.prev-tog{
+  position:absolute;z-index:4;top:8px;right:72px;height:22px;padding:0 8px 0 22px;
+  background:rgba(8,10,12,.82);border:1px solid #2a3138;border-radius:var(--r,3px);
+  color:var(--muted);font-size:11px;font-weight:600;
+}
+.prev-tog::before{
+  content:"";position:absolute;left:8px;top:50%;width:8px;height:8px;margin-top:-4px;border-radius:2px;
+  border:1.5px solid currentColor;
+}
+.prev-tog.on{color:var(--text);border-color:rgba(143,184,222,.5)}
+.prev-tog.on::before{background:var(--accent);border-color:var(--accent)}
 .chart-hint{
   position:absolute;z-index:3;top:8px;left:8px;max-width:calc(100% - 72px);
   pointer-events:none;padding:3px 8px;border-radius:2px;
@@ -600,6 +612,7 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
 <div id="chart"><div id="chart-msg">Carregando gráfico…</div></div>
 <div id="line-tags" class="line-tags" aria-hidden="true"></div>
 <div id="chart-hint" class="chart-hint hidden"></div>
+<button type="button" id="prev-tog" class="prev-tog on" aria-pressed="true" title="Mostrar ou esconder as linhas de prévia no gráfico">Prévia</button>
 <div id="drag-tag" class="drag-tag hidden"></div>
 </div>
 <div class="accts" id="accts">
@@ -1149,7 +1162,9 @@ let drag = null, confirmState = null, dragBound = false;
 let lastPriceFocus = null, scaleArm = "from", chartGesture = null, flashTimer = null;
 const downPointers = new Set();
 const TAP_SLOP = 8;
-const TICK = 0.1, HIT_PX = 24;
+const TICK = 0.1;
+// alcance para pegar uma linha de ordem: justo no mouse (6px), mais folgado no toque (16px)
+const hitPx = () => (window.matchMedia && window.matchMedia("(pointer: coarse)").matches ? 16 : 6);
 const STOP_COLOR = "#f5c84c", LIMIT_COLOR = "#e7e9ec", PREVIEW_COLOR = "#b7c9da";
 function snapPx(p) {
   const n = Number(p);
@@ -1715,7 +1730,18 @@ function orderLineWidth(kind, items) {
   const sides = new Set(items.map((x) => x.posSide).filter(Boolean));
   return sides.has(adjLeg) && ![...sides].some((s) => s !== adjLeg) ? 2 : 1;
 }
+// Prévias no gráfico: o botão "Prévia" liga/desliga; a escolha fica salva no navegador
+var previewOn = true;
+try { previewOn = localStorage.getItem("painel_preview") !== "0"; } catch (e) { /* sem storage */ }
+function setPreviewOn(on) {
+  previewOn = !!on;
+  try { localStorage.setItem("painel_preview", previewOn ? "1" : "0"); } catch (e) { /* sem storage */ }
+  const b = $("prev-tog");
+  if (b) { b.classList.toggle("on", previewOn); b.setAttribute("aria-pressed", previewOn ? "true" : "false"); }
+  drawPreviews();
+}
 function addPreview(price, title, opt) {
+  if (!previewOn) return;
   const o = opt || {};
   const line = series.createPriceLine({
     price,
@@ -1739,11 +1765,14 @@ function hedgeScaleFinalPct(ladder) {
   const pct = walletPct(finalCt, ladder.valor);
   // % comprado (líquido) = 100% + long − short, na mesma carteira
   const comprado = ladder.valor > 0 ? 100 + (path.long - finalCt) * 100 / ladder.valor * 100 : null;
-  return { pct, comprado };
+  // Reduce vendendo: a long depois da escala, em % da carteira
+  const longPct = walletPct(Math.max(0, path.long - (reducing && ladder.delta > 0 ? ladder.delta : 0)), ladder.valor);
+  return { pct, comprado, longPct };
 }
 // texto do resultado final no sentido do modo escolhido: "% vendido" ou "% comprado"
 function hedgeFinalTxt(ladder) {
   const f = hedgeScaleFinalPct(ladder);
+  if (reducing && ladder.delta > 0) return `→ ${f.longPct == null ? "—" : fmtPct(f.longPct)} comprado`;
   if (hedgeMode !== "short" && !reducing) return `→ ${f.comprado == null ? "—" : fmtPct(f.comprado)} comprado`;
   return `→ ${f.pct == null ? "—" : fmtPct(f.pct)} vendido`;
 }
@@ -1975,13 +2004,14 @@ function chartLocalY(ev) {
 }
 function hitOrder(y) {
   if (!series) return null;
-  let best = null, bestD = HIT_PX + 1;
+  const HIT = hitPx();
+  let best = null, bestD = HIT + 1;
   for (const g of orderGroups) {
     if (g.kind === "linked") continue;
     const cy = series.priceToCoordinate(g.price);
     if (cy == null) continue;
     const d = Math.abs(cy - y);
-    if (d <= HIT_PX && d < bestD) { best = g; bestD = d; }
+    if (d <= HIT && d < bestD) { best = g; bestD = d; }
   }
   return best;
 }
@@ -2027,13 +2057,14 @@ function beginDrag(ev) {
 const PREVIEW_DRAG = { price: 1, stop: 1, trigger: 1, from: 1, to: 1, hedge: 1, reduce: 1, tp: 1 };
 function hitPreview(y) {
   if (!series) return null;
-  let best = null, bestD = HIT_PX + 1;
+  const HIT = hitPx();
+  let best = null, bestD = HIT + 1;
   for (const m of previewMeta) {
     if (!m.role || !PREVIEW_DRAG[m.role]) continue;
     const cy = series.priceToCoordinate(m.price);
     if (cy == null) continue;
     const d = Math.abs(cy - y);
-    if (d <= HIT_PX && d < bestD) { best = m; bestD = d; }
+    if (d <= HIT && d < bestD) { best = m; bestD = d; }
   }
   return best;
 }
@@ -2118,11 +2149,26 @@ function eventOnChart(ev) {
   const r = el.getBoundingClientRect();
   return p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
 }
+// eixo de preços (à direita): só serve para o zoom do gráfico; não pega nem arrasta ordem
+function onPriceAxis(ev) {
+  const el = $("chart");
+  if (!el || !chart) return false;
+  let w = 0;
+  try { w = chart.priceScale("right").width() || 0; } catch (e) { w = 0; }
+  if (!(w > 0)) return false;
+  const p = pointOf(ev);
+  return p.x >= el.getBoundingClientRect().right - w;
+}
+// duplo clique no eixo de preços: o zoom do preço volta para o automático
+function resetPriceZoom(ev) {
+  if (!chart || !onPriceAxis(ev)) return;
+  try { chart.priceScale("right").applyOptions({ autoScale: true }); } catch (e) { /* gráfico sem eixo */ }
+}
 function updateLineCursor(ev) {
   const el = $("chart");
   if (!el || !series) return;
   if (drag) { el.classList.add("line-hover"); return; }
-  if (!eventOnChart(ev)) { el.classList.remove("line-hover"); return; }
+  if (!eventOnChart(ev) || onPriceAxis(ev)) { el.classList.remove("line-hover"); return; }
   const y = chartLocalY(ev);
   el.classList.toggle("line-hover", !!(hitOrder(y) || hitPreview(y)));
 }
@@ -2138,6 +2184,7 @@ function onChartDown(ev) {
   if (ev.target && ev.target.closest && ev.target.closest("button, input, select, a, textarea")) return;
   if (ev.button != null && ev.button !== 0) return;
   if (!eventOnChart(ev)) return;
+  if (onPriceAxis(ev)) return; // deixa o gráfico fazer o zoom
   if (ev.touches && ev.touches.length > 1) {
     if (chartGesture) chartGesture.pinch = true;
     else chartGesture = { pinch: true, moved: true, id: -1, x: 0, y: 0 };
@@ -2194,6 +2241,7 @@ function bindChartDrag() {
   const wrap = $("chart-wrap");
   const opts = { capture: true, passive: false };
   wrap.addEventListener("pointerdown", onChartDown, opts);
+  wrap.addEventListener("dblclick", resetPriceZoom, opts);
   wrap.addEventListener("mousedown", onChartDown, opts);
   wrap.addEventListener("touchstart", onChartDown, opts);
   wrap.addEventListener("pointermove", onChartMove, opts);
@@ -3531,6 +3579,9 @@ $("line-tags").addEventListener("pointerdown", (ev) => { if (ev.target.closest("
 $("cancel-back").onclick = closeCancelSheet;
 $("cancel-ok").onclick = confirmCancel;
 $("cancel-sheet").addEventListener("click", (ev) => { if (ev.target === $("cancel-sheet")) closeCancelSheet(); });
+$("prev-tog").onclick = () => setPreviewOn(!previewOn);
+$("prev-tog").classList.toggle("on", previewOn);
+$("prev-tog").setAttribute("aria-pressed", previewOn ? "true" : "false");
 function ppLeg() {
   if (!pp) return null;
   const a = (lastAccounts || []).find((x) => x.name === pp.acc);
@@ -3868,6 +3919,15 @@ function hedgePctValue() {
   const n = parseNum(el && el.value);
   return n == null ? 50 : n;
 }
+// Reduce no hedge: qual perna reduzir (mesma regra da função). Só uma aberta → essa; as duas → pelo lado do
+// preço (acima vende = long; abaixo compra = short); sem preço → o short.
+function reduceLegFor(longCt, shortCt, side) {
+  const hasL = longCt >= 0.1, hasS = shortCt >= 0.1;
+  if (hasS && !hasL) return "short";
+  if (hasL && !hasS) return "long";
+  if (!hasL && !hasS) return null;
+  return side === "sell" ? "long" : "short";
+}
 function hedgeRows() {
   const target = hedgePctValue();
   const mark = lastPx || 0;
@@ -3877,7 +3937,9 @@ function hedgeRows() {
   // Na escala, vale o preço da primeira ordem. Mesma conta do backend (legsAt).
   const inp = deskKind === "hedge-scale" ? scaleInputs() : null;
   const trg = hedgeTrigger();
-  const sp = inp && inp.from > 0 && inp.to > 0 && inp.n >= 2 ? skewPrices(inp.from, inp.to, inp.n) : trg ? [trg] : null;
+  const hp = deskKind === "hedge" && hedgeOrd === "limit" ? parseNum(isDesk() ? ($("d-hedge-price") && $("d-hedge-price").value) : $("price").value) : null;
+  const sp = inp && inp.from > 0 && inp.to > 0 && inp.n >= 2 ? skewPrices(inp.from, inp.to, inp.n) : trg ? [trg] : hp > 0 ? [hp] : null;
+  const pside = sp && mark > 0 ? (sp.every((p) => p > mark) ? "sell" : sp.every((p) => p < mark) ? "buy" : null) : null;
   const startAt = sp && mark > 0 ? sp.reduce((b, p) => (Math.abs(p - mark) < Math.abs(b - mark) ? p : b), sp[0]) : null;
   const path = startAt ? pathLegs(startAt, null, true) : null;
   return visibleAccounts(lastAccounts).map((a) => {
@@ -3902,9 +3964,13 @@ function hedgeRows() {
     // Reduce no hedge: só reduz posição. Comprar reduz o short; vender reduz a long (até o tamanho dela).
     // O alvo continua sendo o % vendido final. Mesma regra da função (runHedge/runHedgeScale).
     let legSide = "short";
-    if (hedgeNow && reducing && delta > 0) {
-      legSide = "long";
-      delta = roundLot(Math.min(delta, longCt));
+    if (hedgeNow && reducing) {
+      // Reduce: comprar reduz o short até o alvo (% vendido); vender reduz a long até o alvo (% comprado)
+      const leg = reduceLegFor(longCt, shortCt, pside);
+      const alvoR = roundLot((target / 100) * valor / 100);
+      if (leg === "long") { legSide = "long"; delta = roundLot(Math.max(0, longCt - alvoR)); }
+      else if (leg === "short") { delta = roundLot(Math.min(0, alvoR - shortCt)); hedgePct = valor > 0 ? (shortCt + delta) * 100 / valor * 100 : 0; }
+      else delta = 0;
     }
     const atual = valor > 0 ? shortUsd / valor * 100 : 0;
     const net = valor > 0 ? 100 + (longUsd - shortUsd) / valor * 100 : 0;
@@ -3923,6 +3989,9 @@ function hedgeMove(r) {
 }
 function paintHedgeTable() {
   const rows = hedgeRows();
+  const longLeg = reducing && rows.length > 0 && rows.every((r) => r.legSide === "long");
+  if ($("d-hedge-k")) $("d-hedge-k").textContent = longLeg ? "Quanto % comprado" : "Quanto % vendido";
+  if ($("m-hedge-label")) $("m-hedge-label").textContent = longLeg ? "Quanto % comprado" : "Quanto % vendido";
   // modo "% comprado": a linha fala em comprado (líquido); modo "% vendido" e Reduce: em vendido
   const comprado = hedgeMode !== "short" && !reducing;
   const line = (r, tot) => {
@@ -4009,7 +4078,7 @@ function hedgeTrgTitle() {
   const t = hedgeTotals();
   if (Math.abs(t.delta) < 0.1) return "stop do hedge · já no alvo";
   // Reduce + venda = reduz a long (o short não muda)
-  if (reducing && t.delta > 0) return `stop do hedge · reduzir long ${fmtCt(t.delta)} ct`;
+  if (reducing && t.delta > 0) return `stop do hedge · vender da long ${fmtCt(t.delta)} ct · → ${fmtPct(hedgePctValue())} comprado`;
   return `stop do hedge · ${t.delta > 0 ? "vender" : "recomprar"} ${fmtCt(Math.abs(t.delta))} ct · → ${fmtPct(t.alvo)} vendido`;
 }
 function openHedgeSheet() {

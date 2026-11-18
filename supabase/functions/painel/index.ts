@@ -349,6 +349,15 @@ function pathOrders(cs: J[], limits: J[], triggers: J[]): PathOrder[] {
   }
   return out;
 }
+// Reduce no hedge: qual perna reduzir. Só uma aberta → essa. As duas → pelo lado do preço (acima vende = long;
+// abaixo compra = short); sem preço (a mercado) → o short.
+function reduceLegFor(longCt: number, shortCt: number, side: "sell" | "buy" | null): Side | null {
+  const hasL = longCt >= 0.1, hasS = shortCt >= 0.1;
+  if (hasS && !hasL) return "short";
+  if (hasL && !hasS) return "long";
+  if (!hasL && !hasS) return null;
+  return side === "sell" ? "long" : "short";
+}
 function legsAt(legs: Leg[], orders: PathOrder[], mark: number, atPrice: number): { long: number; short: number; touched: boolean } {
   const st = { long: legs.find((l) => l.posSide === "long")?.pos ?? 0, short: legs.find((l) => l.posSide === "short")?.pos ?? 0 };
   if (!(mark > 0) || !(atPrice > 0) || atPrice === mark) return { ...st, touched: false };
@@ -1289,8 +1298,8 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
     let longCt = legs.find((l) => l.posSide === "long")?.pos ?? 0;
     let shortCt = legs.find((l) => l.posSide === "short")?.pos ?? 0;
     let afterStop = false;
-    if (ordType === "trigger") {
-      // ponto de partida = as pernas quando o preço chegar no gatilho, depois de todas as pendentes no caminho
+    if (ordType === "trigger" || ordType === "limit") {
+      // ponto de partida = as pernas quando o preço chegar na ordem, depois de todas as pendentes no caminho
       const [cs, lims, trgs] = await Promise.all([conds(P), pendingLimits(P), algosOf(P, "trigger")]);
       const st = legsAt(legs, pathOrders(cs, lims, trgs), mark, price!);
       afterStop = st.touched;
@@ -1302,13 +1311,17 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
     let hedgePct = h.hedgePct;
     let alvoCt = h.alvoCt;
     let delta = h.delta;
-    // Reduce no hedge: só ordens de redução. Comprar com Reduce reduz o short; vender com Reduce reduz a long
-    // (em vez de abrir mais short), na mesma quantidade, até o tamanho da long.
+    // Reduce no hedge: só reduz posição, e o alvo é o % final da perna reduzida.
+    // Comprar reduz o short até o alvo em % vendido; vender reduz a long até o alvo em % comprado.
     let legSide: Side = "short";
-    if (reduce && delta > 0) {
-      legSide = "long";
-      delta = roundLot(Math.min(delta, longCt));
-      if (!(delta >= 0.1)) err = "com Reduce, sem long para reduzir";
+    if (reduce) {
+      const pside = ordType === "market" || !(price! > 0) ? null : price! > mark ? "sell" : "buy";
+      const leg = reduceLegFor(longCt, shortCt, pside);
+      const alvo = roundLot((targetPct / 100) * h.valor / CT_VAL);
+      if (!leg) err = "sem posição para reduzir";
+      else if (leg === "short") { legSide = "short"; delta = roundLot(Math.min(0, alvo - shortCt)); }
+      else { legSide = "long"; delta = roundLot(Math.max(0, longCt - alvo)); }
+      alvoCt = legSide === "short" ? roundLot(shortCt + delta) : shortCt;
     }
     if (err) { /* já explicado */ }
     else if (!(eq > 0)) err = "saldo zerado";
@@ -1764,8 +1777,16 @@ async function runHedgeScale(targetPct: number, mode: "short" | "net", from: num
     const hn = hedgeNumbers(eq, mark, longCt, shortCt, targetPct, mode);
     delta = hn.delta;
     alvo = hn.hedgePct;
-    const legSide: Side = reduce && delta > 0 ? "long" : "short";
-    if (legSide === "long") delta = roundLot(Math.min(delta, longCt));
+    // Reduce: comprar reduz o short até o alvo (% vendido); vender reduz a long até o alvo (% comprado)
+    let legSide: Side = "short";
+    if (reduce) {
+      const pside = prices.every((p) => p > mark) ? "sell" : prices.every((p) => p < mark) ? "buy" : null;
+      const leg = reduceLegFor(longCt, shortCt, pside);
+      const alvoCt = roundLot((targetPct / 100) * valor / CT_VAL);
+      if (leg === "long") { legSide = "long"; delta = roundLot(Math.max(0, longCt - alvoCt)); alvo = valor > 0 ? shortCt * 100 / valor * 100 : 0; }
+      else if (leg === "short") { delta = roundLot(Math.min(0, alvoCt - shortCt)); alvo = valor > 0 ? (shortCt + delta) * 100 / valor * 100 : 0; }
+      else delta = 0;
+    }
     const sell = delta > 0;
     const atual = valor > 0 ? shortCt * 100 / valor * 100 : 0;
     const parts = splitLots(Math.abs(delta), weights).map((ct, i) => ({ price: prices[i], ct })).filter((p) => p.ct >= 0.1);
