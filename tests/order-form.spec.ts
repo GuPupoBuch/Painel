@@ -635,6 +635,12 @@ test("hedge a mercado: gatilho vazio executa agora; com gatilho vira stop a merc
   await page.click("#d-groups [data-group=hedge]");
   await expect(page.locator("#d-hedge-trg")).toBeVisible();
   await expect(page.locator("#d-hedge-go")).toHaveText("Confirmar hedge agora");
+  // clicar no gráfico preenche o gatilho
+  await expect(page.locator("#chart-hint")).toContainText("gatilho");
+  // quadro limpo: só a posição atual, sem seletor vendido/comprado nem tabela
+  await expect(page.locator("#d-hedge-now")).toHaveText(/^Posição atual: .* comprado · .* vendido$/);
+  await expect(page.locator("#d-hedge-modes")).toBeHidden();
+  await expect(page.locator("#d-hedge-table")).toBeHidden();
   await page.fill("#d-hedge-pct", "50");
   await page.fill("#d-hedge-trigger", "63000");
   await expect(page.locator("#d-hedge-go")).toHaveText("Colocar stop do hedge em 63.000");
@@ -653,4 +659,37 @@ test("hedge a mercado: gatilho vazio executa agora; com gatilho vira stop a merc
   // Limite esconde o gatilho
   await page.click("#d-hedge-lmt");
   await expect(page.locator("#d-hedge-trg")).toBeHidden();
+});
+
+test("eixo de preços: só zoom (não pega ordem); duplo clique volta o zoom; botão Prévia liga/desliga", async ({ page }) => {
+  test.skip(!(await desk(page)), "só no desktop");
+  await page.waitForFunction("typeof chart !== 'undefined' && chart && chart.priceScale('right').width() > 0", null, { timeout: 15000 });
+  await page.evaluate("series.applyOptions({ autoscaleInfoProvider: () => ({ priceRange: { minValue: 55000, maxValue: 72000 } }) })");
+  await page.waitForFunction("orderGroups.some((g) => g.price === 58000) && series.priceToCoordinate(58000) != null", null, { timeout: 15000 });
+  const box = (await page.locator("#chart").boundingBox())!;
+  const info = await page.evaluate("({ axis: chart.priceScale('right').width(), y: series.priceToCoordinate(58000) })") as { axis: number; y: number };
+  // clicar e arrastar no eixo, na altura do stop de 58.000, não arrasta a ordem
+  // na linha (dentro do gráfico), pega a ordem; 12px fora, não
+  expect(await page.evaluate(`!!hitOrder(${info.y})`)).toBeTruthy();
+  expect(await page.evaluate(`!!hitOrder(${info.y + 12})`)).toBeFalsy();
+  const ax = box.x + box.width - info.axis / 2, ay = box.y + info.y;
+  await page.mouse.move(ax, ay);
+  await page.mouse.down();
+  await page.mouse.move(ax, ay - 40, { steps: 4 });
+  await page.mouse.up();
+  await expect(page.locator("#amend-sheet")).toBeHidden();
+  // duplo clique no eixo volta o zoom automático
+  await page.evaluate("chart.priceScale('right').applyOptions({ autoScale: false })");
+  await page.mouse.dblclick(ax, box.y + 100);
+  expect(await page.evaluate("chart.priceScale('right').options().autoScale")).toBeTruthy();
+  // botão Prévia
+  await setKind(page, "limit");
+  await setSize(page, "usd", "1000");
+  await setPrice(page, "63000");
+  await expect.poll(() => page.evaluate("previewMeta.length")).toBeGreaterThan(0);
+  await page.click("#prev-tog");
+  await expect(page.locator("#prev-tog")).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(() => page.evaluate("previewMeta.length")).toBe(0);
+  await page.click("#prev-tog");
+  await expect.poll(() => page.evaluate("previewMeta.length")).toBeGreaterThan(0);
 });

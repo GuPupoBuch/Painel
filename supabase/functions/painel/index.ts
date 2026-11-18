@@ -317,6 +317,65 @@ function addsToLeg(legs: Leg[], cs: J[], side: Side, entries: number[]): boolean
   const s = legStopPx(cs, side);
   return !(entries.length > 0 && entries.every((p) => beyondLegStop(side, p, s)));
 }
+// ---------- caminho do preço ----------
+// Pernas (ct) de uma conta se o preço andar do mark até `atPrice` (sem incluir ordens exatamente em atPrice):
+// aplica as ordens pendentes na ordem em que o preço as encontra. Stop cf=1 (ou sem tamanho) fecha a perna;
+// reduce tira (sem passar de 0); abrir soma. O stop vinculado a uma ordem a limite só conta se essa ordem
+// estiver antes no caminho. Mesma regra do painel (pathLegs).
+type PathOrder = { price: number; leg: Side; ct: number; reduce: boolean; whole: boolean; parent?: string; id?: string };
+function pathOrders(cs: J[], limits: J[], triggers: J[]): PathOrder[] {
+  const out: PathOrder[] = [];
+  for (const x of cs) {
+    const px = parseFloat(x.slTriggerPx);
+    if (!(px > 0) || (x.posSide !== "long" && x.posSide !== "short")) continue;
+    const sz = parseFloat(x.sz || "0");
+    out.push({ price: px, leg: x.posSide, ct: sz > 0 ? sz : 0, reduce: true, whole: isCf1(x) || !(sz > 0) });
+  }
+  for (const o of limits) {
+    const px = parseFloat(o.px), sz = parseFloat(o.sz || "0");
+    if (!(px > 0) || !(sz > 0) || (o.posSide !== "long" && o.posSide !== "short")) continue;
+    const reduce = o.reduceOnly === true || o.reduceOnly === "true";
+    out.push({ price: px, leg: o.posSide, ct: sz, reduce, whole: false, id: String(o.ordId ?? "") });
+    const att = Array.isArray(o.attachAlgoOrds) ? o.attachAlgoOrds : [];
+    for (const a of att) {
+      const sl = parseFloat(a.slTriggerPx);
+      if (sl > 0) out.push({ price: sl, leg: o.posSide, ct: sz, reduce: true, whole: false, parent: String(o.ordId ?? "") });
+    }
+  }
+  for (const t of triggers) {
+    const px = parseFloat(t.triggerPx), sz = parseFloat(t.sz || "0");
+    if (!(px > 0) || !(sz > 0) || (t.posSide !== "long" && t.posSide !== "short")) continue;
+    out.push({ price: px, leg: t.posSide, ct: sz, reduce: t.reduceOnly === true || t.reduceOnly === "true", whole: false });
+  }
+  return out;
+}
+// Reduce no hedge: qual perna reduzir. Só uma aberta → essa. As duas → pelo lado do preço (acima vende = long;
+// abaixo compra = short); sem preço (a mercado) → o short.
+function reduceLegFor(longCt: number, shortCt: number, side: "sell" | "buy" | null): Side | null {
+  const hasL = longCt >= 0.1, hasS = shortCt >= 0.1;
+  if (hasS && !hasL) return "short";
+  if (hasL && !hasS) return "long";
+  if (!hasL && !hasS) return null;
+  return side === "sell" ? "long" : "short";
+}
+function legsAt(legs: Leg[], orders: PathOrder[], mark: number, atPrice: number): { long: number; short: number; touched: boolean } {
+  const st = { long: legs.find((l) => l.posSide === "long")?.pos ?? 0, short: legs.find((l) => l.posSide === "short")?.pos ?? 0 };
+  if (!(mark > 0) || !(atPrice > 0) || atPrice === mark) return { ...st, touched: false };
+  const up = atPrice > mark;
+  const on = (p: number) => (up ? p > mark && p < atPrice : p < mark && p > atPrice);
+  const list = orders.filter((o) => on(o.price)).sort((a, b) => (up ? a.price - b.price : b.price - a.price));
+  const filled = new Set<string>();
+  let touched = false;
+  for (const o of list) {
+    if (o.parent != null && !filled.has(o.parent)) continue;
+    if (o.whole) st[o.leg] = 0;
+    else if (o.reduce) st[o.leg] = roundLot(Math.max(0, st[o.leg] - o.ct));
+    else st[o.leg] = roundLot(st[o.leg] + o.ct);
+    if (o.id) filled.add(o.id);
+    touched = true;
+  }
+  return { ...st, touched };
+}
 function ctFromRisk(eq: number, entry: number, stop: number, riskPct: number): number {
   if (!(eq > 0) || !(entry > 0) || !(stop > 0) || !(riskPct > 0)) return 0;
   const den = Math.abs(100 * (1 / entry - 1 / stop));
@@ -1219,7 +1278,8 @@ function hedgeNumbers(eq: number, mark: number, longCt: number, shortCt: number,
 }
 
 // ordType "trigger": stop a mercado do hedge. `price` é o gatilho; quando o preço chegar lá, vende/recompra a mercado
-// o que falta para o alvo. Se o gatilho fica além do stop de uma perna, a conta parte do que sobra depois do stop.
+// o que falta para o alvo. O ponto de partida são as pernas quando o preço chegar no gatilho, depois de todas
+// as ordens pendentes no caminho (stops, limites, stops a mercado), nos dois lados.
 async function runHedge(targetPct: number, mode: "short" | "net", ordType: "market" | "limit" | "trigger", price: number | null, dry: boolean, only: string[] | null, reduce = false) {
   const out: J = { target_pct: targetPct, mode, ordType, price: ordType === "limit" ? price : null, triggerPx: ordType === "trigger" ? price : null, dry, aborted: false, abort_msg: null, accounts: [] };
   if (!(targetPct >= 0 && targetPct <= CAP)) return { ...out, aborted: true, abort_msg: "Alvo fora do intervalo." };
@@ -1238,28 +1298,44 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
     let longCt = legs.find((l) => l.posSide === "long")?.pos ?? 0;
     let shortCt = legs.find((l) => l.posSide === "short")?.pos ?? 0;
     let afterStop = false;
-    if (ordType === "trigger") {
-      const cs = await conds(P);
-      if (shortCt > 0 && beyondLegStop("short", price!, legStopPx(cs, "short"))) { shortCt = 0; afterStop = true; }
-      if (longCt > 0 && beyondLegStop("long", price!, legStopPx(cs, "long"))) { longCt = 0; afterStop = true; }
+    if (ordType === "trigger" || ordType === "limit") {
+      // ponto de partida = as pernas quando o preço chegar na ordem, depois de todas as pendentes no caminho
+      const [cs, lims, trgs] = await Promise.all([conds(P), pendingLimits(P), algosOf(P, "trigger")]);
+      const st = legsAt(legs, pathOrders(cs, lims, trgs), mark, price!);
+      afterStop = st.touched;
+      longCt = st.long; shortCt = st.short;
     }
     const h = hedgeNumbers(eq, mark, longCt, shortCt, targetPct, mode);
-    let action: "vender" | "reduzir" | "nada" = "nada";
+    let action: "vender" | "reduzir" | "reduzir long" | "nada" = "nada";
     let err: string | null = null;
     let hedgePct = h.hedgePct;
     let alvoCt = h.alvoCt;
     let delta = h.delta;
+    // Reduce no hedge: só reduz posição, e o alvo é o % final da perna reduzida.
+    // Comprar reduz o short até o alvo em % vendido; vender reduz a long até o alvo em % comprado.
+    let legSide: Side = "short";
     if (reduce) {
-      const closeCt = roundLot(shortCt * Math.min(100, Math.max(0, targetPct)) / 100);
-      delta = -closeCt;
-      alvoCt = roundLot(shortCt + delta);
-      hedgePct = h.valor > 0 ? alvoCt * 100 / h.valor * 100 : 0;
+      const pside = ordType === "market" || !(price! > 0) ? null : price! > mark ? "sell" : "buy";
+      const leg = reduceLegFor(longCt, shortCt, pside);
+      const alvo = roundLot((targetPct / 100) * h.valor / CT_VAL);
+      if (!leg) err = "sem posição para reduzir";
+      else if (leg === "short") { legSide = "short"; delta = roundLot(Math.min(0, alvo - shortCt)); }
+      else { legSide = "long"; delta = roundLot(Math.max(0, longCt - alvo)); }
+      alvoCt = legSide === "short" ? roundLot(shortCt + delta) : shortCt;
     }
-    if (!(eq > 0)) err = "saldo zerado";
+    if (err) { /* já explicado */ }
+    else if (!(eq > 0)) err = "saldo zerado";
     else if (Math.abs(delta) < 0.1) action = "nada";
+    else if (legSide === "long") action = "reduzir long";
     else if (delta > 0) action = "vender";
     else action = "reduzir";
-    return { P, name, eq, longCt, shortCt, ...h, hedgePct, alvoCt, delta, action, err, afterStop };
+    // hedge a limite: acima do preço atual só vende, abaixo só compra
+    if (!err && ordType === "limit" && action !== "nada") {
+      const selling = action === "vender" || action === "reduzir long";
+      if (selling && price! < mark) err = "abaixo do preço é compra: o alvo pede venda";
+      if (!selling && price! > mark) err = "acima do preço é venda: o alvo pede recompra";
+    }
+    return { P, name, eq, longCt, shortCt, ...h, hedgePct, alvoCt, delta, action, err, afterStop, legSide };
   }));
   out.accounts = R.map((r) => ({
     prefix: r.P, name: r.name, eq: r.eq, valor_usd: r.valor, long_usd: r.longUsd, short_usd: r.shortUsd,
@@ -1273,10 +1349,10 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
     if (ordType === "trigger") {
       // stop a mercado: fica pendente; nada muda agora (nem os stops da perna)
       const tb: J = {
-        instId: INST, tdMode: "cross", side: r.action === "vender" ? "sell" : "buy", posSide: "short",
+        instId: INST, tdMode: "cross", side: r.action === "vender" || r.action === "reduzir long" ? "sell" : "buy", posSide: r.legSide,
         ordType: "trigger", sz: sz.toFixed(1), triggerPx: pyG(price!), orderPx: "-1", triggerPxType: "last",
       };
-      if (r.action === "reduzir") tb.reduceOnly = true;
+      if (r.action === "reduzir" || r.action === "reduzir long") tb.reduceOnly = true;
       const e = await req(r.P, "POST", "/api/v5/trade/order-algo", tb);
       const d = (e.data && e.data[0]) || {};
       const ok = e.code === "0" && (d.sCode == null || d.sCode === "0");
@@ -1285,15 +1361,15 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
     const clOrdId = ("h" + Date.now().toString(36) + r.P + Math.random().toString(36).slice(2, 6)).replace(/[^0-9A-Za-z]/g, "").slice(0, 32);
     const body: J = {
       instId: INST, tdMode: "cross", clOrdId,
-      side: r.action === "vender" ? "sell" : "buy",
-      posSide: "short", ordType, sz: sz.toFixed(1),
+      side: r.action === "vender" || r.action === "reduzir long" ? "sell" : "buy",
+      posSide: r.legSide, ordType, sz: sz.toFixed(1),
     };
-    if (r.action === "reduzir") body.reduceOnly = true;
+    if (r.action === "reduzir" || r.action === "reduzir long") body.reduceOnly = true;
     if (ordType === "limit") body.px = pyG(price!);
     const e = await req(r.P, "POST", "/api/v5/trade/order", body);
     const d = (e.data && e.data[0]) || {};
     const ok = e.code === "0" && d.sCode === "0";
-    if (ok && r.alvoCt === 0 && r.shortCt >= 0.1) {
+    if (ok && r.legSide === "short" && r.alvoCt === 0 && r.shortCt >= 0.1) {
       const mine = algosFor(await conds(r.P), "short").filter((x) => x.algoId).map((x) => ({ algoId: x.algoId, instId: INST }));
       if (mine.length) await req(r.P, "POST", "/api/v5/trade/cancel-algos", mine);
     }
@@ -1685,25 +1761,31 @@ async function runHedgeScale(targetPct: number, mode: "short" | "net", from: num
   try { mark = await markPx(); } catch { return { ...out, aborted: true, abort_msg: "Mark indisponível." }; }
   out.mark = mark;
   const R = await Promise.all(accs().map(async ([P, name]) => {
-    const [eq, legs, cs] = await Promise.all([eq_of(P), legsOf(P), conds(P)]);
-    let longCt = legs.find((l) => l.posSide === "long")?.pos ?? 0;
-    let shortCt = legs.find((l) => l.posSide === "short")?.pos ?? 0;
-    // Escala inteira além do stop de uma perna: o stop fecha essa perna antes de o preço chegar nas ordens.
-    // O ponto de partida é o que sobra depois do stop (0), não a perna de agora.
-    const shortGone = shortCt > 0 && prices.every((p) => beyondLegStop("short", p, legStopPx(cs, "short")));
-    const longGone = longCt > 0 && prices.every((p) => beyondLegStop("long", p, legStopPx(cs, "long")));
-    if (shortGone) shortCt = 0;
-    if (longGone) longCt = 0;
+    const [eq, legs, cs, lims, trgs] = await Promise.all([eq_of(P), legsOf(P), conds(P), pendingLimits(P), algosOf(P, "trigger")]);
+    // Ponto de partida = as pernas quando o preço chegar na primeira ordem da escala, depois de todas as pendentes
+    // no caminho (um stop que fecha a perna, vendas e recompras já colocadas), nos dois lados.
+    const nearest = prices.reduce((b, p) => (Math.abs(p - mark) < Math.abs(b - mark) ? p : b), prices[0]);
+    const st = legsAt(legs, pathOrders(cs, lims, trgs), mark, nearest);
+    const shortNowCt = legs.find((l) => l.posSide === "short")?.pos ?? 0;
+    let longCt = st.long;
+    let shortCt = st.short;
+    const shortGone = st.touched && shortCt !== shortNowCt;
     const valor = eq * mark;
     let delta = 0;
     let alvo = valor > 0 ? shortCt * 100 / valor * 100 : 0;
+    // Reduce no hedge: só reduz posição. Comprar reduz o short; vender reduz a long (até o tamanho dela).
+    const hn = hedgeNumbers(eq, mark, longCt, shortCt, targetPct, mode);
+    delta = hn.delta;
+    alvo = hn.hedgePct;
+    // Reduce: comprar reduz o short até o alvo (% vendido); vender reduz a long até o alvo (% comprado)
+    let legSide: Side = "short";
     if (reduce) {
-      delta = -roundLot(shortCt * Math.min(100, Math.max(0, targetPct)) / 100);
-      alvo = valor > 0 ? (shortCt + delta) * 100 / valor * 100 : 0;
-    } else {
-      const h = hedgeNumbers(eq, mark, longCt, shortCt, targetPct, mode);
-      delta = h.delta;
-      alvo = h.hedgePct;
+      const pside = prices.every((p) => p > mark) ? "sell" : prices.every((p) => p < mark) ? "buy" : null;
+      const leg = reduceLegFor(longCt, shortCt, pside);
+      const alvoCt = roundLot((targetPct / 100) * valor / CT_VAL);
+      if (leg === "long") { legSide = "long"; delta = roundLot(Math.max(0, longCt - alvoCt)); alvo = valor > 0 ? shortCt * 100 / valor * 100 : 0; }
+      else if (leg === "short") { delta = roundLot(Math.min(0, alvoCt - shortCt)); alvo = valor > 0 ? (shortCt + delta) * 100 / valor * 100 : 0; }
+      else delta = 0;
     }
     const sell = delta > 0;
     const atual = valor > 0 ? shortCt * 100 / valor * 100 : 0;
@@ -1720,7 +1802,7 @@ async function runHedgeScale(targetPct: number, mode: "short" | "net", from: num
     let err: string | null = !(eq > 0) ? "saldo zerado" : null;
     if (!err && cum.length && sell && cum.some((p) => p.price < mark)) err = "para vender, a escala precisa ficar acima do preço atual";
     if (!err && cum.length && !sell && cum.some((p) => p.price > mark)) err = "para recomprar, a escala precisa ficar abaixo do preço atual";
-    return { P, name, eq, atual, alvo, delta, parts: cum, sell, err, shortGone };
+    return { P, name, eq, atual, alvo, delta, parts: cum, sell, err, shortGone, legSide };
   }));
   out.accounts = R.map((r) => ({
     prefix: r.P, name: r.name, atual_pct: r.atual, alvo_pct: r.alvo, delta_ct: r.delta, after_stop: r.shortGone,
@@ -1741,10 +1823,10 @@ async function runHedgeScale(targetPct: number, mode: "short" | "net", from: num
     if (r.err || !r.parts.length) return { ok: true, msg: r.err };
     const chunk = r.parts.map((l) => {
       const order: J = {
-        instId: INST, tdMode: "cross", side: r.sell ? "sell" : "buy", posSide: "short",
+        instId: INST, tdMode: "cross", side: r.sell ? "sell" : "buy", posSide: r.legSide,
         ordType: "limit", sz: szStr(l.ct), px: pxStr(l.price),
       };
-      if (!r.sell) order.reduceOnly = true;
+      if (!r.sell || r.legSide === "long") order.reduceOnly = true;
       return order;
     });
     const e = await req(r.P, "POST", "/api/v5/trade/batch-orders", chunk);
