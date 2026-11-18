@@ -64,8 +64,23 @@ function every(bodies: Body[], pred: (b: Body) => boolean, label: string) {
   for (const b of bodies) expect(pred(b), label + " " + JSON.stringify(b)).toBeTruthy();
 }
 
+// Preço atual fixo em 64.000 (o mesmo do mock): sem isso o teste dependia do BTC real pelo WebSocket da OKX,
+// e a trava "limite acima = venda, abaixo = compra" mudaria com o mercado.
+const TEST_MARK = "64000";
 test.beforeEach(async ({ page }) => {
   await resetMock();
+  await page.routeWebSocket(/wss:\/\/ws\.okx\.com/, (ws) => {
+    ws.onMessage((msg) => {
+      if (msg === "ping") { ws.send("pong"); return; }
+      try {
+        const j = JSON.parse(String(msg));
+        if (j.op !== "subscribe") return;
+        for (const a of j.args || []) {
+          if (a.channel === "mark-price") ws.send(JSON.stringify({ arg: a, data: [{ instId: a.instId, markPx: TEST_MARK }] }));
+        }
+      } catch { /* mensagem que não é JSON */ }
+    });
+  });
   await page.addInitScript(() => sessionStorage.removeItem("painel_reduce"));
   await login(page);
 });
@@ -81,8 +96,9 @@ test("limite abre e reduz a perna oposta", async ({ page }) => {
   expect(orders).toHaveLength(4);
 
   await resetMock();
-  await setSize(page, "pct", "50");
+  // o % só aparece com o Reduce ligado
   await setReduce(page, true);
+  await setSize(page, "pct", "50");
   await setPrice(page, "65000");
   await clickSide(page, "short", "/order");
   orders = await okxPosts("/api/v5/trade/order");
@@ -98,8 +114,9 @@ test("mercado abre e o botão long reduz a short", async ({ page }) => {
   every(orders, (b) => b.ordType === "market" && b.side === "buy" && b.posSide === "long" && b.sz === "1.0" && !b.reduceOnly && !b.px, "mercado aberto");
 
   await resetMock();
-  await setSize(page, "pct", "50");
+  // o % só aparece com o Reduce ligado
   await setReduce(page, true);
+  await setSize(page, "pct", "50");
   await clickSide(page, "long", "/order");
   orders = await okxPosts("/api/v5/trade/order");
   every(orders, (b) => b.ordType === "market" && b.side === "buy" && b.posSide === "short" && b.reduceOnly === true && b.sz === "0.5" && !b.px, "long reduz a short");
@@ -116,8 +133,9 @@ test("stop a mercado manda trigger com orderPx -1", async ({ page }) => {
   expect(await okxPosts("/api/v5/trade/order")).toHaveLength(0);
 
   await resetMock();
-  await setSize(page, "pct", "50");
+  // o % só aparece com o Reduce ligado
   await setReduce(page, true);
+  await setSize(page, "pct", "50");
   await page.fill((await desk(page)) ? "#d-trigger" : "#m-trigger", "61000");
   await clickSide(page, "short", "/order");
   algos = await okxPosts("/api/v5/trade/order-algo");
@@ -145,8 +163,9 @@ test("chase limite segue o book e aparece com cancelar", async ({ page }) => {
 
   await resetMock();
   await page.fill((await desk(page)) ? "#d-chase" : "#m-chase", "");
-  await setSize(page, "pct", "50");
+  // o % só aparece com o Reduce ligado
   await setReduce(page, true);
+  await setSize(page, "pct", "50");
   await clickSide(page, "short", "/order");
   algos = await okxPosts("/api/v5/trade/order-algo");
   every(algos, (b) => b.ordType === "chase" && b.chaseVal === "0" && b.side === "sell" && b.posSide === "long" && b.reduceOnly === true && !b.maxChaseType, "chase reduz a long");
@@ -172,8 +191,9 @@ test("escala com e sem reduce, hedge esconde o toggle", async ({ page }) => {
   }
 
   await resetMock();
-  await setSize(page, "pct", "50");
+  // o % só aparece com o Reduce ligado
   await setReduce(page, true);
+  await setSize(page, "pct", "50");
   await page.fill(wide ? "#d-from" : "#m-from", "65000");
   await page.fill(wide ? "#d-to" : "#m-to", "66000");
   await clickSide(page, "short", "/scale");
@@ -241,7 +261,9 @@ test("escala de 10 pernas: compra abaixo do mark entra; acima do máximo não", 
   await page.fill("#d-from", "62710.5");
   await page.fill("#d-to", "62425");
   await page.locator("input#d-orders").fill("10");
-  await page.click("#d-size-even");
+  // tamanho: 60% mais valor em cima (pernas de preço mais alto maiores)
+  await page.locator("#d-skew-size").fill("60");
+  await expect(page.locator("#d-skew-size-v")).toHaveText("60% em cima");
   await page.fill("#d-stop", "60000");
   await page.fill("#d-risk", "1");
   const deepWait = page.waitForResponse((r) => r.url().includes(":8000/scale") && r.request().method() === "POST");
@@ -266,16 +288,19 @@ test("escala de 10 pernas: compra abaixo do mark entra; acima do máximo não", 
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ buyLmt: "64099.5", sellLmt: "63461.4" }),
   });
+  // escala acima do preço atual (64.000) é venda: o LONG trava e nada sai
   await page.fill("#d-from", "65000");
   await page.fill("#d-to", "66000");
-  const highWait = page.waitForResponse((r) => r.url().includes(":8000/scale") && r.request().method() === "POST");
-  await page.click("#d-long");
-  await page.click("#scale-ok");
-  expect((await highWait).ok()).toBeTruthy();
-  await expect(page.locator("#scale-msg")).toContainText("compra acima de 64099.5");
+  await expect(page.locator("#d-long")).toBeDisabled();
+  await expect(page.locator("#d-long .go-sub")).toHaveText("acima do preço: venda");
+  await expect(page.locator("#d-short")).toBeEnabled();
+  // escala que cruza o preço atual trava os dois lados
+  await page.fill("#d-from", "63000");
+  await page.fill("#d-to", "65000");
+  await expect(page.locator("#d-long")).toBeDisabled();
+  await expect(page.locator("#d-short")).toBeDisabled();
   expect(await okxPosts("/api/v5/trade/batch-orders")).toHaveLength(0);
 
-  await page.click("#scale-cancel");
   await resetMock();
   await fetch("http://127.0.0.1:8788/__failmsg", {
     method: "POST",
@@ -308,7 +333,8 @@ test("escala de 10 pernas: compra abaixo do mark entra; acima do máximo não", 
   expect(usdBody.sizeMode).toBe("usd");
   expect(usdBody.usd).toBe(10000);
   expect(usdBody.n).toBe(10);
-  expect(usdBody.sizeSkew).toBe(true);
+  expect(usdBody.sizeSkew).toBe(0.6);
+  expect(usdBody.priceSkew).toBe(0);
   expect(usdBody.side).toBe("long");
   const batches = await okxPosts("/api/v5/trade/batch-orders");
   expect(batches.length).toBeGreaterThan(0);
@@ -332,7 +358,9 @@ test("reduce fica ligado na sessão", async ({ page }) => {
 });
 
 test("ajustar: LONG reduz a short e SHORT reduz a long", async ({ page }) => {
-  await page.click("#d-tabs [data-tab=reduce]");
+  // sem a aba Ordem/Ajuste: o painel de ajuste abre pelo Tipo "Ajustar posição %"
+  await page.click("#d-groups [data-group=mercado]");
+  await page.selectOption("#d-kind", "market-adjust");
   await expect(page.locator("#d-adj-leg")).toHaveCount(0);
   await expect(page.locator("#d-adj-pct-k")).toHaveText("% da perna");
   await expect(page.locator("#d-adj-leg-note")).toHaveText("Escolha LONG ou SHORT. O percentual é % da perna.");
@@ -375,13 +403,18 @@ test("ajustar: LONG reduz a short e SHORT reduz a long", async ({ page }) => {
 
 test("screenshots desktop e o arquivo guarda o reduce verde", async ({ page }) => {
   await setKind(page, "limit");
-  await setSize(page, "pct", "50");
   await setPrice(page, "64000");
   await setReduce(page, false);
-  await expect(page.locator("#d-qty-k")).toHaveText("% do saldo");
-  await expect(page.locator("#d-size-note")).toContainText("saldo disponível");
+  // abrir posição: só USD ou Risco
+  await expect(page.locator('#d-size-modes [data-size="pct"]')).toBeHidden();
+  await expect(page.locator('#d-size-modes [data-size="usd"]')).toBeVisible();
+  await expect(page.locator('#d-size-modes [data-size="risco"]')).toBeVisible();
+  await setSize(page, "usd", "1000");
+  await expect(page.locator("#d-qty-k")).toHaveText("Tamanho");
   await page.screenshot({ path: "/opt/cursor/artifacts/painel-desktop-1440-off.png", fullPage: false });
+  // com Reduce o % volta, como % da perna; ao desligar o Reduce, o % some e fica USD
   await setReduce(page, true);
+  await setSize(page, "pct", "50");
   await expect(page.locator("#d-qty-k")).toHaveText("% da perna");
   await expect(page.locator("#d-size-note")).toContainText("% da perna");
   await expect(page.locator("#d-pnl")).toContainText("SHORT PNL (botão LONG)");
@@ -395,4 +428,143 @@ test("screenshots desktop e o arquivo guarda o reduce verde", async ({ page }) =
   const vp = page.viewportSize();
   expect(box && box.y >= 0 && box.y + box.height <= vp.height).toBeTruthy();
   await page.screenshot({ path: "/opt/cursor/artifacts/painel-desktop-1440.png", fullPage: false });
+});
+
+test("limite: acima do preço atual só vende, abaixo só compra; stop a mercado livre", async ({ page }) => {
+  await setKind(page, "limit");
+  await setReduce(page, false);
+  await setSize(page, "usd", "400");
+  const [L, S] = (await desk(page)) ? ["#d-long", "#d-short"] : ["#btn-long", "#btn-short"];
+  await setPrice(page, "65000");
+  await expect(page.locator(L)).toBeDisabled();
+  await expect(page.locator(S)).toBeEnabled();
+  await setPrice(page, "63000");
+  await expect(page.locator(L)).toBeEnabled();
+  await expect(page.locator(S)).toBeDisabled();
+  await clickSide(page, "long", "/order");
+  const orders = await okxPosts("/api/v5/trade/order");
+  every(orders, (b) => b.ordType === "limit" && b.side === "buy" && b.px === "63000", "compra abaixo do preço atual");
+  // stop a mercado: o lado é escolha sua, nos dois sentidos
+  await setKind(page, "trigger");
+  await page.fill((await desk(page)) ? "#d-trigger" : "#m-trigger", "65000");
+  await expect(page.locator(L)).toBeEnabled();
+  await expect(page.locator(S)).toBeEnabled();
+});
+
+test("setinha da posição: reduz só aquela conta, a limite / chase / mercado", async ({ page }) => {
+  test.skip(!(await desk(page)), "só no desktop");
+  const open = async (acc: string, side: string) => {
+    await page.click(`.pos-act[data-pp-acc="${acc}"][data-pp-side="${side}"]`);
+    await expect(page.locator("#pos-pop")).toBeVisible();
+  };
+  const send = async () => {
+    const wait = page.waitForResponse((r) => r.url().includes(":8000/order") && r.request().method() === "POST");
+    await page.click("#pp-go");
+    const res = await wait;
+    const json = await res.json();
+    expect(json.aborted, String(json.abort_msg || "")).toBeFalsy();
+    await expect(page.locator("#pos-pop")).toBeHidden();
+    return JSON.parse(res.request().postData() || "{}");
+  };
+
+  // long da pupo, 50% a limite: venda abaixo do preço atual (64.000) trava; acima vai
+  await open("pupo", "long");
+  await expect(page.locator("#pp-size")).toContainText("1 de 2 ct");
+  // % manual: 40% de 2 ct = 0,8 ct; fora de 1–100 trava; o atalho volta a preencher o campo
+  await page.fill("#pp-pct", "40");
+  await expect(page.locator("#pp-size")).toContainText("0,8 de 2 ct");
+  await expect(page.locator("#pp-pcts .d-tog.on")).toHaveCount(0);
+  await page.fill("#pp-pct", "150");
+  await expect(page.locator("#pp-go")).toBeDisabled();
+  await page.click('#pp-pcts [data-pp-pct="50"]');
+  await expect(page.locator("#pp-pct")).toHaveValue("50");
+  await page.click('#pp-types [data-pp-type="limit"]');
+  await page.fill("#pp-price", "63000");
+  await expect(page.locator("#pp-go")).toBeDisabled();
+  await expect(page.locator("#pp-msg")).toContainText("acima do preço atual");
+  await page.fill("#pp-price", "65000");
+  await expect(page.locator("#pp-go")).toHaveText("Vender 50% a limite");
+  const lim = await send();
+  expect(lim).toMatchObject({ side: "long", reduce: true, ordType: "limit", price: 65000, contracts: { pupo: 1 } });
+  const limOrders = (await okxPosts("/api/v5/trade/order")) as Body[];
+  expect(limOrders).toHaveLength(1);
+  expect(limOrders[0]).toMatchObject({ ordType: "limit", side: "sell", posSide: "long", sz: "1.0", px: "65000", reduceOnly: true });
+
+  // short da pai, 100% chase
+  await resetMock();
+  await open("pai", "short");
+  await page.click('#pp-pcts [data-pp-pct="100"]');
+  await page.click('#pp-types [data-pp-type="chase"]');
+  const ch = await send();
+  expect(ch).toMatchObject({ side: "short", reduce: true, ordType: "chase", contracts: { pai: 1 } });
+  const algos = (await okxPosts("/api/v5/trade/order-algo")) as Body[];
+  expect(algos.some((b) => b.ordType === "chase" && b.side === "buy" && b.posSide === "short" && b.reduceOnly === true)).toBeTruthy();
+
+  // Esc fecha sem enviar
+  await resetMock();
+  await open("tcheco", "long");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#pos-pop")).toBeHidden();
+  expect(await okxPosts("/api/v5/trade/order")).toHaveLength(0);
+});
+
+test("sem Reduce não tem %; desligar o Reduce com % volta para USD", async ({ page }) => {
+  await setKind(page, "limit");
+  await setReduce(page, true);
+  await setSize(page, "pct", "50");
+  await setReduce(page, false);
+  const root = (await desk(page)) ? "#d-size-modes" : "#m-size-modes";
+  await expect(page.locator(`${root} [data-size="pct"]`)).toBeHidden();
+  await expect(page.locator(`${root} [data-size="usd"]`)).toHaveClass(/on/);
+});
+
+test("carteira selecionada: info e ordem só dela; Todas manda para as 4", async ({ page }) => {
+  const isDesk = await desk(page);
+  const pick = async (acc: string) => {
+    if (isDesk) await page.selectOption("#d-filter", acc);
+    else await page.click(`#accts .chip[data-acct="${acc}"]`);
+  };
+  await setKind(page, "limit");
+  await setReduce(page, false);
+  await setSize(page, "usd", "400");
+  await setPrice(page, "63000");
+
+  await pick("pupo");
+  if (isDesk) {
+    await expect(page.locator("#d-size-rows")).toContainText("pupo");
+    await expect(page.locator("#d-size-rows")).not.toContainText("tcheco");
+    await expect(page.locator("#d-pos-body")).not.toContainText("tcheco");
+  }
+  await expect(page.locator(isDesk ? "#d-size-note" : "#m-size-note")).toContainText("carteira pupo");
+  const wait = page.waitForResponse((r) => r.url().includes(":8000/order") && r.request().method() === "POST");
+  await page.click(isDesk ? "#d-long" : "#send");
+  const res = await wait;
+  expect(JSON.parse(res.request().postData() || "{}").accounts).toEqual(["pupo"]);
+  const one = (await fetch("http://127.0.0.1:8788/__calls").then((r) => r.json())) as { method: string; path: string; account: string; body: Body }[];
+  const sent = one.filter((c) => c.method === "POST" && c.path === "/api/v5/trade/order");
+  expect(sent.map((c) => c.account)).toEqual(["pupo"]);
+  expect(sent[0].body.sz).toBe("4.0");
+
+  await resetMock();
+  await pick("todas");
+  const waitAll = page.waitForResponse((r) => r.url().includes(":8000/order") && r.request().method() === "POST");
+  await page.click(isDesk ? "#d-long" : "#send");
+  const resAll = await waitAll;
+  expect(JSON.parse(resAll.request().postData() || "{}").accounts).toBeUndefined();
+  expect(await okxPosts("/api/v5/trade/order")).toHaveLength(4);
+});
+
+test("modo Hedge: etiquetas em % da carteira; Limite continua igual", async ({ page }) => {
+  test.skip(!(await desk(page)), "só no desktop");
+  await page.click('#d-groups [data-group="limite"]');
+  const tags = () => page.locator("#line-tags .ltag").allTextContents();
+  await expect.poll(async () => (await tags()).length).toBeGreaterThan(0);
+  expect((await tags()).some((t) => t.includes("% da carteira"))).toBeFalsy();
+  await page.click('#d-groups [data-group="hedge"]');
+  // posição: % da carteira (4 ct short = US$ 400 sobre 4 BTC × 64.000 = 0,16%)
+  await expect.poll(async () => (await tags()).find((t) => t.startsWith("▼ SHORT"))).toContain("0,2% da carteira");
+  // stop reduce da short: tamanho em % e quanto fica vendido se pegar
+  await expect.poll(async () => (await tags()).find((t) => t.includes("Stop · compra"))).toContain("→ 0% vendido");
+  await page.click('#d-groups [data-group="limite"]');
+  await expect.poll(async () => (await tags()).some((t) => t.includes("% da carteira"))).toBeFalsy();
 });

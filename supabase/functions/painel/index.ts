@@ -8,6 +8,22 @@
 const INST = "BTC-USD-SWAP";
 const CAP = 1000.0;
 const ACC: [string, string][] = [["OKX", "pupo"], ["OKX2", "pai"], ["OKX3", "mãe"], ["OKX4", "tcheco"]];
+// Carteiras da ordem em andamento (o painel manda `accounts` quando uma carteira está selecionada).
+// Sem lista = todas. Aceita nome ("pupo") ou prefixo ("OKX"). As rotas de ordem rodam uma de cada vez (orderBusy),
+// então o escopo vale só para o pedido atual e é limpo no finally.
+let scope: string[] | null = null;
+function accs(): [string, string][] {
+  const s = scope;
+  return s && s.length ? ACC.filter(([P, n]) => s.includes(P) || s.includes(n)) : ACC;
+}
+function accountScope(v: unknown): string[] | null | "bad" {
+  if (v == null) return null;
+  if (!Array.isArray(v)) return "bad";
+  const list = v.map((x) => String(x).trim()).filter(Boolean);
+  if (!list.length) return null;
+  if (list.some((x) => !ACC.some(([P, n]) => P === x || n === x))) return "bad";
+  return list;
+}
 const SESSION_DAYS = 90;
 const LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const LOGIN_MAX = 5;
@@ -281,6 +297,26 @@ function contractMap(raw: unknown): Record<string, number> | null {
   return Object.keys(out).length ? out : null;
 }
 const isCf1 = (x: J) => { const c = String(x.closeFraction ?? ""); return c === "1" || parseFloat(c) === 1; };
+// Stop atual da perna (o cf=1; senão o primeiro stop com gatilho).
+function legStopPx(cs: J[], side: Side): number | null {
+  const mine = cs.filter((x) => x.posSide === side);
+  const s = mine.find(isCf1) ?? mine.find((x) => parseFloat(x.slTriggerPx) > 0) ?? null;
+  const v = parseFloat(s?.slTriggerPx ?? "");
+  return v > 0 ? v : null;
+}
+// A ordem de abertura só executa depois que o preço passa do stop atual da perna (short: no stop ou acima; long: no stop ou abaixo).
+function beyondLegStop(side: Side, price: number, legStop: number | null): boolean {
+  if (legStop == null || !(legStop > 0) || !(price > 0)) return false;
+  return side === "short" ? price >= legStop : price <= legStop;
+}
+// "Aumentar a perna" (stop da perna é movido para o stop novo) só quando a perna existe e a ordem pode executar com ela aberta.
+// Se todas as entradas estão além do stop atual, o stop atual fecha a perna antes: é posição nova, com o stop novo grudado
+// na ordem, e o stop atual fica como está.
+function addsToLeg(legs: Leg[], cs: J[], side: Side, entries: number[]): boolean {
+  if (!legs.some((l) => l.posSide === side && l.pos > 0)) return false;
+  const s = legStopPx(cs, side);
+  return !(entries.length > 0 && entries.every((p) => beyondLegStop(side, p, s)));
+}
 function ctFromRisk(eq: number, entry: number, stop: number, riskPct: number): number {
   if (!(eq > 0) || !(entry > 0) || !(stop > 0) || !(riskPct > 0)) return 0;
   const den = Math.abs(100 * (1 / entry - 1 / stop));
@@ -403,14 +439,14 @@ async function runOrder(side: "long" | "short", STOP: number, riskPct: number, d
   }
   const den = Math.abs(100 * (1 / entry - 1 / STOP));
   const stp = pyG(STOP);
-  const R = await Promise.all(ACC.map(async ([P, n]) => {
+  const R = await Promise.all(accs().map(async ([P, n]) => {
     try {
-      const [eq, legs] = await Promise.all([eq_of(P), legsOf(P)]);
+      const [eq, legs, cs] = await Promise.all([eq_of(P), legsOf(P), conds(P)]);
       const gross = legs.reduce((s, l) => s + l.pos, 0);
       const ps = legs.reduce((s, l) => s + l.pos * (l.posSide === "short" ? -1 : 1), 0);
       const ct = ctFromRisk(eq, entry, STOP, riskPct);
       const expo = eq > 0 && mark > 0 ? (gross + ct) * 100 / (eq * mark) * 100 : 0;
-      const adding = legs.some((l) => l.posSide === side && l.pos > 0);
+      const adding = addsToLeg(legs, cs, side, [entry]);
       let err: string | null = null;
       if (eq <= 0) err = "saldo zerado";
       else if (expo > CAP) err = `expo ${expo.toFixed(0)}% > teto`;
@@ -510,7 +546,7 @@ async function runAdjust(pct: number, ordType: "market" | "limit", price: number
   const mark = await markPx();
   out.mark = mark;
   if (ordType === "limit" && !(price != null && price > 0)) return { ...out, aborted: true, abort_msg: "ABORT preço inválido" };
-  const R = await Promise.all(ACC.map(async ([P, n]) => {
+  const R = await Promise.all(accs().map(async ([P, n]) => {
     try {
       const [eq, leg, cs] = await Promise.all([eq_of(P), pos_leg(P, posSide), conds(P)]);
       const mk = leg.mark || mark;
@@ -710,7 +746,7 @@ async function runReduce(legSide: Side, pct: number, ordType: "market" | "limit"
   const mark = await markPx();
   out.mark = mark;
   if (ordType === "limit" && !(price != null && price > 0)) return { ...out, aborted: true, abort_msg: "ABORT preço inválido" };
-  const R = await Promise.all(ACC.map(async ([P, n]) => {
+  const R = await Promise.all(accs().map(async ([P, n]) => {
     const emptyStop = { cf1: null as J | null, others: [] as J[], trigger: null as number | null };
     try {
       const [eq, legs, cs] = await Promise.all([eq_of(P), legsOf(P), conds(P)]);
@@ -813,13 +849,13 @@ function harmonicAvg(prices: number[], weights: number[]): number {
 }
 // Risco da escala inteira, entre a média harmônica (contrato inverso) e o stop.
 // Tamanho igual: mesmos contratos. Crescente: os pesos 1..n, no mesmo risco total.
-function scaleRiskLots(eq: number, prices: number[], stop: number, riskPct: number, sizeSkew: boolean): { avg: number; cts: number[] } {
-  const weights = prices.map((_, i) => (sizeSkew ? i + 1 : 1));
+function scaleRiskLots(eq: number, prices: number[], stop: number, riskPct: number, sizeSkew: Skew): { avg: number; cts: number[] } {
+  const weights = scaleWeights(prices, sizeSkew);
   const avg = harmonicAvg(prices, weights);
   const total = ctFromRisk(eq, avg, stop, riskPct);
   const cap = eq * (riskPct / 100);
   const lossOf = (cts: number[]) => cts.reduce((s, ct, i) => s + (ct >= 0.1 ? lossBtc(ct, prices[i], stop) : 0), 0);
-  if (!sizeSkew) {
+  if (!skewOn(sizeSkew)) {
     const each = Math.floor(total / prices.length / 0.1 + 1e-9) * 0.1;
     const cts = prices.map(() => each);
     let rem = roundLot(total - each * prices.length);
@@ -846,14 +882,40 @@ function scaleRiskLots(eq: number, prices: number[], stop: number, riskPct: numb
   }
   return { avg, cts };
 }
-function scalePrices(from: number, to: number, n: number, priceSkew: boolean): number[] {
+// Ajustes da escala. Número de −1 a 1 (0 = igual). `true` é o formato antigo e continua igual a antes.
+// Distribuição: + agrupa as ordens perto do preço mais alto, − perto do mais baixo.
+// Tamanho: + põe mais valor nas ordens de preço mais alto (a média sobe), − nas mais baixas (a média desce).
+type Skew = boolean | number;
+function skewArg(v: unknown): Skew {
+  if (v === true || v === false) return v;
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  if (!Number.isFinite(n)) return false;
+  return Math.max(-1, Math.min(1, n));
+}
+const skewOn = (s: Skew) => s === true || (typeof s === "number" && s !== 0);
+function scalePrices(from: number, to: number, n: number, priceSkew: Skew): number[] {
   const out: number[] = [];
+  if (typeof priceSkew === "number" && priceSkew !== 0) {
+    const lo = Math.min(from, to), hi = Math.max(from, to);
+    const g = Math.pow(3, -priceSkew);
+    for (let i = 0; i < n; i++) {
+      const t = n === 1 ? 0 : i / (n - 1);
+      out.push(lo + (hi - lo) * Math.pow(t, g));
+    }
+    return from <= to ? out : out.reverse();
+  }
   for (let i = 0; i < n; i++) {
     const t = n === 1 ? 0 : i / (n - 1);
-    const u = priceSkew ? t * t : t;
+    const u = priceSkew === true ? t * t : t;
     out.push(from + (to - from) * u);
   }
   return out;
+}
+function scaleWeights(prices: number[], sizeSkew: Skew): number[] {
+  if (sizeSkew === true) return prices.map((_, i) => i + 1);
+  if (typeof sizeSkew !== "number" || sizeSkew === 0 || !prices.length) return prices.map(() => 1);
+  const lo = Math.min(...prices), hi = Math.max(...prices), span = hi - lo || 1;
+  return prices.map((p) => Math.exp(1.5 * sizeSkew * (((p - lo) / span) * 2 - 1)));
 }
 
 async function cancelBatch(P: string, ids: string[]) {
@@ -863,7 +925,7 @@ async function cancelBatch(P: string, ids: string[]) {
   }
 }
 
-async function runScale(side: Side, stop: number, riskPct: number, from: number, to: number, n: number, priceSkew: boolean, sizeSkew: boolean, dry: boolean) {
+async function runScale(side: Side, stop: number, riskPct: number, from: number, to: number, n: number, priceSkew: Skew, sizeSkew: Skew, dry: boolean) {
   const t0 = Date.now();
   const lines: string[] = [];
   const out: J = { side, stop, risk: riskPct, from, to, n, priceSkew, sizeSkew, dry, aborted: false, abort_msg: null, accounts: [], warning: false };
@@ -878,12 +940,12 @@ async function runScale(side: Side, stop: number, riskPct: number, from: number,
   }
   const mark = await markPx();
   out.mark = mark;
-  const weights = prices.map((_, i) => sizeSkew ? i + 1 : 1);
+  const weights = scaleWeights(prices, sizeSkew);
   out.avg = harmonicAvg(prices, weights);
   const osSide = side === "short" ? "sell" : "buy";
-  const R = await Promise.all(ACC.map(async ([P, name]) => {
+  const R = await Promise.all(accs().map(async ([P, name]) => {
     try {
-      const [eq, legs] = await Promise.all([eq_of(P), legsOf(P)]);
+      const [eq, legs, cs] = await Promise.all([eq_of(P), legsOf(P), conds(P)]);
       const gross = legs.reduce((s, l) => s + l.pos, 0);
       const sized = scaleRiskLots(eq, prices, stop, riskPct, sizeSkew);
       const planned = prices.map((price, i) => {
@@ -894,7 +956,7 @@ async function runScale(side: Side, stop: number, riskPct: number, from: number,
       const loss = legsOk.reduce((s, l) => s + l.loss, 0);
       const addCt = legsOk.reduce((s, l) => s + l.ct, 0);
       const expo = eq > 0 && mark > 0 ? (gross + addCt) * 100 / (eq * mark) * 100 : 0;
-      const adding = legs.some((l) => l.posSide === side && l.pos > 0);
+      const adding = addsToLeg(legs, cs, side, legsOk.map((l) => l.price));
       let err: string | null = null;
       if (eq <= 0) err = "saldo zerado";
       else if (!legsOk.length) err = "tamanho < 0.1 ct";
@@ -967,18 +1029,18 @@ async function runScale(side: Side, stop: number, riskPct: number, from: number,
 }
 
 // Escala reduce-only. Sem `reduce` no /scale, runScale segue igual. Sem stop e sem risco.
-async function runScaleReduce(side: Side, from: number, to: number, n: number, priceSkew: boolean, sizeSkew: boolean, pct: number | null, contracts: Record<string, number> | null, dry: boolean) {
+async function runScaleReduce(side: Side, from: number, to: number, n: number, priceSkew: Skew, sizeSkew: Skew, pct: number | null, contracts: Record<string, number> | null, dry: boolean) {
   const out: J = { reduce: true, scale: true, side, from, to, n, priceSkew, sizeSkew, pct, dry, aborted: false, abort_msg: null, accounts: [], warning: false };
   if (!(n >= 2 && n <= 50)) return { ...out, aborted: true, abort_msg: "A escala precisa de 2 a 50 ordens." };
   if (!(from > 0) || !(to > 0) || from === to) return { ...out, aborted: true, abort_msg: "ABORT preço inválido" };
   const prices = scalePrices(from, to, n, priceSkew).map(pxTick);
   const bandMsg = pricesOutside(prices, await priceBand(), side === "short");
   if (bandMsg) return { ...out, aborted: true, abort_msg: bandMsg };
-  const weights = prices.map((_, i) => (sizeSkew ? i + 1 : 1));
+  const weights = scaleWeights(prices, sizeSkew);
   const mark = await markPx();
   out.mark = mark;
   const osSide = side === "long" ? "sell" : "buy";
-  const R = await Promise.all(ACC.map(async ([P, name]) => {
+  const R = await Promise.all(accs().map(async ([P, name]) => {
     const emptyStop = { cf1: null as J | null, others: [] as J[], trigger: null as number | null };
     try {
       const [legs, cs] = await Promise.all([legsOf(P), conds(P)]);
@@ -1153,7 +1215,8 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
   try { mark = await markPx(); } catch (e) { return { ...out, aborted: true, abort_msg: "Mark indisponível." }; }
   if (!(mark > 0)) return { ...out, aborted: true, abort_msg: "Mark indisponível." };
   out.mark = mark;
-  const wanted = only && only.length ? ACC.filter(([P]) => only.includes(P)) : ACC;
+  const base = accs();
+  const wanted = only && only.length ? base.filter(([P]) => only.includes(P)) : base;
   if (only && only.length && wanted.length !== only.length) return { ...out, aborted: true, abort_msg: "Conta desconhecida." };
   const R = await Promise.all(wanted.map(async ([P, name]) => {
     const eq = await eq_of(P);
@@ -1225,7 +1288,7 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
 type Book = { P: string; n: string; eq: number; legs: Leg[]; cs: J[]; err: string | null };
 async function readBooks(): Promise<{ mark: number; rows: Book[] }> {
   const mark = await markPx();
-  const rows = await Promise.all(ACC.map(async ([P, n]) => {
+  const rows = await Promise.all(accs().map(async ([P, n]) => {
     try {
       const [eq, legs, cs] = await Promise.all([eq_of(P), legsOf(P), conds(P)]);
       return { P, n, eq, legs, cs, err: null as string | null };
@@ -1266,7 +1329,7 @@ async function runSized(side: Side, ordType: "market" | "limit", price: number |
   const weights = rows.map((r) => (r.eq > 0 && mark > 0 ? r.eq * mark : 0));
   const usdCts = mode === "usd" ? splitLots(amount / 100, weights) : [];
   const planned = rows.map((r, i) => {
-    const adding = r.legs.some((l) => l.posSide === side && l.pos > 0);
+    const adding = addsToLeg(r.legs, r.cs, side, [entry]);
     const ct = mode === "usd" ? usdCts[i] : ctFromEquityPct(r.eq, mark, amount);
     const gross = r.legs.reduce((s, l) => s + l.pos, 0);
     const expo = r.eq > 0 && mark > 0 ? (gross + ct) * 100 / (r.eq * mark) * 100 : 0;
@@ -1355,7 +1418,7 @@ async function runAlgo(opts: {
     : [];
   const planned = rows.map((r, i) => {
     const leg = r.legs.find((l) => l.posSide === opts.side && l.pos > 0) ?? null;
-    const adding = !!leg;
+    const adding = opts.reduce ? !!leg : addsToLeg(r.legs, r.cs, opts.side, [entry]);
     let ct = 0;
     let skip = false;
     let absent = false;
@@ -1443,7 +1506,7 @@ async function runAlgo(opts: {
   return out;
 }
 
-async function runScaleAmount(side: Side, from: number, to: number, n: number, priceSkew: boolean, sizeSkew: boolean, dry: boolean, mode: "usd" | "pct", amount: number, stop: number | null) {
+async function runScaleAmount(side: Side, from: number, to: number, n: number, priceSkew: Skew, sizeSkew: Skew, dry: boolean, mode: "usd" | "pct", amount: number, stop: number | null) {
   const out: J = { side, from, to, n, sizeMode: mode, amount, stop, dry, aborted: false, abort_msg: null, accounts: [] };
   if (!(n >= 2 && n <= 50)) return { ...out, aborted: true, abort_msg: "A escala precisa de 2 a 50 ordens." };
   if (!(from > 0) || !(to > 0) || from === to) return { ...out, aborted: true, abort_msg: "ABORT preço inválido" };
@@ -1455,7 +1518,7 @@ async function runScaleAmount(side: Side, from: number, to: number, n: number, p
   if (stop != null && stop > 0 && prices.some((p) => !stopOnSide(side, stop, p))) {
     return { ...out, aborted: true, abort_msg: side === "long" ? "No long, o stop precisa ficar abaixo de todas as pernas." : "No short, o stop precisa ficar acima de todas as pernas." };
   }
-  const weights = prices.map((_, i) => (sizeSkew ? i + 1 : 1));
+  const weights = scaleWeights(prices, sizeSkew);
   const { mark, rows } = await readBooks();
   out.mark = mark;
   const eqW = rows.map((r) => (r.eq > 0 && mark > 0 ? r.eq * mark : 0));
@@ -1465,7 +1528,7 @@ async function runScaleAmount(side: Side, from: number, to: number, n: number, p
     const ct = roundLot(parts.reduce((s, p) => s + p.ct, 0));
     const gross = r.legs.reduce((s, l) => s + l.pos, 0);
     const expo = r.eq > 0 && mark > 0 ? (gross + ct) * 100 / (r.eq * mark) * 100 : 0;
-    const adding = r.legs.some((l) => l.posSide === side && l.pos > 0);
+    const adding = addsToLeg(r.legs, r.cs, side, parts.map((p) => p.price));
     let err = r.err;
     if (!err && !(r.eq > 0)) err = "saldo zerado";
     else if (!err && ct < 0.1) err = "tamanho < 0.1 ct";
@@ -1571,16 +1634,16 @@ function cors(req: Request): Record<string, string> {
 }
 const num = (x: unknown) => { const n = parseFloat(String(x ?? "").replace(",", ".")); return Number.isFinite(n) ? n : null; };
 
-async function runHedgeScale(targetPct: number, mode: "short" | "net", from: number, to: number, n: number, priceSkew: boolean, sizeSkew: boolean, dry: boolean, reduce: boolean) {
+async function runHedgeScale(targetPct: number, mode: "short" | "net", from: number, to: number, n: number, priceSkew: Skew, sizeSkew: Skew, dry: boolean, reduce: boolean) {
   const out: J = { scale: true, target_pct: targetPct, mode, from, to, n, reduce, dry, aborted: false, abort_msg: null, accounts: [] };
   if (!(n >= 2 && n <= 50)) return { ...out, aborted: true, abort_msg: "A escala precisa de 2 a 50 ordens." };
   if (!(from > 0) || !(to > 0) || from === to) return { ...out, aborted: true, abort_msg: "ABORT preço inválido" };
   const prices = scalePrices(from, to, n, priceSkew).map(pxTick);
-  const weights = prices.map((_, i) => (sizeSkew ? i + 1 : 1));
+  const weights = scaleWeights(prices, sizeSkew);
   let mark = 0;
   try { mark = await markPx(); } catch { return { ...out, aborted: true, abort_msg: "Mark indisponível." }; }
   out.mark = mark;
-  const R = await Promise.all(ACC.map(async ([P, name]) => {
+  const R = await Promise.all(accs().map(async ([P, name]) => {
     const eq = await eq_of(P);
     const legs = await legsOf(P);
     const longCt = legs.find((l) => l.posSide === "long")?.pos ?? 0;
@@ -1682,13 +1745,15 @@ const handler = async (req: Request): Promise<Response> => {
       if (rawSide !== "" && rawSide !== "long" && rawSide !== "short") return json(400, { ok: false, error: "Lado inválido: use long ou short." });
       const posSide: Side | null = rawSide === "long" || rawSide === "short" ? rawSide : null;
       const dry = body.dry === true;
+      const sc = accountScope(body.accounts);
+      if (sc === "bad") return json(400, { ok: false, error: "Carteira desconhecida." });
       if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
-      orderBusy = true;
+      orderBusy = true; scope = sc;
       try {
         const r = await runAdjust(pct, ordType, price, dry, posSide);
         console.log(JSON.stringify({ ev: "adjust", ip, pct, dry, ordType, price, aborted: r.aborted, acc: (r.accounts || []).map((a: J) => `${a.name}=${Math.round(a.close_usd ?? 0)}${a.error ? "(" + a.error + ")" : ""}`) }));
         return json(200, { ok: !r.aborted, ...r });
-      } finally { orderBusy = false; }
+      } finally { orderBusy = false; scope = null; }
     }
     if (path === "/order" && req.method === "POST") {
       let body: J = {};
@@ -1706,8 +1771,10 @@ const handler = async (req: Request): Promise<Response> => {
       const dry = body.dry === true;
       const reduce = body.reduce === true;
       const sizeMode = String(body.sizeMode ?? "").trim().toLowerCase();
+      const sc = accountScope(body.accounts);
+      if (sc === "bad") return json(400, { ok: false, error: "Carteira desconhecida." });
       if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
-      orderBusy = true;
+      orderBusy = true; scope = sc;
       try {
         if (ordType === "trigger" || ordType === "chase") {
           const pxRaw = String(body.triggerPxType ?? "last").trim().toLowerCase();
@@ -1759,7 +1826,7 @@ const handler = async (req: Request): Promise<Response> => {
         const r = await runOrder(side as "long" | "short", stop, risk, dry, ordType, price);
         console.log(JSON.stringify({ ev: "order", ip, side, stop, risk, dry, ordType, price, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
         return json(200, { ok: !r.aborted, ...r });
-      } finally { orderBusy = false; }
+      } finally { orderBusy = false; scope = null; }
     }
     if (path === "/scale" && req.method === "POST") {
       let body: J = {};
@@ -1771,40 +1838,42 @@ const handler = async (req: Request): Promise<Response> => {
       if (from == null || to == null || n == null) return json(400, { ok: false, error: "Preencha os dois preços e a quantidade." });
       const dry = body.dry === true;
       const sizeMode = String(body.sizeMode ?? "").trim().toLowerCase();
+      const sc = accountScope(body.accounts);
+      if (sc === "bad") return json(400, { ok: false, error: "Carteira desconhecida." });
       if (!body.reduce && (sizeMode === "usd" || sizeMode === "pct")) {
         const amount = sizeMode === "usd" ? num(body.usd) : num(body.pct);
         if (amount == null) return json(400, { ok: false, error: sizeMode === "usd" ? "Valor em USD inválido." : "Percentual inválido: use um valor de 1 a 100." });
         if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
-        orderBusy = true;
+        orderBusy = true; scope = sc;
         try {
-          const r = await runScaleAmount(side as Side, from, to, Math.round(n), body.priceSkew === true, body.sizeSkew === true, dry, sizeMode, amount, num(body.stop));
+          const r = await runScaleAmount(side as Side, from, to, Math.round(n), skewArg(body.priceSkew), skewArg(body.sizeSkew), dry, sizeMode, amount, num(body.stop));
           console.log(JSON.stringify({ ev: "scale-sized", ip, side, sizeMode, n, dry, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
           return json(200, { ok: !r.aborted, ...r });
-        } finally { orderBusy = false; }
+        } finally { orderBusy = false; scope = null; }
       }
       if (body.reduce === true) {
         const contracts = contractMap(body.contracts);
         const pct = num(body.pct);
         if (!contracts && (pct == null || !(pct >= 1 && pct <= 100))) return json(400, { ok: false, error: "Percentual inválido: use um valor de 1 a 100." });
         if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
-        orderBusy = true;
+        orderBusy = true; scope = sc;
         try {
-          const r = await runScaleReduce(side, from, to, Math.round(n), body.priceSkew === true, body.sizeSkew === true, pct, contracts, dry);
+          const r = await runScaleReduce(side, from, to, Math.round(n), skewArg(body.priceSkew), skewArg(body.sizeSkew), pct, contracts, dry);
           console.log(JSON.stringify({ ev: "scale-reduce", ip, side, n, dry, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
           return json(200, { ok: !r.aborted, ...r });
-        } finally { orderBusy = false; }
+        } finally { orderBusy = false; scope = null; }
       }
       const stop = num(body.stop);
       if (stop == null || stop <= 0) return json(400, { ok: false, error: "Stop inválido." });
       const risk = num(body.risk);
       if (risk == null || !(risk > 0 && risk <= 5)) return json(400, { ok: false, error: "Risco inválido: use um valor maior que 0 e no máximo 5%." });
       if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
-      orderBusy = true;
+      orderBusy = true; scope = sc;
       try {
-        const r = await runScale(side, stop, risk, from, to, Math.round(n), body.priceSkew === true, body.sizeSkew === true, dry);
+        const r = await runScale(side, stop, risk, from, to, Math.round(n), skewArg(body.priceSkew), skewArg(body.sizeSkew), dry);
         console.log(JSON.stringify({ ev: "scale", ip, side, sizeMode: sizeMode || "risk", n, dry, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
         return json(200, { ok: !r.aborted, ...r });
-      } finally { orderBusy = false; }
+      } finally { orderBusy = false; scope = null; }
     }
     if (path === "/amend" && req.method === "POST") {
       let body: J = {};
@@ -1849,7 +1918,10 @@ const handler = async (req: Request): Promise<Response> => {
       const rawType = String(body.ordType ?? "market").trim().toLowerCase();
       const ordType = rawType === "" ? "market" : rawType;
       if (ordType !== "market" && ordType !== "limit") return json(400, { ok: false, error: "Tipo inválido: use market ou limit." });
-      const only = Array.isArray(body.accounts) ? body.accounts.map((x: unknown) => String(x)) : null;
+      // body.accounts vira o escopo (nome ou prefixo); `only` fica para quem chama runHedge direto com prefixos
+      const sc = accountScope(body.accounts);
+      if (sc === "bad") return json(400, { ok: false, error: "Carteira desconhecida." });
+      const only: string[] | null = null;
       const dry = body.dry === true;
       const reduce = body.reduce === true;
       const from = num(body.from), to = num(body.to), nScale = num(body.n);
@@ -1860,17 +1932,17 @@ const handler = async (req: Request): Promise<Response> => {
         if (price == null || !(price > 0)) return json(400, { ok: false, error: "Preço inválido." });
       }
       if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
-      orderBusy = true;
+      orderBusy = true; scope = sc;
       try {
         if (from != null && to != null && nScale != null) {
-          const r = await runHedgeScale(target, mode as "short" | "net", from, to, Math.round(nScale), body.priceSkew === true, body.sizeSkew === true, dry, reduce);
+          const r = await runHedgeScale(target, mode as "short" | "net", from, to, Math.round(nScale), skewArg(body.priceSkew), skewArg(body.sizeSkew), dry, reduce);
           console.log(JSON.stringify({ ev: "hedge-scale", ip, target, reduce, n: nScale, dry, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
           return json(200, { ok: !r.aborted, ...r });
         }
         const r = await runHedge(target, mode as "short" | "net", ordType as "market" | "limit", price, dry, only, reduce);
         console.log(JSON.stringify({ ev: "hedge", ip, target, mode, reduce, dry, ordType, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
         return json(200, { ok: !r.aborted, ...r });
-      } finally { orderBusy = false; }
+      } finally { orderBusy = false; scope = null; }
     }
     return json(404, { ok: false, error: "não encontrado" });
   } catch (e) {
@@ -1890,8 +1962,9 @@ if (import.meta.main) {
 
 export const __test = {
   setReq(fn: typeof req) { req = fn; },
-  reset() { orderBusy = false; },
+  reset() { orderBusy = false; scope = null; },
+  setScope(s: unknown) { const v = accountScope(s); scope = v === "bad" ? null : v; return v; },
   okxTargetAllowed, okxAllowedByEnv, hostedMarkersPresent, okxLiveAuthorized, okxEnvDiagnostics,
-  ctFromRisk, ctFromEquityPct, lossBtc, scalePrices, hedgeNumbers, realizedPnlBtc, allocateReduce, splitLots, contractMap,
+  ctFromRisk, ctFromEquityPct, lossBtc, scalePrices, scaleWeights, skewArg, hedgeNumbers, realizedPnlBtc, allocateReduce, splitLots, contractMap,
   runOrder, runReduce, runAdjust, runScale, runScaleReduce, runScaleAmount, runSized, runAlgo, runAmend, runCancel, runHedge, runHedgeScale, harmonicAvg, scaleRiskLots, fetchPositions, ACC,
 };

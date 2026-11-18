@@ -18,7 +18,7 @@
 <style>
 :root{
   --bg:#070809;--surface:#101214;--line:#1f2428;--text:#d7dde3;--muted:#7d8792;
-  --accent:#00e29a;--green:#00e29a;--green-dim:#0c2420;--red:#e5425c;--red-dim:#2a1218;--err:#f0a39a;
+  --accent:#8fb8de;--warn:#e0b45a;--green:#00e29a;--green-dim:#0c2420;--red:#e5425c;--red-dim:#2a1218;--err:#f0a39a;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -33,8 +33,8 @@ body{
 button,input{font-family:inherit;font-variant-numeric:tabular-nums;touch-action:manipulation}
 button{cursor:pointer;-webkit-appearance:none;appearance:none;user-select:none}
 button:active{opacity:.82}
-button:focus-visible{outline:1px solid var(--accent);outline-offset:2px}
-::selection{background:#3a3426;color:var(--text)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+::selection{background:#24384a;color:var(--text)}
 .hidden{display:none!important}
 
 .top{display:flex;flex-direction:column;gap:2px;padding:calc(10px + env(safe-area-inset-top)) 0 8px}
@@ -51,7 +51,7 @@ html.in-app .top-pnl,body.in-app .top-pnl{display:block}
 .pnl-head.pnl-dn{color:var(--red)}
 .ws{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;color:var(--muted);white-space:nowrap}
 .ws::before{content:"";width:6px;height:6px;border-radius:50%;background:#5c6570;flex:0 0 auto}
-.ws.on::before{background:var(--accent)}
+.ws.on::before{background:var(--green)}
 
 .tfs{
   display:flex;gap:0;margin:0;min-width:0;max-width:100%;
@@ -114,14 +114,29 @@ body.dragging-order{overflow:hidden;touch-action:none}
   color:#8b97a3;font-size:11px;font-weight:500;letter-spacing:.01em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
-.field.px-hit,input.px-hit{border-color:#d6b25e!important;box-shadow:0 0 0 2px rgba(214,178,94,.45)}
-#desk-order .field.px-hit,#desk-order input.px-hit{border-color:#00e29a!important;box-shadow:0 0 0 2px rgba(0,226,154,.32)}
+.field.px-hit,input.px-hit{border-color:var(--accent)!important;box-shadow:0 0 0 2px rgba(143,184,222,.4)}
+#desk-order .field.px-hit,#desk-order input.px-hit{border-color:var(--accent)!important;box-shadow:0 0 0 2px rgba(143,184,222,.4)}
 .drag-tag{
   position:absolute;z-index:4;left:8px;transform:translateY(-50%);
   pointer-events:none;padding:4px 8px;border-radius:8px;
   background:#101418;color:var(--text);border:1px dashed #b7c9da;
   font-size:13px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;
 }
+/* etiquetas das linhas de posição e ordem, por cima do gráfico (não pegam clique: o arraste continua no gráfico) */
+.line-tags{position:absolute;inset:0;z-index:2;pointer-events:none;overflow:hidden}
+.ltag{
+  position:absolute;display:flex;align-items:stretch;height:20px;transform:translateY(-50%);
+  background:rgba(12,14,16,.94);border:1px solid var(--tc,var(--line));border-radius:2px;
+  font-size:11px;font-weight:700;line-height:18px;white-space:nowrap;color:var(--text);
+}
+.ltag.pos{left:8px}
+.ltag>span{padding:0 6px}
+.ltag>span+span{border-left:1px solid var(--tc,var(--line))}
+.ltag .t-side{background:var(--tc);color:#04140c}
+.ltag.short .t-side{color:#fff}
+.ltag .t-num{font-family:var(--mono);font-weight:650}
+.ltag .t-r{background:var(--accent);color:#06121c;padding:0 5px}
+.ltag .pnl-up,.ltag .pnl-dn{font-weight:700}
 #chart-msg{height:100%;min-height:120px;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;font-size:13px;color:var(--muted)}
 
 label{display:block;margin:12px 0 6px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
@@ -139,7 +154,7 @@ input:-webkit-autofill{-webkit-text-fill-color:var(--text);caret-color:var(--tex
 .row{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,.8fr);gap:8px}
 .price-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
 .use-mark{min-height:44px;padding:0 12px;background:transparent;color:var(--text);border:1px solid var(--line);border-radius:2px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
-.use-mark:hover,.otype:hover,.pct:hover,.d-tab:hover,.d-tog:hover{color:var(--text)}
+.use-mark:hover,.otype:hover,.pct:hover,.d-tog:hover{color:var(--text)}
 
 .sides,.otypes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
 .side,.otype,.pct{background:transparent;border:1px solid var(--line);border-radius:2px;color:var(--muted);min-height:44px}
@@ -151,12 +166,12 @@ input:-webkit-autofill{-webkit-text-fill-color:var(--text);caret-color:var(--tex
 .side:disabled{opacity:.35;cursor:not-allowed}
 .side .go-sub{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:0;opacity:.85}
 .otype,.pct{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
-.otype.on,.pct.on{color:var(--green);border-color:transparent;border-bottom:1px solid var(--green);background:transparent}
+.otype.on,.pct.on{color:var(--accent);border-color:transparent;border-bottom:1px solid var(--accent);background:transparent}
 .pcts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin-top:8px}
 
 .tabs{display:grid;grid-template-columns:1fr 1fr;margin:4px 0 2px;border-bottom:1px solid var(--line)}
 .tab{min-height:44px;background:transparent;border:0;border-bottom:1px solid transparent;border-radius:0;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:-1px}
-.tab.on{color:var(--green);border-bottom-color:var(--green)}
+.tab.on{color:var(--accent);border-bottom-color:var(--accent)}
 
 .send{
   width:100%;min-height:48px;padding:8px 10px;border:0;border-radius:2px;
@@ -175,7 +190,7 @@ input:-webkit-autofill{-webkit-text-fill-color:var(--text);caret-color:var(--tex
 
 .err,.warn{margin-top:8px;padding:8px 10px;border:1px solid var(--line);border-radius:2px;background:var(--surface);font-size:12px;line-height:1.35}
 .err{border-color:#6a3030;color:var(--err);white-space:pre-wrap;overflow-wrap:anywhere}
-.warn{border-color:#5c4e2a;color:var(--accent)}
+.warn{border-color:#5c4e2a;color:var(--warn)}
 .login-box{margin-top:18px}
 .login-box h2{margin:0 0 6px;font-size:22px;font-weight:650;letter-spacing:-.02em}
 .login-box p{margin:0;color:var(--muted);font-size:14px;line-height:1.4}
@@ -222,7 +237,7 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
 .desk{display:none}
 #ohlc{display:none}
 
-@media (max-width:959px){
+@media (max-width:1023px){
   .chrome{
     position:sticky;top:0;z-index:30;margin:0 -12px;padding:0 12px;
     background:var(--bg);
@@ -237,7 +252,7 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   body.in-app.tab-ajustar{padding-bottom:calc(148px + env(safe-area-inset-bottom))}
   .actions{position:relative}
 }
-@media (max-width:959px) and (max-height:500px){
+@media (max-width:1023px) and (max-height:500px){
   #chart{height:52vh;min-height:200px}
 }
 
@@ -249,7 +264,7 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
     max-width:none;height:100vh;overflow:hidden;margin:0;padding:4px;
     background:#070809;color:#d7dde3;
     display:grid;
-    grid-template-columns:312px minmax(0,1fr) 360px;
+    grid-template-columns:312px minmax(0,1fr) 440px;
     grid-template-rows:auto auto minmax(0,1fr);
     grid-template-areas:"order tools side" "order chips side" "order chart side";
     gap:4px;
@@ -291,16 +306,12 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   .d-body{overflow:auto;min-height:0;padding:8px}
   .d-top{display:flex;gap:4px}
   .d-top select{flex:1;min-width:0;height:28px;background:#101214;color:#d7dde3;border:1px solid #1f2428;border-radius:2px;font-size:12px;font-weight:650}
-  .d-tabs{display:flex;gap:0;margin:8px 0 4px;border-bottom:1px solid #1f2428}
-  .d-tab{flex:1;min-height:28px;background:transparent;border:0;border-bottom:1px solid transparent;border-radius:0;margin-bottom:-1px;color:#7d8792;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
-  .d-tab.on{color:#00e29a;border-bottom-color:#00e29a}
-  .d-tab:hover{color:#d7dde3}
   .d-k{display:flex;justify-content:space-between;align-items:baseline;margin:8px 0 4px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7d8792}
   .d-k button{background:transparent;border:0;color:#9aa6b2;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
   .d-k button:hover{color:#d7dde3}
   #desk-order input,#desk-order select.d-in{width:100%;height:28px;min-height:0;padding:0 8px;background:#101214;color:#d7dde3;border:1px solid #1f2428;border-radius:2px;font-size:13px}
   #desk-order .field input{height:22px;min-height:0;padding:0;border:0;background:transparent}
-  #desk-order input:focus,#desk-order .field:focus-within{border-color:#00e29a;outline:none}
+  #desk-order input:focus,#desk-order .field:focus-within{border-color:var(--accent);outline:none}
   .d-size{font-family:var(--mono);font-size:15px;font-weight:650;letter-spacing:0;font-variant-numeric:tabular-nums;line-height:1.35}
   .size-box{position:relative;margin-top:8px;padding:8px;background:#101214;border:1px solid #1f2428;display:flex;flex-direction:column;gap:2px}
   .size-box .field-k{position:static;display:block;margin:0 0 2px}
@@ -317,13 +328,44 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   .d-row button:hover,.d-mini:hover{border-color:#3a444e;color:#fff}
   .d-two{display:grid;grid-template-columns:1fr 1fr;gap:4px}
   .d-two .field{margin-top:0}
-  .d-range{width:100%;margin:4px 0;accent-color:#00e29a}
+  .d-range{width:100%;margin:4px 0;accent-color:var(--accent)}
   .d-togs,.unit-row{display:flex;gap:0;border-bottom:1px solid #1f2428}
   .d-tog,.unit-row button{flex:1;min-height:28px;background:transparent;color:#7d8792;border:0;border-bottom:1px solid transparent;border-radius:0;margin-bottom:-1px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
-  .d-tog.on,.unit-row button.on{color:#00e29a;border-bottom-color:#00e29a;background:transparent}
-  .d-bars{display:flex;align-items:flex-end;gap:2px;height:36px;margin:8px 0 4px}
-  .d-bars i{display:block;flex:1;background:#00e29a;min-height:2px;opacity:.9}
+  .d-tog.on,.unit-row button.on{color:var(--accent);border-bottom-color:var(--accent);background:transparent}
+  .d-bars{position:relative;height:40px;margin:10px 6px 4px;border-bottom:1px solid var(--line)}
+  .d-bars i{position:absolute;bottom:0;width:4px;margin-left:-2px;background:#00e29a;border-radius:1px 1px 0 0;opacity:.9}
   .d-bars.short i{background:#e5425c}
+  .d-bars b.avg{position:absolute;top:-4px;bottom:-4px;width:0;border-left:1px dashed var(--text);opacity:.8}
+  /* controle deslizante com centro em zero: trilho rebaixado, risco no meio, preenchimento do centro até a barrinha */
+  .skew{margin-top:10px}
+  .skew-hd{display:flex;justify-content:space-between;align-items:baseline;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .skew-hd b{font-size:11px;letter-spacing:0;text-transform:none;color:var(--text);font-weight:650}
+  .skew-ends{display:flex;justify-content:space-between;margin-top:2px;font-size:10px;color:#5f6a75}
+  .skew-r{
+    -webkit-appearance:none;appearance:none;display:block;width:100%;height:22px;margin:4px 0 0;padding:0;
+    background:transparent;cursor:ew-resize;--a:50%;--b:50%;
+  }
+  .skew-r::-webkit-slider-runnable-track{
+    height:8px;border-radius:4px;border:1px solid var(--line);
+    background:
+      linear-gradient(var(--line2),var(--line2)) 50% 50%/1px 100% no-repeat,
+      linear-gradient(90deg,transparent var(--a),rgba(143,184,222,.35) var(--a),rgba(143,184,222,.35) var(--b),transparent var(--b)),
+      var(--track);
+  }
+  .skew-r::-moz-range-track{
+    height:8px;border-radius:4px;border:1px solid var(--line);
+    background:
+      linear-gradient(var(--line2),var(--line2)) 50% 50%/1px 100% no-repeat,
+      linear-gradient(90deg,transparent var(--a),rgba(143,184,222,.35) var(--a),rgba(143,184,222,.35) var(--b),transparent var(--b)),
+      var(--track);
+  }
+  .skew-r::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;width:6px;height:18px;margin-top:-6px;border:0;border-radius:2px;
+    background:var(--text);box-shadow:0 0 0 2px var(--bg);
+  }
+  .skew-r::-moz-range-thumb{width:6px;height:18px;border:0;border-radius:2px;background:var(--text);box-shadow:0 0 0 2px var(--bg)}
+  .skew-r:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .skew-r:active::-webkit-slider-thumb{background:var(--accent)}
   .d-avg{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;color:#d7dde3}
   .d-dock{flex:0 0 auto;padding:8px;border-top:1px solid #1f2428;background:#0c0e10}
   .d-sides{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:0}
@@ -334,7 +376,7 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   #d-long .go-sub,#d-adj-long .go-sub{color:#04140c}
   #d-short .go-sub,#d-adj-short .go-sub{color:#fff}
   #d-adj-long.on,#d-adj-short.on{outline:2px solid #fff;outline-offset:1px}
-  #d-adj-long:disabled,#d-adj-short:disabled{opacity:.35;cursor:not-allowed}
+  #d-adj-long:disabled,#d-adj-short:disabled,#d-long:disabled,#d-short:disabled{opacity:.35;cursor:not-allowed}
   .d-sides button:disabled:hover{filter:none}
   .go-k{font-size:13px;font-weight:800;letter-spacing:.08em}
   .go-sub{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:0}
@@ -355,15 +397,15 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
 .field .field-k{position:absolute;top:4px;left:8px;margin:0;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .field input{width:100%;height:24px;min-height:0;padding:0;border:0;background:transparent;border-radius:0;font-size:16px}
 .field input:focus{outline:none}
-.field:focus-within{border-color:var(--green)}
+.field:focus-within{border-color:var(--accent)}
 .field-u{position:absolute;right:8px;bottom:6px;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#5c6770;pointer-events:none}
 .unit-row{display:flex;margin-top:8px;border-bottom:1px solid var(--line)}
 .unit-row button{flex:1;min-height:44px;background:transparent;border:0;border-bottom:1px solid transparent;margin-bottom:-1px;border-radius:0;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.08em}
-.unit-row button.on{color:var(--green);border-bottom-color:var(--green)}
+.unit-row button.on{color:var(--accent);border-bottom-color:var(--accent)}
 select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:2px;font-size:16px;font-weight:650}
 .mode-row{display:flex;gap:0;margin:8px 0 4px;border-bottom:1px solid var(--line)}
 .mode-tog{flex:1;min-height:44px;background:transparent;border:0;border-bottom:1px solid transparent;margin-bottom:-1px;border-radius:0;color:var(--muted);font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
-.mode-tog.on,.mode-tog.reduce.on{color:var(--green);border-bottom-color:var(--green)}
+.mode-tog.on,.mode-tog.reduce.on{color:var(--accent);border-bottom-color:var(--accent)}
 .cancel-algo{min-height:44px;padding:0 12px;background:transparent;color:var(--text);border:1px solid var(--line);border-radius:2px;font-size:12px;font-weight:700}
 .ord-card{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:13px}
 @media (min-width:1024px){
@@ -376,8 +418,8 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
 .pnl-k{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .pnl-v{margin-top:2px;font-family:var(--mono);font-size:13px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.3}
 .por-conta{min-height:28px;margin-top:2px;padding:0 8px;background:transparent;border:0;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.04em}
-.por-conta.on{color:var(--green)}
-@media (max-width:959px){
+.por-conta.on{color:var(--accent)}
+@media (max-width:1023px){
   .por-conta{min-height:44px}
 }
 .pnl-row{display:grid;grid-template-columns:minmax(0,1.1fr) auto auto;gap:8px;align-items:baseline;padding:3px 0;font-size:11px;font-family:var(--mono);font-variant-numeric:tabular-nums}
@@ -395,10 +437,110 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
 .amend-move{margin:12px 0 10px;font-size:22px;font-weight:700;letter-spacing:-.02em}
 .sheet-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .sheet-actions button{min-height:48px;border-radius:8px;font-size:15px;font-weight:700}
-#amend-cancel{background:transparent;color:var(--text);border:1px solid var(--line)}
-#amend-ok{background:var(--accent);color:#1a1400;border:0}
-#amend-ok:disabled{opacity:.45}
+#amend-cancel,#scale-cancel{background:transparent;color:var(--text);border:1px solid var(--line)}
+#amend-ok,#scale-ok{background:var(--accent);color:#06121c;border:0}
+#amend-ok:disabled,#scale-ok:disabled{opacity:.45}
 .sheet .err{margin:0 0 10px;white-space:pre-line}
+
+/* ---------- controles: seletores, toggles e botões ----------
+   escolha única = trilho segmentado; liga/desliga = chip com indicador; botões afundam ao pressionar */
+:root{--track:#0a0c0e;--raise:#1b2026;--line2:#2c343c;--r:3px;--ease-out:cubic-bezier(.23,1,.32,1)}
+button{transition:background-color .12s ease,color .12s ease,border-color .12s ease,box-shadow .12s ease,transform .1s var(--ease-out)}
+button:active:not(:disabled){opacity:1;transform:scale(.97)}
+select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* escolha única */
+.unit-row,.d-togs,.otypes,.pcts{
+  display:flex;gap:2px;padding:2px;background:var(--track);
+  border:1px solid var(--line);border-radius:calc(var(--r) + 2px);
+}
+.otypes,.pcts{display:grid}
+.unit-row button,.d-togs .d-tog,.otypes .otype,.pcts .pct{
+  flex:1;margin:0;border:0;border-radius:var(--r);background:transparent;color:var(--muted);
+  letter-spacing:.04em;
+}
+.unit-row button.on,.d-togs .d-tog.on,.otypes .otype.on,.pcts .pct.on{
+  background:var(--raise);color:var(--text);border:0;box-shadow:inset 0 -2px 0 var(--accent);
+}
+
+/* liga/desliga: Post | Reduce (um ou outro) e TP/SL (independente) */
+.mode-row{gap:4px;border-bottom:0}
+.mode-row .mode-tog{
+  display:flex;align-items:center;justify-content:center;gap:6px;margin:0;
+  border:1px solid var(--line);border-radius:var(--r);background:transparent;color:var(--muted);letter-spacing:.06em;
+}
+.mode-row .mode-tog::before{
+  content:"";width:8px;height:8px;flex:0 0 auto;border-radius:2px;
+  border:1.5px solid currentColor;opacity:.7;transition:background-color .12s ease,border-color .12s ease;
+}
+.mode-row .mode-tog.on{color:var(--text);border-color:rgba(143,184,222,.5);background:rgba(143,184,222,.08)}
+.mode-row .mode-tog.on::before{background:var(--accent);border-color:var(--accent);opacity:1}
+
+/* selects com seta própria */
+select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order select.d-in{
+  -webkit-appearance:none;appearance:none;border-radius:var(--r);cursor:pointer;
+  padding-right:26px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%237d8792' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 9px center;
+}
+.d-hd select{padding-right:22px;background-position:right 6px center}
+
+/* botões secundários e campos com o mesmo raio */
+.field,.use-mark,.cancel-algo,button.refresh,.d-row button,.d-mini,.size-box{border-radius:var(--r)}
+.d-row button,.d-mini,.use-mark,.cancel-algo,button.refresh{background:transparent}
+
+/* botões de ação */
+.send,.side,.d-sides button,#d-hedge-go,#d-adj-preview,#d-adj-send,.sheet-actions button{border-radius:var(--r)}
+
+/* rótulos pequenos: 10px e mais contraste */
+.field .field-k,.size-h{font-size:10px;letter-spacing:.06em}
+.field-u{font-size:10px;letter-spacing:.06em;color:#6b7682}
+@media (min-width:1024px){
+  .d-table th{font-size:10px;letter-spacing:.06em}
+  /* desktop é mouse: controles do quadro de ordem numa altura só (32px) */
+  #desk-order .unit-row button,#desk-order .d-togs .d-tog{min-height:28px}
+  #desk-order select.kind,#desk-order .d-top select{height:32px}
+  #desk-order .mode-row .mode-tog{min-height:32px}
+}
+
+@media (hover:hover) and (pointer:fine){
+  .unit-row button:not(.on):hover,.d-togs .d-tog:not(.on):hover,.otypes .otype:not(.on):hover,.pcts .pct:not(.on):hover{color:var(--text);background:#12161a}
+  .mode-row .mode-tog:not(.on):hover{color:var(--text);border-color:var(--line2)}
+  .d-row button:hover,.d-mini:hover,.use-mark:hover,.cancel-algo:hover,button.refresh:hover{background:#14181c;border-color:var(--line2);color:var(--text)}
+  select.kind:hover,.d-top select:hover,.d-hd select:hover,#desk-order select.kind:hover{border-color:var(--line2)}
+}
+/* setinha na linha da posição e o painel de redução */
+.pos-act{
+  display:inline-flex;align-items:center;justify-content:center;width:24px;height:22px;padding:0;
+  background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:var(--r);
+}
+.pos-act svg{transition:transform .15s var(--ease-out)}
+.pos-act[aria-expanded="true"]{color:var(--text);border-color:var(--line2);background:var(--raise)}
+.pos-act[aria-expanded="true"] svg{transform:rotate(180deg)}
+.pos-pop{
+  position:fixed;z-index:45;width:300px;padding:10px;display:flex;flex-direction:column;gap:8px;
+  background:#101418;border:1px solid var(--line2);border-radius:calc(var(--r) + 2px);
+  box-shadow:0 12px 32px rgba(0,0,0,.55);transform-origin:top right;
+  transition:opacity .14s var(--ease-out),transform .14s var(--ease-out);
+}
+.pos-pop.hidden{display:none}
+@starting-style{.pos-pop{opacity:0;transform:scale(.97)}}
+.pp-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:700}
+.pp-hd .long{color:var(--green)} .pp-hd .short{color:var(--red)}
+.pp-x{width:24px;height:24px;padding:0;background:transparent;border:0;color:var(--muted);font-size:16px;line-height:1}
+.pp-k{display:flex;justify-content:space-between;align-items:baseline;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.pp-k b{font-family:var(--mono);font-size:12px;letter-spacing:0;text-transform:none;color:var(--text);font-weight:650}
+.pos-pop .d-togs .d-tog{min-height:28px;font-size:11px}
+.pos-pop .field{margin:0}
+.pos-pop .d-note{margin:0}
+.pp-go{min-height:40px;border:0;border-radius:var(--r);font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:var(--red)}
+.pp-go.buy{background:var(--green);color:#04140c}
+.pp-go:disabled{opacity:.4;cursor:not-allowed}
+@media (prefers-reduced-motion:reduce){
+  .pos-pop,.pos-act svg{transition:none}
+  button,.mode-row .mode-tog::before{transition:none}
+  button:active:not(:disabled){transform:none}
+}
 </style>
 <script>
 (function () {
@@ -448,6 +590,7 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
 </div>
 <div class="chart-wrap" id="chart-wrap">
 <div id="chart"><div id="chart-msg">Carregando gráfico…</div></div>
+<div id="line-tags" class="line-tags" aria-hidden="true"></div>
 <div id="chart-hint" class="chart-hint hidden"></div>
 <div id="drag-tag" class="drag-tag hidden"></div>
 </div>
@@ -487,10 +630,6 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
       <option value="hedge">ORDEM</option>
       <option value="hedge-scale">ESCALA</option>
     </select>
-    <div class="d-tabs" id="d-tabs">
-      <button type="button" class="d-tab on" data-tab="post">Ordem</button>
-      <button type="button" class="d-tab" data-tab="reduce">Ajuste</button>
-    </div>
     <div id="d-post">
       <div class="unit-row" id="d-size-modes">
         <button type="button" data-size="usd">USD</button>
@@ -568,11 +707,17 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
         </div>
         <div class="d-k">Ordens <span id="d-orders-n">8</span></div>
         <input id="d-orders" class="d-range" type="range" min="2" max="50" value="8" aria-label="Quantidade de ordens">
-        <div class="d-togs">
-          <button type="button" class="d-tog on" id="d-price-even" aria-pressed="true">Preço igual</button>
-          <button type="button" class="d-tog on" id="d-size-even" aria-pressed="true">Tamanho igual</button>
+        <div class="skew" data-skew="price">
+          <div class="skew-hd"><span>Distribuição</span><b id="d-skew-price-v">Igual</b></div>
+          <input id="d-skew-price" class="skew-r" type="range" min="-100" max="100" step="1" value="0" aria-label="Distribuição das ordens: agrupar perto do preço mais baixo ou do mais alto" aria-valuetext="Igual">
+          <div class="skew-ends"><span>agrupa embaixo</span><span>agrupa em cima</span></div>
         </div>
-        <div id="d-bars" class="d-bars"></div>
+        <div class="skew" data-skew="size">
+          <div class="skew-hd"><span>Tamanho</span><b id="d-skew-size-v">Igual</b></div>
+          <input id="d-skew-size" class="skew-r" type="range" min="-100" max="100" step="1" value="0" aria-label="Tamanho das ordens: mais valor embaixo ou em cima" aria-valuetext="Igual">
+          <div class="skew-ends"><span>mais valor embaixo</span><span>mais valor em cima</span></div>
+        </div>
+        <div id="d-bars" class="d-bars" aria-hidden="true"></div>
         <div class="d-avg">Média <b id="d-avg">—</b></div>
       </div>
       <div id="d-hedge" class="hidden">
@@ -607,7 +752,7 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
         </div>
         <div id="d-hedge-table" class="d-size-rows"></div>
         <button type="button" id="d-hedge-go">Confirmar hedge</button>
-        <p class="d-note">Não mexe na long. Os stops ficam como estão e só saem se o short zerar. A ordem vai para as 4 contas.</p>
+        <p class="d-note">Não mexe na long. Os stops ficam como estão e só saem se o short zerar. <span class="contas-txt">A ordem vai para as 4 contas.</span></p>
       </div>
       <div class="mode-row" id="d-mode-togs">
         <button type="button" class="mode-tog" id="d-post-tog">Post</button>
@@ -886,6 +1031,28 @@ select.kind{width:100%;min-height:44px;margin-top:8px;padding:0 12px;background:
   </div>
 </div>
 
+<div id="pos-pop" class="pos-pop hidden" role="dialog" aria-labelledby="pp-title">
+  <div class="pp-hd"><span id="pp-title">Reduzir posição</span><button type="button" id="pp-close" class="pp-x" aria-label="Fechar">×</button></div>
+  <div class="pp-k"><span>Reduzir</span><b id="pp-size">—</b></div>
+  <div class="d-togs" id="pp-pcts">
+    <button type="button" class="d-tog" data-pp-pct="25">25%</button>
+    <button type="button" class="d-tog" data-pp-pct="50">50%</button>
+    <button type="button" class="d-tog" data-pp-pct="75">75%</button>
+    <button type="button" class="d-tog" data-pp-pct="100">100%</button>
+  </div>
+  <label class="field" id="pp-pct-box"><span class="field-k">% da perna</span><input id="pp-pct" type="text" inputmode="decimal" autocomplete="off" aria-label="% da perna a reduzir"><span class="field-u">%</span></label>
+  <div class="d-togs" id="pp-types">
+    <button type="button" class="d-tog" data-pp-type="market">Mercado</button>
+    <button type="button" class="d-tog" data-pp-type="limit">Limite</button>
+    <button type="button" class="d-tog" data-pp-type="chase">Chase</button>
+  </div>
+  <label class="field hidden" id="pp-price-box"><span class="field-k">Preço da ordem</span><input id="pp-price" type="text" inputmode="decimal" autocomplete="off" aria-label="Preço da ordem de redução"><span class="field-u">USD</span></label>
+  <p class="d-note" id="pp-note"></p>
+  <div class="pnl-line" id="pp-pnl"></div>
+  <div id="pp-msg" class="err hidden"></div>
+  <button type="button" id="pp-go" class="pp-go">Reduzir</button>
+</div>
+
 <div id="scale-sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="scale-title">
   <div class="sheet-card">
     <h2 id="scale-title">Escala</h2>
@@ -963,7 +1130,28 @@ function fmtTick(n) {
 }
 function isDesk() { return window.matchMedia("(min-width: 1024px)").matches; }
 let lastCandles = [];
-let deskKind = "market", deskTab = "post", priceEven = true, sizeEven = true, scaleOpen = false;
+let deskKind = "market", deskTab = "post", scaleOpen = false;
+// Ajustes da escala, de −100 a +100 (0 = igual). Mesma conta do backend (scalePrices / scaleWeights).
+// priceSkew (Distribuição): + agrupa as ordens perto do preço mais alto, − perto do mais baixo.
+// sizeSkew (Tamanho): + põe mais valor nas ordens de preço mais alto (a média sobe), − nas mais baixas (a média desce).
+let priceSkew = 0, sizeSkew = 0;
+function skewPrices(from, to, n) {
+  const out = [];
+  const lo = Math.min(from, to), hi = Math.max(from, to);
+  const g = Math.pow(3, -priceSkew / 100);
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0 : i / (n - 1);
+    out.push(lo + (hi - lo) * Math.pow(t, g));
+  }
+  return from <= to ? out : out.reverse();
+}
+function skewWeights(prices) {
+  const z = sizeSkew / 100;
+  if (!z || !prices.length) return prices.map(() => 1);
+  const lo = Math.min(...prices), hi = Math.max(...prices), span = hi - lo || 1;
+  return prices.map((p) => Math.exp(1.5 * z * (((p - lo) / span) * 2 - 1)));
+}
+const skewPayload = () => ({ priceSkew: priceSkew / 100, sizeSkew: sizeSkew / 100 });
 let reducing = false, hedgeMode = "short", hedgeOrd = "market";
 let sizeMode = "risco", tpslOn = false, pxType = "last", chaseUnit = "pct";
 try { if (sessionStorage.getItem("painel_reduce") === "1") { reducing = true; sizeMode = "pct"; } } catch (e) {}
@@ -1182,29 +1370,139 @@ function entryMarks(accounts) {
       for (const leg of a.legs) {
         const ct = Number(leg.ct ?? leg.pos) || 0;
         if (!(ct > 0) || !(Number(leg.avg) > 0)) continue;
-        marks.push({ account: a.name, price: Number(leg.avg), long: leg.posSide !== "short", usd: Number(leg.usd) || ct * 100 });
+        marks.push({ account: a.name, price: Number(leg.avg), long: leg.posSide !== "short", usd: Number(leg.usd) || ct * 100, pnl: () => legPnlUsd(leg) });
       }
     } else if (a.net && a.avg) {
-      marks.push({ account: a.name, price: Number(a.avg), long: a.net > 0, usd: Math.abs(a.net) * 100 });
+      marks.push({ account: a.name, price: Number(a.avg), long: a.net > 0, usd: Math.abs(a.net) * 100, pnl: () => pnlUsd(a) });
     }
   }
   return marks;
 }
+// ---------- etiquetas das linhas (modelo Insilico) ----------
+// Uma conta: posição com lado, tamanho e PnL; ordem com tipo, valor e R (reduce).
+// Todas as contas: só o lado da posição e o tipo da ordem, sem valores.
+let posTags = [], ordTags = [], tagPx = null, tagLoop = false;
+const oneAccount = () => deskFilter !== "todas";
+// PnL em USD de fechar a perna no preço p (contrato inverso de 100 USD, mesma conta de legPnlUsd)
+function closePnl(a, o, leg) {
+  let l = leg || ((a.legs || []).length === 1 ? a.legs[0] : null);
+  if (!l && a.net && a.avg) l = { posSide: a.net > 0 ? "long" : "short", avg: a.avg, ct: Math.abs(a.net) };
+  if (!l) return null;
+  const avg = Number(l.avg);
+  const ct = Number(o.sz) > 0 ? Number(o.sz) : Number(l.ct ?? l.pos) || 0;
+  if (!(avg > 0) || !(ct > 0)) return null;
+  const sign = l.posSide === "short" ? -1 : 1;
+  return (p) => p > 0 ? sign * ct * 100 * (1 / avg - 1 / p) * p : null;
+}
+function tagPnlHtml(items, price) {
+  let tot = 0, any = false;
+  const px = price > 0 ? price : lastPx;
+  for (const x of items) { const v = x.pnl ? x.pnl(px) : null; if (v != null && !Number.isNaN(v)) { tot += v; any = true; } }
+  if (!any || !(px > 0)) return "—";
+  // tot em USD no preço px; em BTC é o mesmo valor dividido por px (contrato inverso)
+  const btc = tot / px;
+  return `<span class="${tot >= 0 ? "pnl-up" : "pnl-dn"}">${tot >= 0 ? "+" : ""}${fmtBtcChart(btc)} (~${tot >= 0 ? "+" : "−"}${fmtUsd(Math.abs(tot))})</span>`;
+}
+function orderDir(o) {
+  if (o.side === "buy" || o.side === "sell") return o.side;
+  const leg = o.posSide || o.side;
+  if (leg !== "long" && leg !== "short") return null;
+  const closes = o.reduceOnly || o.kind === "stop";
+  return (leg === "long") !== closes ? "buy" : "sell";
+}
+function renderTags() {
+  const layer = $("line-tags");
+  if (!layer) return;
+  layer.innerHTML = posTags.concat(ordTags).map((t) => t.html).join("");
+  const els = layer.children;
+  posTags.concat(ordTags).forEach((t, i) => { t.el = els[i]; t.y = null; t.pnlEl = t.el && t.el.querySelector(".t-pnl"); });
+  tagPx = null;
+  placeTags();
+  if (!tagLoop) { tagLoop = true; requestAnimationFrame(tagFrame); }
+}
+function tagFrame() { placeTags(); requestAnimationFrame(tagFrame); }
+function placeTags() {
+  if (!series) return;
+  const h = $("chart").clientHeight;
+  let axisW = 56;
+  try { axisW = chart.priceScale("right").width() || axisW; } catch (e) {}
+  for (const t of posTags.concat(ordTags)) {
+    if (!t.el) continue;
+    const y = series.priceToCoordinate(t.price());
+    const off = y == null || y < 6 || y > h - 30;
+    t.el.style.display = off ? "none" : "";
+    if (off) continue;
+    if (t.y !== y) { t.el.style.top = y + "px"; t.y = y; }
+    if (t.kind === "ord") t.el.style.right = axisW + 8 + "px";
+    // posição: PnL segue o mark; ordem: PnL no preço da linha (muda enquanto ela é arrastada)
+    const key = t.kind === "pos" ? lastPx : t.price();
+    if (t.pnlEl && t.pnlKey !== key) { t.pnlEl.innerHTML = tagPnlHtml(t.items, key); t.pnlKey = key; }
+  }
+}
+// ---------- etiquetas no modo Hedge ----------
+// Só com o tipo Hedge / Escala de hedge. Em vez de valores em dólar:
+// posição = quantos % da carteira ela é; ordem = quantos % a carteira fica vendida (ou comprada) se o preço pegar a ordem.
+// Carteira = saldo BTC × mark (a mesma conta do painel de hedge), só das carteiras na tela.
+var lastHedgeView = false;
+const hedgeView = () => deskKind === "hedge" || deskKind === "hedge-scale";
+function legTotals() {
+  let longCt = 0, shortCt = 0;
+  for (const a of visibleAccounts(lastAccounts)) {
+    if (a.error) continue;
+    for (const l of a.legs || []) {
+      const ct = Number(l.ct ?? l.pos) || 0;
+      if (l.posSide === "short") shortCt += ct; else if (l.posSide === "long") longCt += ct;
+    }
+    if (!(a.legs || []).length && a.net) { if (a.net > 0) longCt += Math.abs(a.net); else shortCt += Math.abs(a.net); }
+  }
+  return { longCt, shortCt, valor: bookTotals().valor };
+}
+const walletPct = (ct, valor) => (valor > 0 ? Math.max(0, ct * 100 / valor * 100) : null);
+// perna que a ordem mexe, e quanto (ct): abrir soma, reduce/stop tira
+function legOf(o) {
+  if (o.posSide === "long" || o.posSide === "short") return o.posSide;
+  if (o.side === "long" || o.side === "short") return o.side;
+  return orderDir(o) === "sell" ? "short" : "long";
+}
+const orderLegDelta = (o) => ((o.reduceOnly || o.kind === "stop") ? -1 : 1) * (o.usd || 0) / 100;
+function hedgeAfterHtml(items) {
+  const t = legTotals();
+  const by = { long: 0, short: 0 };
+  for (const o of items) by[legOf(o)] += orderLegDelta(o);
+  const leg = by.short ? "short" : by.long ? "long" : null;
+  if (!leg) return "";
+  const pct = walletPct((leg === "short" ? t.shortCt : t.longCt) + by[leg], t.valor);
+  // tamanho da ordem (ou da escala inteira) em % da carteira
+  const size = walletPct(items.reduce((s, o) => s + (o.usd || 0) / 100, 0), t.valor);
+  if (pct == null) return "";
+  return `<span class="t-num">${fmtPct(size)} da carteira</span><span class="t-num">→ ${fmtPct(pct)} ${leg === "short" ? "vendido" : "comprado"}</span>`;
+}
 function drawPositionLines(accounts) {
   if (!series) return;
   posLines.forEach(dropLine); posLines = [];
+  posTags = [];
+  const one = oneAccount();
+  const hv = hedgeView();
+  const valor = hv ? bookTotals().valor : 0;
   for (const g of clusterClose(entryMarks(accounts))) {
-    const names = [...new Set(g.items.map((x) => x.account))];
     const long = g.items.some((x) => x.long) && !g.items.some((x) => !x.long) ? true : g.items[0].long;
-    let title;
-    if (names.length > 1) title = "entrada " + names.join("+") + " " + fmtPx(g.price);
-    else if (isDesk()) title = names[0] + (long ? " CRS/M LONG" : " CRS/M SHORT");
-    else title = names[0] + (long ? " long " : " short ") + fmtK(g.usd);
+    const color = long ? "#00e29a" : "#e5425c";
     posLines.push(series.createPriceLine({
-      price: g.price, color: long ? "#00e29a" : "#e5425c",
-      lineWidth: isDesk() ? 2 : 1, lineStyle: 0, axisLabelVisible: true, title,
+      price: g.price, color, lineWidth: isDesk() ? 2 : 1, lineStyle: 0, axisLabelVisible: true, title: "",
     }));
+    const side = `<span class="t-side">${long ? "▲ LONG" : "▼ SHORT"}</span>`;
+    const pctCell = () => {
+      const p = walletPct(g.usd / 100, valor);
+      return `<span class="t-num">${p == null ? "—" : fmtPct(p)} da carteira</span>`;
+    };
+    const html = hv
+      ? `<div class="ltag pos ${long ? "long" : "short"}" style="--tc:${color}">${side}${pctCell()}${one ? `<span class="t-num t-pnl">${tagPnlHtml(g.items)}</span>` : ""}</div>`
+      : one
+      ? `<div class="ltag pos ${long ? "long" : "short"}" style="--tc:${color}">${side}<span class="t-num">${fmtK(g.usd)}</span><span class="t-num t-pnl">${tagPnlHtml(g.items)}</span></div>`
+      : `<div class="ltag pos ${long ? "long" : "short"}" style="--tc:${color}">${side}</div>`;
+    posTags.push({ kind: "pos", price: () => g.price, items: g.items, html });
   }
+  renderTags();
 }
 function drawOrderLines(accounts) {
   if (!series || drag || confirmState) return;
@@ -1215,26 +1513,66 @@ function drawOrderLines(accounts) {
     for (const o of accountOrders(a)) {
       if (!(o.price > 0)) continue;
       const leg = (a.legs || []).find((l) => l.posSide === o.posSide);
-      flat.push({ ...o, usd: Number(o.sz) > 0 ? Number(o.sz) * 100 : (leg ? Number(leg.usd) || Number(leg.ct) * 100 : 1) });
+      flat.push({ ...o, usd: Number(o.sz) > 0 ? Number(o.sz) * 100 : (leg ? Number(leg.usd) || Number(leg.ct) * 100 : 1), pnl: closePnl(a, o, leg) });
     }
   }
+  ordTags = [];
+  const one = oneAccount();
+  const hv = hedgeView();
+  const buckets = new Map(); // modo Hedge: ordens a limite do mesmo lado/direção viram uma etiqueta só, no preço médio
   for (const kind of ["stop", "trigger", "limit"]) {
     for (const g of clusterClose(flat.filter((o) => o.kind === kind))) {
-      const names = [...new Set(g.items.map((x) => x.account))];
-      const label = kind === "trigger" ? "stop mkt " : kind === "stop" ? "stop " : "limite ";
-      const pct = orderBookPct(kind, g.items);
-      const title = (names.length > 1 ? label + names.join("+") + " " + fmtPx(g.price) : label + names[0]) + (pct == null ? "" : " " + fmtPct(pct));
+      const color = orderLineColor(kind, g.items);
       const line = series.createPriceLine({
         price: g.price,
-        color: orderLineColor(kind, g.items),
+        color,
         lineWidth: orderLineWidth(kind, g.items),
         lineStyle: kind === "limit" ? 0 : 2,
         axisLabelVisible: true,
-        title,
+        title: "",
       });
-      orderGroups.push({ key: kind, kind, price: g.price, orders: g.items, line, title });
+      const group = { key: kind, kind, price: g.price, orders: g.items, line, title: "" };
+      orderGroups.push(group);
+      const dirs = [...new Set(g.items.map(orderDir).filter(Boolean))];
+      const dir = dirs.length === 1 ? (dirs[0] === "buy" ? " · compra" : " · venda") : "";
+      const reduce = g.items.every((o) => o.reduceOnly || o.kind === "stop");
+      const rTag = reduce ? '<span class="t-r" title="Reduce">R</span>' : "";
+      if (hv) {
+        if (kind === "limit") {
+          const key = legOf(g.items[0]) + "|" + (dirs[0] || "") + "|" + reduce;
+          if (!buckets.has(key)) buckets.set(key, { groups: [], color, dir, rTag });
+          buckets.get(key).groups.push(group);
+          continue;
+        }
+        const html = `<div class="ltag ord" style="--tc:${color}">${rTag}<span>${kindLabel(kind)}${dir}</span>${hedgeAfterHtml(g.items)}</div>`;
+        ordTags.push({ kind: "ord", price: () => group.price, items: g.items, html });
+        continue;
+      }
+      const pnlCell = one && reduce && g.items.some((o) => o.pnl) ? '<span class="t-num t-pnl"></span>' : "";
+      const html = `<div class="ltag ord" style="--tc:${color}">${rTag}<span>${kindLabel(kind)}${dir}</span>${one ? `<span class="t-num">${fmtK(g.usd)}</span>` : ""}${pnlCell}</div>`;
+      ordTags.push({ kind: "ord", price: () => group.price, items: g.items, html });
     }
   }
+  for (const b of buckets.values()) {
+    const items = b.groups.flatMap((gr) => gr.orders);
+    const after = hedgeAfterHtml(items);
+    if (b.groups.length === 1) {
+      const gr = b.groups[0];
+      ordTags.push({ kind: "ord", price: () => gr.price, items, html: `<div class="ltag ord" style="--tc:${b.color}">${b.rTag}<span>Limite${b.dir}</span>${after}</div>` });
+      continue;
+    }
+    // escala: uma etiqueta no preço médio (média harmônica pelo tamanho, contrato inverso); acompanha se uma linha for arrastada
+    const avg = () => {
+      let w = 0, inv = 0;
+      for (const gr of b.groups) {
+        const ct = gr.orders.reduce((s, o) => s + (o.usd || 0) / 100, 0) || 1;
+        w += ct; inv += ct / gr.price;
+      }
+      return inv > 0 ? w / inv : b.groups[0].price;
+    };
+    ordTags.push({ kind: "ord", price: avg, items, html: `<div class="ltag ord" style="--tc:${b.color}">${b.rTag}<span>Escala ×${b.groups.length}${b.dir}</span><span class="t-num">média ${fmtPx(avg())}</span>${after}</div>` });
+  }
+  renderTags();
 }
 function adjustingNow() {
   return deskTab === "reduce" || document.body.classList.contains("tab-ajustar");
@@ -1277,6 +1615,7 @@ function drawPreviews() {
   }
   if (typeof updateDesk === "function") updateDesk();
   updateChartHint();
+  paintSideLock();
 }
 function stopPreviewOn() {
   return !reducing && deskKind !== "hedge" && (sizeMode === "risco" || tpslOn);
@@ -1316,7 +1655,7 @@ function drawMobilePreviews() {
         });
       }
       const s = parseNum($("stop").value);
-      if (s > 0 && stopPreviewOn()) addPreview(s, "prévia stop", { role: "stop", color: "#ffb0be", lineStyle: 2 });
+      if (s > 0 && stopPreviewOn()) addPreview(s, stopPreviewTitle(s), { role: "stop", color: "#ffb0be", lineStyle: 2 });
     }
   }
   const adjOn = !$("pane-ajustar").classList.contains("hidden");
@@ -1365,7 +1704,7 @@ function drawDeskPreviews() {
     paintReduceLines();
     return;
   }
-  if (stop > 0 && !entradaPreviewHold && stopPreviewOn()) addPreview(stop, "prévia stop", { role: "stop", color: "#ffb0be", lineStyle: 2 });
+  if (stop > 0 && !entradaPreviewHold && stopPreviewOn()) addPreview(stop, stopPreviewTitle(stop), { role: "stop", color: "#ffb0be", lineStyle: 2 });
   if (deskTab !== "post" || entradaPreviewHold) return;
   if (deskKind === "hedge-scale") {
     const ladder = hedgeScalePlan();
@@ -1853,6 +2192,13 @@ async function api(path, opts = {}) {
   const t = localStorage.getItem(TK);
   const headers = { ...(opts.headers || {}) };
   if (t) headers["Authorization"] = "Bearer " + t;
+  // Carteira selecionada: toda ordem vai só para ela. "Todas" não manda a lista e vai para as 4.
+  if (deskFilter !== "todas" && opts.method === "POST" && ["/order", "/scale", "/adjust", "/hedge"].includes(path) && typeof opts.body === "string") {
+    try {
+      const b = JSON.parse(opts.body);
+      if (b && b.accounts == null) opts = { ...opts, body: JSON.stringify({ ...b, accounts: [deskFilter] }) };
+    } catch (e) { /* corpo que não é JSON: segue como está */ }
+  }
   const res = await fetch(API + path, { ...opts, headers });
   let data = {}; try { data = await res.json(); } catch (e) {}
   if (res.status === 401 && path !== "/login") { localStorage.removeItem(TK); setLogin(true); }
@@ -1952,8 +2298,10 @@ function renderPosTable(id, accounts) {
 }
 function renderAllPos() {
   if (!lastAccounts) return;
-  renderPosTable("pos-body", lastAccounts);
-  renderPosTable("adj-pos-body", lastAccounts);
+  // só a carteira selecionada (ou todas), inclusive o "Resultado" do topo
+  renderPosTable("pos-body", visibleAccounts(lastAccounts));
+  renderPosTable("adj-pos-body", visibleAccounts(lastAccounts));
+  document.querySelectorAll(".contas-txt").forEach((e) => { e.textContent = `A ordem vai para ${contasTxt()}.`; });
   renderDesk();
   syncAdjLeg();
 }
@@ -1980,7 +2328,7 @@ function renderResult(data) {
   $("result-body").innerHTML = rows.length ? rows.map((a) => `<article class="res"><div class="res-h"><div class="name">${esc(a.name)}${a.error ? `<div class="blocked">${esc(a.error)}</div>` : '<div class="ok">ok</div>'}</div></div><div class="res-grid">${kv("Tamanho", fmtUsd(a.size_usd))}${kv("Média", fmtPx(a.avg))}${kv("Expo", fmtPct(a.expo))}${kv("Perda no stop", a.loss_usd == null ? "—" : fmtUsd(a.loss_usd))}</div></article>`).join("")
     : '<div class="acct-empty muted">Sem linhas de conta no retorno.</div>';
   show($("result"), true);
-  if (window.matchMedia("(max-width: 959px)").matches) $("result").scrollIntoView({ block: "center", inline: "nearest" });
+  if (window.matchMedia("(max-width: 1023px)").matches) $("result").scrollIntoView({ block: "center", inline: "nearest" });
   const raw = $("result-raw");
   if (data.raw && (data.aborted || !data.ok || data.dry)) { raw.textContent = data.raw; show(raw, true); } else show(raw, false);
 }
@@ -2014,6 +2362,9 @@ $("send").onclick = async () => {
   if (sending) return;
   show($("banner-err"), false); show($("banner-warn"), false);
   if (deskKind === "hedge" || deskKind === "hedge-scale") { openHedgeSheet(); return; }
+  // confere de novo na hora: o preço atual pode ter cruzado o preço da ordem
+  const lock = limitSideLock();
+  if (lock && lock.allowed !== side) { formError(lock.msg); paintActions(); return; }
   if (deskKind === "scale") { openScaleSheet(); return; }
   if (deskKind === "trigger" || deskKind === "chase") return sendAlgo(deskKind);
   if (reducing) return sendReduce();
@@ -2092,7 +2443,7 @@ $("adj-refresh").onclick = () => loadPositions();
 
 function openLegs() {
   const sides = new Set();
-  for (const a of lastAccounts || []) {
+  for (const a of visibleAccounts(lastAccounts)) {
     const legs = Array.isArray(a.legs) ? a.legs : [];
     for (const l of legs) if ((Number(l.ct ?? l.pos) || 0) > 0 && (l.posSide === "long" || l.posSide === "short")) sides.add(l.posSide);
     if (!legs.length && a.net) sides.add(a.net > 0 ? "long" : "short");
@@ -2109,7 +2460,27 @@ function adjLineColor() {
 }
 function adjLineTitle(price) {
   const who = adjButton === "long" ? "LONG reduz short" : "SHORT reduz long";
-  return who + " " + fmtPx(price);
+  const prev = adjButton ? adjustClosePreview() : null;
+  const pnl = prev && prev.totalCt >= 0.1 && prev.exit > 0 ? " " + fmtPnlTitle(prev.btc, prev.usd) : "";
+  return who + " " + fmtPx(price) + pnl;
+}
+// PnL para o título das linhas de prévia: "+0,0001 BTC (~+US$ 7)"
+function fmtPnlTitle(btc, usd) {
+  return (btc >= 0 ? "+" : "") + fmtBtcChart(btc) + " (~" + (usd >= 0 ? "+" : "−") + fmtUsd(Math.abs(usd)) + ")";
+}
+// Prévia do stop da entrada: PnL (perda) se o stop for atingido, com o tamanho que vai sair no formulário.
+function stopPreviewTitle(stop) {
+  let btc = null;
+  if (deskKind === "scale") {
+    const plan = scalePlan();
+    if (plan && plan.lossBtc > 0) btc = -plan.lossBtc;
+  } else {
+    const mark = lastPx || 0;
+    const entry = deskKind === "trigger" ? triggerValue() : deskKind === "limit" ? parseNum($("price").value) : mark;
+    const size = openSize();
+    if (size && size.ct > 0 && entry > 0) btc = pnlBtc(size.ct, entry, stop, side === "short" ? "short" : "long");
+  }
+  return btc == null || !btc ? "prévia stop" : "prévia stop " + fmtPnlTitle(btc, btc * stop);
 }
 function syncAdjLeg() {
   const sides = openLegs();
@@ -2178,7 +2549,7 @@ function adjSub(leg) {
 function adjustClosePreview(leg) {
   const which = leg || adjLeg;
   if (!which || adjPct == null || !(adjPct > 0)) return null;
-  const rows = (lastAccounts || []).filter((a) => !a.error).map((a) => {
+  const rows = visibleAccounts(lastAccounts).filter((a) => !a.error).map((a) => {
     const found = legOn(a, which);
     if (!found) return { ct: 0, btc: 0 };
     const ct = adjPct >= 100 - 1e-9 ? found.ct : Math.min(found.ct, floorLot(found.ct * adjPct / 100));
@@ -2225,7 +2596,7 @@ function renderAdjResult(data) {
     return `<article class="res"><div class="res-h"><div class="name">${esc(a.name)}${err}</div></div><div class="res-grid">${kv("Fecha", fecha)}${kv("Resta", resta)}${kv("Expo", fmtPct(a.expo_after))}${kv("Stop", stop)}</div></article>`;
   }).join("") : '<div class="acct-empty muted">Sem linhas de conta no retorno.</div>';
   show($("adj-result"), true);
-  if (window.matchMedia("(max-width: 959px)").matches) $("adj-result").scrollIntoView({ block: "center", inline: "nearest" });
+  if (window.matchMedia("(max-width: 1023px)").matches) $("adj-result").scrollIntoView({ block: "center", inline: "nearest" });
   const raw = $("adj-result-raw");
   if (data.raw && (data.aborted || !data.ok || data.dry)) { raw.textContent = data.raw; show(raw, true); } else show(raw, false);
 }
@@ -2274,7 +2645,7 @@ function harmonicAvg(prices, weights) {
 }
 function bookTotals() {
   let valor = 0, shortCt = 0;
-  for (const a of (lastAccounts || [])) {
+  for (const a of visibleAccounts(lastAccounts)) {
     if (a.error) continue;
     const m = Number(a.mark) || lastPx || 0;
     const eq = Number(a.eq) || 0;
@@ -2317,7 +2688,7 @@ function sizeFromRisk(eq, entry, stop, riskPct) {
   return { ct, usd: ct * 100 };
 }
 function accountsForSize() {
-  return (lastAccounts || []).filter((a) => !a.error);
+  return visibleAccounts(lastAccounts).filter((a) => !a.error);
 }
 function sizesAt(entry) {
   const stop = parseNum($("stop").value);
@@ -2334,8 +2705,19 @@ function sizesAt(entry) {
 function lossToStop(ct, entry, stop) {
   return ct * 100 * Math.abs(1 / entry - 1 / stop);
 }
-function scaleRiskCts(eq, prices, stop, riskPct, even) {
-  const weights = prices.map((_, i) => (even ? 1 : i + 1));
+// Mini-gráfico da escala: cada ordem no lugar do preço (mais baixo à esquerda, mais alto à direita),
+// altura pelo valor, e a linha tracejada no preço médio.
+function scaleBarsHtml(plan) {
+  if (!plan || !plan.legs.length) return "";
+  const ps = plan.legs.map((l) => l.price);
+  const lo = Math.min(...ps), hi = Math.max(...ps), span = hi - lo || 1;
+  const maxW = Math.max(...plan.legs.map((l) => l.weight)) || 1;
+  const x = (p) => ((p - lo) / span * 100).toFixed(2);
+  const bars = plan.legs.map((l) => `<i style="left:${x(l.price)}%;height:${Math.max(10, Math.round(l.weight / maxW * 100))}%"></i>`).join("");
+  return bars + (plan.avg > 0 ? `<b class="avg" style="left:${x(plan.avg)}%"></b>` : "");
+}
+function scaleRiskCts(eq, prices, stop, riskPct, weights) {
+  const even = weights.every((w) => w === weights[0]);
   const avg = harmonicAvg(prices, weights);
   const total = sizeFromRisk(eq, avg, stop, riskPct);
   const cts = prices.map(() => 0);
@@ -2379,18 +2761,13 @@ function scalePlan() {
   const stop = parseNum($("stop").value);
   const risk = parseNum($("risk").value);
   if (!(from > 0) || !(to > 0) || from === to || n < 2 || n > 50) return null;
-  const prices = [];
-  for (let i = 0; i < n; i++) {
-    const t = i / (n - 1);
-    const u = priceEven ? t : t * t;
-    prices.push(from + (to - from) * u);
-  }
-  const weights = prices.map((_, i) => sizeEven ? 1 : i + 1);
+  const prices = skewPrices(from, to, n);
+  const weights = skewWeights(prices);
   const per = prices.map(() => []);
   const legCt = prices.map(() => 0);
   let avg = 0;
   for (const a of accountsForSize()) {
-    const sized = scaleRiskCts(a.eq, prices, stop, risk, sizeEven);
+    const sized = scaleRiskCts(a.eq, prices, stop, risk, weights);
     avg = sized.avg;
     sized.cts.forEach((ct, i) => {
       legCt[i] += ct;
@@ -2514,10 +2891,55 @@ function chaseValue() {
   const el = isDesk() ? $("d-chase") : $("m-chase");
   return parseNum(el && el.value);
 }
+// Ordem a limite e escala: acima do preço atual só vende (SHORT), abaixo só compra (LONG). Vale com ou sem Reduce
+// (LONG = compra, SHORT = venda). Stop a mercado, mercado, chase e hedge ficam livres.
+// Devolve null quando não há trava; senão { allowed: "long" | "short" | null, msg }.
+function limitSideLock() {
+  const m = lastPx;
+  if (!(m > 0)) return null;
+  if (deskKind === "limit") {
+    const p = parseNum($("price").value);
+    if (!(p > 0) || p === m) return null;
+    return p < m
+      ? { allowed: "long", msg: "Limite abaixo do preço atual é compra (LONG)." }
+      : { allowed: "short", msg: "Limite acima do preço atual é venda (SHORT)." };
+  }
+  if (deskKind === "scale") {
+    const inp = scaleInputs();
+    if (!(inp.from > 0) || !(inp.to > 0)) return null;
+    const lo = Math.min(inp.from, inp.to), hi = Math.max(inp.from, inp.to);
+    if (hi <= m) return { allowed: "long", msg: "Escala abaixo do preço atual é compra (LONG)." };
+    if (lo >= m) return { allowed: "short", msg: "Escala acima do preço atual é venda (SHORT)." };
+    return { allowed: null, msg: "A escala cruza o preço atual. Coloque as pernas todas acima (venda) ou todas abaixo (compra)." };
+  }
+  return null;
+}
+function paintSideLock() {
+  const lock = limitSideLock();
+  const can = (s) => !lock || lock.allowed === s;
+  for (const [id, s] of [["d-long", "long"], ["btn-long", "long"], ["d-short", "short"], ["btn-short", "short"]]) {
+    const el = $(id);
+    if (!el) continue;
+    el.disabled = !can(s);
+    el.title = can(s) ? "" : lock.msg;
+    // no botão travado, o motivo curto no lugar do tamanho
+    if (!can(s)) {
+      const sub = el.querySelector(".go-sub");
+      if (sub) sub.textContent = !lock.allowed ? "cruza o preço atual" : lock.allowed === "long" ? "abaixo do preço: compra" : "acima do preço: venda";
+    }
+  }
+  // celular: o lado escolhido segue o preço
+  if (lock && lock.allowed && side !== lock.allowed) setSide(lock.allowed);
+  const sendEl = $("send");
+  if (sendEl && !sending && deskKind !== "hedge" && deskKind !== "hedge-scale") sendEl.disabled = !!lock && !lock.allowed;
+}
 function quotePrice() {
   if (deskKind === "limit" || (deskKind === "hedge" && hedgeOrd === "limit")) return parseNum($("price").value);
   if (deskKind === "trigger") return triggerValue();
   if (deskKind === "scale") {
+    // média ponderada da escala (já com Distribuição e Tamanho); sem plano, o meio da faixa
+    const plan = typeof scalePlan === "function" ? scalePlan() : null;
+    if (plan && plan.avg > 0) return plan.avg;
     const inp = scaleInputs();
     if (inp.from > 0 && inp.to > 0) return (inp.from + inp.to) / 2;
   }
@@ -2569,7 +2991,7 @@ function scaleInputs() {
 }
 function computeReducePreview(posSide) {
   const which = posSide || side;
-  const accounts = (lastAccounts || []).filter((a) => !a.error);
+  const accounts = visibleAccounts(lastAccounts).filter((a) => !a.error);
   const base = accounts.map((a) => {
     const leg = legOn(a, which);
     return { name: a.name, prefix: a.prefix, pos: leg ? leg.ct : 0, avg: leg ? leg.avg : 0, has: !!leg, ct: 0, btc: 0, usd: 0 };
@@ -2603,13 +3025,8 @@ function computeReducePreview(posSide) {
     const inp = scaleInputs();
     if (!(inp.from > 0) || !(inp.to > 0) || inp.from === inp.to || inp.n < 2 || inp.n > 50) error = "Preencha a escala (de, até, ordens).";
     else {
-      const prices = [];
-      for (let i = 0; i < inp.n; i++) {
-        const t = inp.n === 1 ? 0 : i / (inp.n - 1);
-        const u = priceEven ? t : t * t;
-        prices.push(inp.from + (inp.to - inp.from) * u);
-      }
-      const weights = prices.map((_, i) => (sizeEven ? 1 : i + 1));
+      const prices = skewPrices(inp.from, inp.to, inp.n);
+      const weights = skewWeights(prices);
       ladder = prices.map((price) => ({ price, ct: 0, btc: 0, usd: 0 }));
       sized = sized.map((row) => {
         if (!(row.ct > 0)) return row;
@@ -2643,7 +3060,7 @@ function computeReducePreview(posSide) {
   return {
     unit: reduceUnit, pct, rows, btc, usd, totalCt, exit, ladder, error, label,
     color: btc >= 0 ? "#00e29a" : "#e5425c",
-    chartTitle: label + " " + fmtBtcChart(btc),
+    chartTitle: label + " " + fmtPnlTitle(btc, usd),
   };
 }
 let porConta = false;
@@ -2703,6 +3120,7 @@ function paintActions() {
   setBtn("d-short", "SHORT", shortSub);
   setBtn("btn-long", "LONG", longSub);
   setBtn("btn-short", "SHORT", shortSub);
+  paintSideLock();
   if (sending) return;
   const el = $("send");
   if (!el) return;
@@ -2758,8 +3176,7 @@ function updateDesk() {
     const bars = $("d-bars");
     if (bars) {
       bars.classList.toggle("short", side === "short");
-      const maxW = plan ? Math.max(...plan.legs.map((l) => l.weight)) : 1;
-      bars.innerHTML = plan ? plan.legs.map((l) => `<i style="height:${Math.max(8, Math.round(l.weight / maxW * 36))}px"></i>`).join("") : "";
+      bars.innerHTML = scaleBarsHtml(plan);
     }
   } else if (!reducing) {
     const sized = openSize();
@@ -2770,8 +3187,7 @@ function updateDesk() {
       if ($("d-avg")) $("d-avg").textContent = plan ? fmtPx(plan.avg) : "—";
       const bars = $("d-bars");
       bars.classList.toggle("short", side === "short");
-      const maxW = plan ? Math.max(...plan.legs.map((l) => l.weight)) : 1;
-      bars.innerHTML = plan ? plan.legs.map((l) => `<i style="height:${Math.max(8, Math.round(l.weight / maxW * 36))}px"></i>`).join("") : "";
+      bars.innerHTML = scaleBarsHtml(plan);
     }
   }
   const eqs = accountsForSize();
@@ -2813,23 +3229,163 @@ function renderDesk() {
       const notion = Number(leg.usd) || (Number(leg.ct) || 0) * 100;
       const cls = p == null ? "" : p >= 0 ? "d-up" : "d-dn";
       const pnl = p == null ? "—" : (p >= 0 ? "+" : "−") + fmtUsd(Math.abs(p));
-      posRows.push(`<tr><td>BTC-USD-SWAP</td><td>${esc(a.name)} ${esc(leg.posSide || "")}</td><td class="r">${fmtPx(leg.avg)}</td><td class="r">${fmtUsd(notion)}</td><td class="r ${cls}">${pnl}</td></tr>`);
+      const ps = leg.posSide || (a.net > 0 ? "long" : "short");
+      const open = pp && pp.acc === a.name && pp.side === ps;
+      const act = `<button type="button" class="pos-act" data-pp-acc="${esc(a.name)}" data-pp-side="${esc(ps)}" aria-expanded="${open ? "true" : "false"}" aria-label="Ajustar ${esc(a.name)} ${esc(ps)}"><svg width="10" height="6" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
+      posRows.push(`<tr><td>BTC-USD-SWAP</td><td>${esc(a.name)} <span class="${ps === "short" ? "d-dn" : "d-up"}">${esc(ps)}</span></td><td class="r">${fmtPx(leg.avg)}</td><td class="r">${fmtUsd(notion)}</td><td class="r ${cls}">${pnl}</td><td class="r">${act}</td></tr>`);
     }
   }
-  $("d-pos-body").innerHTML = posRows.length ? `<table class="d-table"><thead><tr><th>Símbolo</th><th>Conta</th><th class="r">Entrada</th><th class="r">Tamanho</th><th class="r">Resultado</th></tr></thead><tbody>${posRows.join("")}</tbody></table>` : '<div class="d-empty">Sem posição.</div>';
+  $("d-pos-body").innerHTML = posRows.length ? `<table class="d-table"><thead><tr><th>Símbolo</th><th>Conta</th><th class="r">Entrada</th><th class="r">Tamanho</th><th class="r">Resultado</th><th></th></tr></thead><tbody>${posRows.join("")}</tbody></table>` : '<div class="d-empty">Sem posição.</div>';
+  if (pp) placePop();
   const orders = [];
   for (const a of list) for (const o of accountOrders(a)) orders.push(o);
   const cancel = (o) => o.kind === "chase" && o.algoId ? `<button type="button" class="cancel-algo" data-cancel-algo="${esc(o.algoId)}" data-account="${esc(o.prefix)}">Cancelar</button>` : "";
   $("d-ord-body").innerHTML = orders.length ? `<table class="d-table"><thead><tr><th>Símbolo</th><th>Tipo</th><th>Conta</th><th class="r">Preço</th><th class="r">Tam.</th><th></th></tr></thead><tbody>${orders.map((o) => `<tr><td>BTC-USD-SWAP</td><td>${kindLabel(o.kind)}</td><td>${esc(o.account)}</td><td class="r">${o.price > 0 ? fmtPx(o.price) : "book"}</td><td class="r">${o.sz ? fmtCt(o.sz) + " ct" : "—"}</td><td>${cancel(o)}</td></tr>`).join("")}</tbody></table>` : '<div class="d-empty">Nenhuma ordem aberta.</div>';
   if ($("m-ord-body")) {
     const live = [];
-    for (const a of (lastAccounts || [])) for (const o of accountOrders(a)) live.push(o);
+    for (const a of visibleAccounts(lastAccounts)) for (const o of accountOrders(a)) live.push(o);
     const box = $("m-ord-panel");
     if (box) show(box, live.length > 0);
     $("m-ord-body").innerHTML = live.map((o) => `<div class="ord-card"><span>${kindLabel(o.kind)} · ${esc(o.account)} · ${o.price > 0 ? fmtPx(o.price) : "book"} · ${o.sz ? fmtCt(o.sz) + " ct" : ""}</span>${cancel(o)}</div>`).join("");
   }
   updateDesk();
 }
+// ---------- reduzir uma posição pela setinha (uma conta, uma perna) ----------
+// Reduz um % da perna daquela conta: a mercado (na hora), a limite (no preço escolhido) ou chase (segue o book até executar).
+// Long reduz vendendo; short reduz comprando. Limite segue a regra: venda acima do preço atual, compra abaixo.
+var pp = null;
+function ppLeg() {
+  if (!pp) return null;
+  const a = (lastAccounts || []).find((x) => x.name === pp.acc);
+  if (!a) return null;
+  const legs = Array.isArray(a.legs) && a.legs.length ? a.legs : (a.net ? [{ posSide: a.net > 0 ? "long" : "short", ct: Math.abs(a.net), avg: a.avg }] : []);
+  const leg = legs.find((l) => (l.posSide || "long") === pp.side);
+  if (!leg) return null;
+  return { a, ct: Number(leg.ct ?? leg.pos) || 0, avg: Number(leg.avg) || 0 };
+}
+function ppCt(leg) {
+  if (!leg || !(leg.ct > 0)) return 0;
+  if (pp.pct >= 100) return leg.ct;
+  return Math.floor(leg.ct * pp.pct / 100 * 10 + 1e-9) / 10;
+}
+function ppCheck() {
+  const leg = ppLeg();
+  if (!leg) return { err: "Essa posição não está mais aberta." };
+  if (pp.pct == null) return { err: "Preencha o %.", leg, ct: 0, soft: true };
+  if (!(pp.pct > 0 && pp.pct <= 100)) return { err: "Use um % de 1 a 100.", leg, ct: 0 };
+  const ct = ppCt(leg);
+  if (!(ct >= 0.1)) return { err: "Tamanho abaixo de 0,1 ct.", leg, ct };
+  const sell = pp.side === "long";
+  let exit = lastPx;
+  if (pp.type === "limit") {
+    exit = parseNum($("pp-price").value);
+    if (!(exit > 0)) return { err: "Preencha o preço da ordem.", leg, ct, soft: true };
+    if (lastPx > 0 && exit !== lastPx && (sell ? exit < lastPx : exit > lastPx)) {
+      return { err: sell ? "Venda a limite fica acima do preço atual." : "Compra a limite fica abaixo do preço atual.", leg, ct };
+    }
+  }
+  return { leg, ct, exit, sell };
+}
+function paintPop() {
+  if (!pp) return;
+  const c = ppCheck();
+  const sell = pp.side === "long";
+  $("pp-title").innerHTML = `Reduzir ${esc(pp.acc)} <span class="${pp.side}">${esc(pp.side)}</span>`;
+  $("pp-size").textContent = c.leg ? `${fmtCt(c.ct || 0)} de ${fmtCt(c.leg.ct)} ct · ${fmtUsd((c.ct || 0) * 100)}` : "—";
+  document.querySelectorAll("#pp-pcts .d-tog").forEach((b) => b.classList.toggle("on", Number(b.dataset.ppPct) === pp.pct));
+  document.querySelectorAll("#pp-types .d-tog").forEach((b) => b.classList.toggle("on", b.dataset.ppType === pp.type));
+  show($("pp-price-box"), pp.type === "limit");
+  $("pp-note").textContent = pp.type === "market" ? "Executa na hora, a mercado."
+    : pp.type === "chase" ? "Fica no melhor preço do book e acompanha até executar."
+    : (sell ? "Ordem de venda no preço escolhido, acima do preço atual." : "Ordem de compra no preço escolhido, abaixo do preço atual.");
+  const pnl = c.leg && c.ct >= 0.1 && c.exit > 0 ? pnlBtc(c.ct, c.leg.avg, c.exit, pp.side) : null;
+  $("pp-pnl").innerHTML = pnl == null || pp.type === "chase" && !(lastPx > 0) ? "" :
+    `<span class="${pnl >= 0 ? "pnl-up" : "pnl-dn"}">PnL ${pp.type === "chase" ? "≈ " : ""}${fmtPnlTitle(pnl, pnl * c.exit)}</span>`;
+  const go = $("pp-go");
+  go.classList.toggle("buy", !sell);
+  const how = pp.type === "market" ? "a mercado" : pp.type === "chase" ? "com chase" : "a limite";
+  go.textContent = `${sell ? "Vender" : "Comprar"} ${pp.pct == null ? "—" : fmtPct(pp.pct)} ${how}`;
+  if (document.activeElement !== $("pp-pct")) $("pp-pct").value = pp.pct == null ? "" : String(pp.pct).replace(".", ",");
+  go.disabled = !!c.err || pp.busy;
+  const msg = $("pp-msg");
+  if (c.err && !c.soft) { msg.textContent = c.err; msg.className = "err"; }
+  else if (!pp.sent) msg.className = "err hidden";
+}
+function placePop() {
+  const el = $("pos-pop");
+  if (!pp) { show(el, false); return; }
+  const btn = document.querySelector(`.pos-act[data-pp-acc="${CSS.escape(pp.acc)}"][data-pp-side="${CSS.escape(pp.side)}"]`);
+  if (!btn) { closePop(); return; }
+  show(el, true);
+  const r = btn.getBoundingClientRect();
+  const w = el.offsetWidth, h = el.offsetHeight;
+  let left = Math.min(window.innerWidth - w - 8, r.right - w);
+  let top = r.bottom + 6;
+  if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+  el.style.left = Math.max(8, left) + "px";
+  el.style.top = top + "px";
+  paintPop();
+}
+function openPop(acc, sideName) {
+  if (pp && pp.acc === acc && pp.side === sideName) { closePop(); return; }
+  pp = { acc, side: sideName, pct: 50, type: "market", busy: false, sent: false };
+  $("pp-price").value = "";
+  renderDesk();
+  try { $("pp-pcts").querySelector(".on")?.focus(); } catch (e) {}
+}
+function closePop() {
+  pp = null;
+  show($("pos-pop"), false);
+  document.querySelectorAll(".pos-act[aria-expanded='true']").forEach((b) => b.setAttribute("aria-expanded", "false"));
+}
+async function sendPop() {
+  if (!pp || pp.busy) return;
+  const c = ppCheck();
+  if (c.err) { paintPop(); return; }
+  const body = { side: pp.side, reduce: true, ordType: pp.type, contracts: { [pp.acc]: c.ct } };
+  if (pp.type === "limit") body.price = c.exit;
+  pp.busy = true; paintPop();
+  const msg = $("pp-msg");
+  try {
+    const { res, data } = await api("/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok || data.ok === false || data.aborted) {
+      msg.textContent = scaleFailText(data); msg.className = "err"; pp.sent = true;
+      return;
+    }
+    closePop();
+    loadPositions();
+  } catch (e) {
+    if (pp) { msg.textContent = "Não consegui falar com o servidor."; msg.className = "err"; pp.sent = true; }
+  } finally {
+    if (pp) { pp.busy = false; paintPop(); }
+  }
+}
+$("d-pos-body").addEventListener("click", (ev) => {
+  const b = ev.target.closest(".pos-act");
+  if (b) openPop(b.dataset.ppAcc, b.dataset.ppSide);
+});
+$("pp-pcts").onclick = (ev) => { const b = ev.target.closest("[data-pp-pct]"); if (b && pp) { pp.pct = Number(b.dataset.ppPct); pp.sent = false; $("pp-pct").value = String(pp.pct); paintPop(); } };
+// % manual: qualquer valor de 1 a 100; os botões acendem só quando o valor bate com um deles
+$("pp-pct").addEventListener("input", () => { if (!pp) return; pp.pct = parseNum($("pp-pct").value); pp.sent = false; paintPop(); });
+$("pp-types").onclick = (ev) => {
+  const b = ev.target.closest("[data-pp-type]");
+  if (!b || !pp) return;
+  pp.type = b.dataset.ppType; pp.sent = false;
+  if (pp.type === "limit" && !(parseNum($("pp-price").value) > 0) && lastPx > 0) $("pp-price").value = String(Math.round(lastPx * 10) / 10);
+  placePop();
+  if (pp.type === "limit") $("pp-price").focus();
+};
+$("pp-price").addEventListener("input", () => { if (pp) { pp.sent = false; paintPop(); } });
+$("pp-go").onclick = sendPop;
+$("pp-close").onclick = closePop;
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && pp) closePop(); });
+document.addEventListener("pointerdown", (ev) => {
+  if (!pp) return;
+  if (ev.target.closest("#pos-pop") || ev.target.closest(".pos-act")) return;
+  closePop();
+});
+window.addEventListener("resize", () => { if (pp) placePop(); });
+$("d-pos-body").addEventListener("scroll", () => { if (pp) placePop(); });
 function fillFilters() {
   const html = '<option value="todas">Todas</option>' + ["pupo", "pai", "mãe", "tcheco"].map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
   for (const id of ["d-filter", "d-filter-pos", "d-filter-ord"]) {
@@ -2844,9 +3400,13 @@ function setDeskFilter(v) {
   document.documentElement.setAttribute("data-acct", deskFilter);
   document.querySelectorAll("#accts .chip").forEach((b) => b.classList.toggle("on", b.dataset.acct === deskFilter));
   for (const id of ["d-filter", "d-filter-pos", "d-filter-ord"]) if ($(id) && $(id).options.length) $(id).value = deskFilter;
-  renderDesk();
+  if (typeof closePop === "function" && pp) closePop();
+  renderAllPos();
+  paintKind();
   redrawChartLines();
 }
+// Texto de destino da ordem, segundo a carteira selecionada
+function contasTxt() { return deskFilter === "todas" ? "as 4 contas" : "a carteira " + deskFilter; }
 function copyField(from, to) {
   if (!$(from) || !$(to)) return;
   if ($(to).value === $(from).value) return;
@@ -2861,6 +3421,10 @@ function sizeHint() {
   }
   if (reducing && sizeMode === "pct") return "% da perna existente, em cada conta. LONG reduz a short. SHORT reduz a long.";
   if (reducing) return "O USD se reparte na proporção de cada perna. LONG reduz a short. SHORT reduz a long.";
+  if (deskFilter !== "todas") {
+    if (sizeMode === "risco") return `O tamanho sai do risco e da distância até o stop. A ordem vai só para ${contasTxt()}.`;
+    return `O USD inteiro vai para ${contasTxt()}.`;
+  }
   if (sizeMode === "risco") return "O tamanho sai do risco e da distância até o stop, em cada conta.";
   if (sizeMode === "pct") return "% do saldo disponível de cada conta.";
   return "O USD se reparte entre as 4 contas na proporção do saldo.";
@@ -2875,6 +3439,8 @@ function paintQtyLabel() {
 }
 function paintKind() {
   const hedge = deskKind === "hedge" || deskKind === "hedge-scale";
+  // as etiquetas do gráfico mudam ao entrar ou sair do Hedge
+  if (hedge !== lastHedgeView) { lastHedgeView = hedge; if (lastAccounts) redrawChartLines(); }
   const scale = deskKind === "scale" || deskKind === "hedge-scale";
   const showSize = !hedge;
   const showQty = showSize && sizeMode !== "risco";
@@ -2926,6 +3492,12 @@ function paintKind() {
     el.classList.toggle("on", reducing);
     el.setAttribute("aria-pressed", reducing ? "true" : "false");
   }
+  for (const id of ["d-post-tog", "m-post"]) {
+    const el = $(id);
+    if (!el) continue;
+    el.classList.toggle("on", !reducing);
+    el.setAttribute("aria-pressed", reducing ? "false" : "true");
+  }
   for (const id of ["d-tpsl-tog", "m-tpsl-tog"]) {
     const el = $(id);
     if (!el) continue;
@@ -2933,7 +3505,12 @@ function paintKind() {
     el.setAttribute("aria-pressed", tpslOn ? "true" : "false");
   }
   document.querySelectorAll("#d-tabs .d-tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === deskTab));
-  document.querySelectorAll("#d-size-modes button, #m-size-modes button").forEach((b) => b.classList.toggle("on", b.dataset.size === (reducing && sizeMode === "risco" ? "pct" : sizeMode)));
+  // abrir posição: só USD ou Risco. O % fica só com o Reduce, onde é "% da perna".
+  if (!reducing && sizeMode === "pct") { setSizeMode("usd"); return; }
+  document.querySelectorAll("#d-size-modes button, #m-size-modes button").forEach((b) => {
+    b.classList.toggle("on", b.dataset.size === (reducing && sizeMode === "risco" ? "pct" : sizeMode));
+    if (b.dataset.size === "pct") b.classList.toggle("hidden", !reducing);
+  });
   document.querySelectorAll("#d-px-type button, #m-px-type button").forEach((b) => b.classList.toggle("on", b.dataset.px === pxType));
   document.querySelectorAll("#d-chase-unit button, #m-chase-unit button").forEach((b) => b.classList.toggle("on", b.dataset.chase === chaseUnit));
   for (const id of ["d-chase-u", "m-chase-u"]) if ($(id)) $(id).textContent = chaseUnit === "pct" ? "%" : "USD";
@@ -3014,7 +3591,7 @@ function hedgeRows() {
   const target = hedgePctValue();
   const mark = lastPx || 0;
   const hedgeNow = deskKind === "hedge" || deskKind === "hedge-scale";
-  return (lastAccounts || []).map((a) => {
+  return visibleAccounts(lastAccounts).map((a) => {
     const legs = a.legs || [];
     const longCt = Number(legs.find((l) => l.posSide === "long")?.ct ?? (a.side === "long" ? Math.abs(a.net) : 0)) || 0;
     const shortCt = Number(legs.find((l) => l.posSide === "short")?.ct ?? (a.side === "short" ? Math.abs(a.net) : 0)) || 0;
@@ -3068,13 +3645,8 @@ let sheetKind = "scale";
 function hedgeScalePlan() {
   const inp = scaleInputs();
   if (!(inp.from > 0) || !(inp.to > 0) || !(inp.n >= 2)) return null;
-  const prices = [];
-  for (let i = 0; i < inp.n; i++) {
-    const t = inp.n === 1 ? 0 : i / (inp.n - 1);
-    const u = priceEven ? t : t * t;
-    prices.push(inp.from + (inp.to - inp.from) * u);
-  }
-  const weights = prices.map((_, i) => sizeEven ? 1 : i + 1);
+  const prices = skewPrices(inp.from, inp.to, inp.n);
+  const weights = skewWeights(prices);
   const rows = hedgeRows();
   const valor = rows.reduce((s, r) => s + (r.valor || 0), 0);
   const shortCt = rows.reduce((s, r) => s + ((r.shortUsd || 0) / 100), 0);
@@ -3122,7 +3694,7 @@ function openHedgeSheet() {
   if (!rows.length) { $("banner-err").textContent = "Sem contas para o hedge."; show($("banner-err"), true); return; }
   sheetKind = "hedge";
   $("scale-title").textContent = "Hedge";
-  $("scale-note").textContent = "Confirmar manda só na perna short, para as 4 contas. A long não muda.";
+  $("scale-note").textContent = `Confirmar manda só na perna short, para ${contasTxt()}. A long não muda.`;
   $("scale-list").innerHTML = rows.map((r) => `<li><span class="name">${esc(r.name)}</span> · agora ${fmtPct(r.atual)} → ${fmtPct(r.alvo)} · ${esc(r.action)} ${fmtCt(Math.abs(r.delta))} ct</li>`).join("");
   $("scale-msg").textContent = "";
   show($("scale-msg"), false);
@@ -3144,7 +3716,7 @@ async function sendHedge() {
     if (sheetKind === "hedge-scale") {
       const inp = scaleInputs();
       payload.from = inp.from; payload.to = inp.to; payload.n = inp.n;
-      payload.priceSkew = !priceEven; payload.sizeSkew = !sizeEven;
+      Object.assign(payload, skewPayload());
     } else if (hedgeOrd === "limit") payload.price = price;
     const { res, data } = await api("/hedge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok || data.aborted || data.ok === false) {
@@ -3270,7 +3842,7 @@ async function submitScaleReduce() {
   }
   $("scale-ok").disabled = true;
   try {
-    const payload = { ...reducePayload(prev, legFor(side)), reduce: true, from: inp.from, to: inp.to, n: inp.n, priceSkew: !priceEven, sizeSkew: !sizeEven };
+    const payload = { ...reducePayload(prev, legFor(side)), reduce: true, from: inp.from, to: inp.to, n: inp.n, ...skewPayload() };
     const { res, data } = await api("/scale", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok || data.aborted || data.ok === false) {
       $("scale-msg").textContent = scaleFailText(data);
@@ -3290,7 +3862,7 @@ function openScaleSheet() {
   if (reducing) return openScaleReduceSheet();
   sheetKind = "scale";
   $("scale-title").textContent = "Escala";
-  $("scale-note").textContent = "Confirmar manda as ordens limite para as 4 contas.";
+  $("scale-note").textContent = `Confirmar manda as ordens limite para ${contasTxt()}.`;
   const inp = scaleInputs();
   if (!(inp.from > 0) || !(inp.to > 0) || inp.from === inp.to || !(inp.n >= 2)) {
     formError("Preencha os dois preços e a quantidade de ordens.");
@@ -3348,12 +3920,13 @@ async function submitScale() {
   if (sizeMode === "risco" && !plan) return;
   $("scale-ok").disabled = true;
   try {
-    const payload = { side, from: inp.from, to: inp.to, n: inp.n, priceSkew: !priceEven, sizeSkew: !sizeEven };
+    const payload = { side, from: inp.from, to: inp.to, n: inp.n, ...skewPayload() };
     if (sizeMode === "usd" || sizeMode === "pct") {
       payload.sizeMode = sizeMode;
       if (sizeMode === "usd") payload.usd = qtyValue(); else payload.pct = qtyValue();
-      const stop = parseNum($("stop").value);
-      if (stop > 0) payload.stop = stop;
+      // só manda stop quando o TP/SL está ligado; o campo escondido pode ter um valor velho
+      const stop = optionalStop();
+      if (stop) payload.stop = stop;
     } else {
       payload.sizeMode = "risk";
       payload.stop = plan.stop; payload.risk = plan.risk;
@@ -3389,11 +3962,6 @@ function initDesk() {
   $("d-filter").onchange = () => setDeskFilter($("d-filter").value);
   $("d-filter-pos").onchange = () => setDeskFilter($("d-filter-pos").value);
   $("d-filter-ord").onchange = () => setDeskFilter($("d-filter-ord").value);
-  $("d-tabs").onclick = (ev) => {
-    const b = ev.target.closest(".d-tab");
-    if (!b || !b.dataset.tab) return;
-    setDeskTab(b.dataset.tab);
-  };
   if ($("m-kind")) $("m-kind").onchange = () => applyMenu($("m-kind").value);
   $("d-risk").addEventListener("input", () => copyField("d-risk", "risk"));
   $("d-risk-range").addEventListener("input", () => { $("d-risk").value = $("d-risk-range").value; copyField("d-risk", "risk"); });
@@ -3414,8 +3982,34 @@ function initDesk() {
   $("d-from").addEventListener("input", touchScale);
   $("d-to").addEventListener("input", touchScale);
   $("d-orders").addEventListener("input", () => { $("d-orders-n").textContent = $("d-orders").value; touchScale(); });
-  $("d-price-even").onclick = () => { priceEven = !priceEven; $("d-price-even").classList.toggle("on", priceEven); $("d-price-even").setAttribute("aria-pressed", priceEven); $("d-price-even").textContent = priceEven ? "Preço igual" : "Preço acumulado"; touchScale(); };
-  $("d-size-even").onclick = () => { sizeEven = !sizeEven; $("d-size-even").classList.toggle("on", sizeEven); $("d-size-even").setAttribute("aria-pressed", sizeEven); $("d-size-even").textContent = sizeEven ? "Tamanho igual" : "Tamanho crescente"; touchScale(); };
+  // controles deslizantes com centro em zero: arrasta a barrinha para um lado ou outro; perto do centro gruda no zero;
+  // duplo clique volta para "Igual"
+  const paintSkew = (which) => {
+    const el = $(which === "price" ? "d-skew-price" : "d-skew-size");
+    const v = which === "price" ? priceSkew : sizeSkew;
+    const label = !v ? "Igual" : `${Math.abs(v)}% ${v > 0 ? "em cima" : "embaixo"}`;
+    $(which === "price" ? "d-skew-price-v" : "d-skew-size-v").textContent = label;
+    el.value = String(v);
+    el.setAttribute("aria-valuetext", label);
+    // trilho preenchido do centro até a barrinha
+    const pos = 50 + v / 2;
+    el.style.setProperty("--a", Math.min(50, pos) + "%");
+    el.style.setProperty("--b", Math.max(50, pos) + "%");
+  };
+  const onSkew = (which) => () => {
+    const el = $(which === "price" ? "d-skew-price" : "d-skew-size");
+    let v = Math.round(Number(el.value) || 0);
+    if (Math.abs(v) <= 4) v = 0;
+    if (which === "price") priceSkew = v; else sizeSkew = v;
+    paintSkew(which);
+    touchScale();
+  };
+  for (const which of ["price", "size"]) {
+    const el = $(which === "price" ? "d-skew-price" : "d-skew-size");
+    el.addEventListener("input", onSkew(which));
+    el.addEventListener("dblclick", () => { el.value = "0"; onSkew(which)(); });
+    paintSkew(which);
+  }
     $("d-long").onclick = () => { setSide("long"); if (deskKind === "scale") { openScaleSheet(); return; } $("send").click(); };
   $("d-short").onclick = () => { setSide("short"); if (deskKind === "scale") { openScaleSheet(); return; } $("send").click(); };
   const onReduce = () => setReducing(!reducing);
@@ -3559,7 +4153,7 @@ document.addEventListener("focusin", (ev) => {
   const t = ev.target;
   const role = roleFromField(t && t.id);
   if (role) { lastPriceFocus = role; updateChartHint(); }
-  if (!t || t.tagName !== "INPUT" || !window.matchMedia("(max-width: 959px)").matches) return;
+  if (!t || t.tagName !== "INPUT" || !window.matchMedia("(max-width: 1023px)").matches) return;
   setTimeout(() => t.scrollIntoView({ block: "center", inline: "nearest" }), 60);
 });
 
