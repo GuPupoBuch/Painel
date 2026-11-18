@@ -1644,10 +1644,15 @@ async function runHedgeScale(targetPct: number, mode: "short" | "net", from: num
   try { mark = await markPx(); } catch { return { ...out, aborted: true, abort_msg: "Mark indisponível." }; }
   out.mark = mark;
   const R = await Promise.all(accs().map(async ([P, name]) => {
-    const eq = await eq_of(P);
-    const legs = await legsOf(P);
-    const longCt = legs.find((l) => l.posSide === "long")?.pos ?? 0;
-    const shortCt = legs.find((l) => l.posSide === "short")?.pos ?? 0;
+    const [eq, legs, cs] = await Promise.all([eq_of(P), legsOf(P), conds(P)]);
+    let longCt = legs.find((l) => l.posSide === "long")?.pos ?? 0;
+    let shortCt = legs.find((l) => l.posSide === "short")?.pos ?? 0;
+    // Escala inteira além do stop de uma perna: o stop fecha essa perna antes de o preço chegar nas ordens.
+    // O ponto de partida é o que sobra depois do stop (0), não a perna de agora.
+    const shortGone = shortCt > 0 && prices.every((p) => beyondLegStop("short", p, legStopPx(cs, "short")));
+    const longGone = longCt > 0 && prices.every((p) => beyondLegStop("long", p, legStopPx(cs, "long")));
+    if (shortGone) shortCt = 0;
+    if (longGone) longCt = 0;
     const valor = eq * mark;
     let delta = 0;
     let alvo = valor > 0 ? shortCt * 100 / valor * 100 : 0;
@@ -1670,13 +1675,25 @@ async function runHedgeScale(targetPct: number, mode: "short" | "net", from: num
       const pct = last || !(totalCt > 0) ? alvo : atual + (alvo - atual) * (walked / totalCt);
       return { price: p.price, ct: p.ct, pct };
     });
-    const err = !(eq > 0) ? "saldo zerado" : null;
-    return { P, name, eq, atual, alvo, delta, parts: cum, sell, err };
+    // venda a limite fica acima do preço atual; recompra (reduce) fica abaixo
+    let err: string | null = !(eq > 0) ? "saldo zerado" : null;
+    if (!err && cum.length && sell && cum.some((p) => p.price < mark)) err = "para vender, a escala precisa ficar acima do preço atual";
+    if (!err && cum.length && !sell && cum.some((p) => p.price > mark)) err = "para recomprar, a escala precisa ficar abaixo do preço atual";
+    return { P, name, eq, atual, alvo, delta, parts: cum, sell, err, shortGone };
   }));
   out.accounts = R.map((r) => ({
-    prefix: r.P, name: r.name, atual_pct: r.atual, alvo_pct: r.alvo, delta_ct: r.delta,
+    prefix: r.P, name: r.name, atual_pct: r.atual, alvo_pct: r.alvo, delta_ct: r.delta, after_stop: r.shortGone,
     legs: r.parts, status: r.err ? "bloqueado" : r.parts.length ? "ok" : "no alvo", error: r.err,
   }));
+  const band = await priceBand();
+  for (const r of R) {
+    if (r.err || !r.parts.length) continue;
+    const msg = pricesOutside(r.parts.map((p) => p.price), band, !r.sell);
+    if (msg) return { ...out, aborted: true, abort_msg: msg };
+  }
+  if (R.some((r) => r.err && r.err !== "saldo zerado")) {
+    return { ...out, aborted: true, abort_msg: R.filter((r) => r.err).map((r) => `${r.name}: ${r.err}`).join("\n") };
+  }
   if (dry) { out.raw = "DRY: nada enviado"; return out; }
   if (!R.some((r) => !r.err && r.parts.length)) return { ...out, aborted: true, abort_msg: "ABORT: nenhuma ordem enviada" };
   const O = await Promise.all(R.map(async (r) => {
