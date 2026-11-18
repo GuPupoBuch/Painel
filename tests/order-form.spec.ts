@@ -583,3 +583,49 @@ test("tamanho: abrindo é USD ou Risco; com Reduce é USD ou % (Risco some)", as
   await setReduce(page, false);
   await expect(page.locator(`${root} [data-size="risco"]`)).toBeVisible();
 });
+
+test("ordem a limite com stop: stop vinculado aparece, ✕ cancela a ordem (e o vinculado sai junto)", async ({ page }) => {
+  test.skip(!(await desk(page)), "só no desktop");
+  // sem short aberto, a venda a limite nasce com o stop grudado (não soma na perna)
+  await fetch("http://127.0.0.1:8788/__legs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ short: 0 }) });
+  await page.selectOption("#d-filter", "pupo");
+  await setKind(page, "limit");
+  await setReduce(page, false);
+  await setSize(page, "usd", "1000");
+  await page.click("#d-tpsl-tog");
+  await setPrice(page, "66300");
+  await page.fill("#d-stop", "66860");
+  await clickSide(page, "short", "/order");
+  await expect(page.locator("#d-ord-body")).toContainText("Stop vinculado");
+  // a etiqueta só aparece com o preço dentro da faixa visível do gráfico
+  await page.evaluate("series.applyOptions({ autoscaleInfoProvider: () => ({ priceRange: { minValue: 57000, maxValue: 71000 } }) })");
+  const tags = page.locator("#line-tags .ltag");
+  await expect(tags.filter({ hasText: "Stop vinculado" })).toHaveCount(1);
+  const limitTag = tags.filter({ hasText: "Limite · venda" });
+  await limitTag.locator(".t-x").click();
+  await expect(page.locator("#cancel-sheet")).toBeVisible();
+  await expect(page.locator("#cancel-list")).toContainText("66.300");
+  const wait = page.waitForResponse((r) => r.url().includes(":8000/cancel") && r.request().method() === "POST");
+  await page.click("#cancel-ok");
+  const res = await wait;
+  expect(JSON.parse(res.request().postData() || "{}")).toMatchObject({ account: "OKX" });
+  await expect(page.locator("#cancel-sheet")).toBeHidden();
+  await expect(page.locator("#d-ord-body")).not.toContainText("Stop vinculado");
+  const cancels = await okxPosts("/api/v5/trade/cancel-order");
+  expect(cancels).toHaveLength(1);
+});
+
+test("tamanho começa vazio e limpa ao trocar USD ↔ % (sem 1000% da posição)", async ({ page }) => {
+  const isDesk = await desk(page);
+  const qty = isDesk ? "#d-qty" : "#m-qty";
+  await setKind(page, "limit");
+  await setReduce(page, false);
+  await expect(page.locator(qty)).toHaveValue("");
+  await setSize(page, "usd", "1000");
+  await setReduce(page, true);
+  await setSize(page, "pct");
+  await expect(page.locator(qty)).toHaveValue("");
+  await page.fill(qty, "50");
+  await setReduce(page, false);
+  await expect(page.locator(qty)).toHaveValue("");
+});

@@ -393,6 +393,17 @@ async function fetchPositions() {
           kind: "limit", ordId: o.ordId ?? null, price: parseFloat(o.px), sz: parseFloat(o.sz),
           side: o.side ?? null, posSide: o.posSide ?? null, reduceOnly: o.reduceOnly === true || o.reduceOnly === "true",
         })),
+        // stop anexado a uma ordem a limite ainda pendente (attachAlgoOrds): na OKX ele fica dentro da ordem,
+        // não aparece entre os stops (conditional) até a ordem executar. Mostra como "stop vinculado".
+        ...limits.flatMap((o) => {
+          const att = Array.isArray(o.attachAlgoOrds) ? o.attachAlgoOrds : [];
+          const sls = att.map((a: J) => parseFloat(a.slTriggerPx)).filter((v: number) => v > 0);
+          if (!sls.length && parseFloat(o.slTriggerPx) > 0) sls.push(parseFloat(o.slTriggerPx));
+          return sls.map((px: number) => ({
+            kind: "linked", parentOrdId: o.ordId ?? null, price: px, sz: parseFloat(o.sz),
+            side: o.side === "buy" ? "sell" : "buy", posSide: o.posSide ?? null, reduceOnly: true,
+          }));
+        }),
         ...cs.map((x) => ({
           kind: "stop", algoId: x.algoId ?? null, price: parseFloat(x.slTriggerPx),
           posSide: x.posSide ?? null, closeFraction: x.closeFraction ?? null, slTriggerPx: parseFloat(x.slTriggerPx),
@@ -1589,11 +1600,20 @@ async function runScaleAmount(side: Side, from: number, to: number, n: number, p
   return out;
 }
 
-async function runCancel(prefix: string, algoId: string, dry: boolean) {
-  const out: J = { account: prefix, algoId, dry, aborted: false, abort_msg: null };
+// Cancela uma ordem: algo (stop, stop a mercado, chase) pelo algoId, ou limite pelo ordId.
+async function runCancel(prefix: string, algoId: string, dry: boolean, ordId = "") {
+  const out: J = { account: prefix, algoId: algoId || null, ordId: ordId || null, dry, aborted: false, abort_msg: null };
   if (!ACC.find(([P]) => P === prefix)) return { ...out, aborted: true, abort_msg: "Conta desconhecida." };
-  if (!algoId) return { ...out, aborted: true, abort_msg: "Falta o id da ordem." };
+  if (!algoId && !ordId) return { ...out, aborted: true, abort_msg: "Falta o id da ordem." };
   if (dry) { out.raw = "DRY: nada enviado"; return out; }
+  if (ordId) {
+    const e = await req(prefix, "POST", "/api/v5/trade/cancel-order", { instId: INST, ordId });
+    const d = (e.data && e.data[0]) || {};
+    const ok = e.code === "0" && (d.sCode == null || d.sCode === "0");
+    out.ok = ok;
+    if (!ok) { out.aborted = true; out.abort_msg = d.sMsg || e.msg || "não cancelou a ordem"; }
+    return out;
+  }
   const e = await req(prefix, "POST", "/api/v5/trade/cancel-algos", [{ algoId, instId: INST }]);
   const d = (e.data && e.data[0]) || {};
   const ok = e.code === "0" && (d.sCode == null || d.sCode === "0");
@@ -1916,11 +1936,12 @@ const handler = async (req: Request): Promise<Response> => {
       try { body = await req.json(); } catch { return json(400, { ok: false, error: "Pedido inválido." }); }
       const prefix = String(body.account ?? body.prefix ?? "").trim();
       const algoId = String(body.algoId ?? "").trim();
+      const ordId = String(body.ordId ?? "").trim();
       const dry = body.dry === true;
       if (orderBusy) return json(409, { ok: false, error: "Já tem uma ordem em andamento." });
       orderBusy = true;
       try {
-        const r = await runCancel(prefix, algoId, dry);
+        const r = await runCancel(prefix, algoId, dry, ordId);
         console.log(JSON.stringify({ ev: "cancel", ip, prefix, dry, aborted: r.aborted }));
         return json(200, { ok: !r.aborted, ...r });
       } finally { orderBusy = false; }
