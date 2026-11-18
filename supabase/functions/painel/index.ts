@@ -1297,22 +1297,26 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
       longCt = st.long; shortCt = st.short;
     }
     const h = hedgeNumbers(eq, mark, longCt, shortCt, targetPct, mode);
-    let action: "vender" | "reduzir" | "nada" = "nada";
+    let action: "vender" | "reduzir" | "reduzir long" | "nada" = "nada";
     let err: string | null = null;
     let hedgePct = h.hedgePct;
     let alvoCt = h.alvoCt;
     let delta = h.delta;
-    if (reduce) {
-      const closeCt = roundLot(shortCt * Math.min(100, Math.max(0, targetPct)) / 100);
-      delta = -closeCt;
-      alvoCt = roundLot(shortCt + delta);
-      hedgePct = h.valor > 0 ? alvoCt * 100 / h.valor * 100 : 0;
+    // Reduce no hedge: só ordens de redução. Comprar com Reduce reduz o short; vender com Reduce reduz a long
+    // (em vez de abrir mais short), na mesma quantidade, até o tamanho da long.
+    let legSide: Side = "short";
+    if (reduce && delta > 0) {
+      legSide = "long";
+      delta = roundLot(Math.min(delta, longCt));
+      if (!(delta >= 0.1)) err = "com Reduce, sem long para reduzir";
     }
-    if (!(eq > 0)) err = "saldo zerado";
+    if (err) { /* já explicado */ }
+    else if (!(eq > 0)) err = "saldo zerado";
     else if (Math.abs(delta) < 0.1) action = "nada";
+    else if (legSide === "long") action = "reduzir long";
     else if (delta > 0) action = "vender";
     else action = "reduzir";
-    return { P, name, eq, longCt, shortCt, ...h, hedgePct, alvoCt, delta, action, err, afterStop };
+    return { P, name, eq, longCt, shortCt, ...h, hedgePct, alvoCt, delta, action, err, afterStop, legSide };
   }));
   out.accounts = R.map((r) => ({
     prefix: r.P, name: r.name, eq: r.eq, valor_usd: r.valor, long_usd: r.longUsd, short_usd: r.shortUsd,
@@ -1326,10 +1330,10 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
     if (ordType === "trigger") {
       // stop a mercado: fica pendente; nada muda agora (nem os stops da perna)
       const tb: J = {
-        instId: INST, tdMode: "cross", side: r.action === "vender" ? "sell" : "buy", posSide: "short",
+        instId: INST, tdMode: "cross", side: r.action === "vender" || r.action === "reduzir long" ? "sell" : "buy", posSide: r.legSide,
         ordType: "trigger", sz: sz.toFixed(1), triggerPx: pyG(price!), orderPx: "-1", triggerPxType: "last",
       };
-      if (r.action === "reduzir") tb.reduceOnly = true;
+      if (r.action === "reduzir" || r.action === "reduzir long") tb.reduceOnly = true;
       const e = await req(r.P, "POST", "/api/v5/trade/order-algo", tb);
       const d = (e.data && e.data[0]) || {};
       const ok = e.code === "0" && (d.sCode == null || d.sCode === "0");
@@ -1338,15 +1342,15 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
     const clOrdId = ("h" + Date.now().toString(36) + r.P + Math.random().toString(36).slice(2, 6)).replace(/[^0-9A-Za-z]/g, "").slice(0, 32);
     const body: J = {
       instId: INST, tdMode: "cross", clOrdId,
-      side: r.action === "vender" ? "sell" : "buy",
-      posSide: "short", ordType, sz: sz.toFixed(1),
+      side: r.action === "vender" || r.action === "reduzir long" ? "sell" : "buy",
+      posSide: r.legSide, ordType, sz: sz.toFixed(1),
     };
-    if (r.action === "reduzir") body.reduceOnly = true;
+    if (r.action === "reduzir" || r.action === "reduzir long") body.reduceOnly = true;
     if (ordType === "limit") body.px = pyG(price!);
     const e = await req(r.P, "POST", "/api/v5/trade/order", body);
     const d = (e.data && e.data[0]) || {};
     const ok = e.code === "0" && d.sCode === "0";
-    if (ok && r.alvoCt === 0 && r.shortCt >= 0.1) {
+    if (ok && r.legSide === "short" && r.alvoCt === 0 && r.shortCt >= 0.1) {
       const mine = algosFor(await conds(r.P), "short").filter((x) => x.algoId).map((x) => ({ algoId: x.algoId, instId: INST }));
       if (mine.length) await req(r.P, "POST", "/api/v5/trade/cancel-algos", mine);
     }
@@ -1750,14 +1754,12 @@ async function runHedgeScale(targetPct: number, mode: "short" | "net", from: num
     const valor = eq * mark;
     let delta = 0;
     let alvo = valor > 0 ? shortCt * 100 / valor * 100 : 0;
-    if (reduce) {
-      delta = -roundLot(shortCt * Math.min(100, Math.max(0, targetPct)) / 100);
-      alvo = valor > 0 ? (shortCt + delta) * 100 / valor * 100 : 0;
-    } else {
-      const h = hedgeNumbers(eq, mark, longCt, shortCt, targetPct, mode);
-      delta = h.delta;
-      alvo = h.hedgePct;
-    }
+    // Reduce no hedge: só reduz posição. Comprar reduz o short; vender reduz a long (até o tamanho dela).
+    const hn = hedgeNumbers(eq, mark, longCt, shortCt, targetPct, mode);
+    delta = hn.delta;
+    alvo = hn.hedgePct;
+    const legSide: Side = reduce && delta > 0 ? "long" : "short";
+    if (legSide === "long") delta = roundLot(Math.min(delta, longCt));
     const sell = delta > 0;
     const atual = valor > 0 ? shortCt * 100 / valor * 100 : 0;
     const parts = splitLots(Math.abs(delta), weights).map((ct, i) => ({ price: prices[i], ct })).filter((p) => p.ct >= 0.1);
@@ -1773,7 +1775,7 @@ async function runHedgeScale(targetPct: number, mode: "short" | "net", from: num
     let err: string | null = !(eq > 0) ? "saldo zerado" : null;
     if (!err && cum.length && sell && cum.some((p) => p.price < mark)) err = "para vender, a escala precisa ficar acima do preço atual";
     if (!err && cum.length && !sell && cum.some((p) => p.price > mark)) err = "para recomprar, a escala precisa ficar abaixo do preço atual";
-    return { P, name, eq, atual, alvo, delta, parts: cum, sell, err, shortGone };
+    return { P, name, eq, atual, alvo, delta, parts: cum, sell, err, shortGone, legSide };
   }));
   out.accounts = R.map((r) => ({
     prefix: r.P, name: r.name, atual_pct: r.atual, alvo_pct: r.alvo, delta_ct: r.delta, after_stop: r.shortGone,
@@ -1794,10 +1796,10 @@ async function runHedgeScale(targetPct: number, mode: "short" | "net", from: num
     if (r.err || !r.parts.length) return { ok: true, msg: r.err };
     const chunk = r.parts.map((l) => {
       const order: J = {
-        instId: INST, tdMode: "cross", side: r.sell ? "sell" : "buy", posSide: "short",
+        instId: INST, tdMode: "cross", side: r.sell ? "sell" : "buy", posSide: r.legSide,
         ordType: "limit", sz: szStr(l.ct), px: pxStr(l.price),
       };
-      if (!r.sell) order.reduceOnly = true;
+      if (!r.sell || r.legSide === "long") order.reduceOnly = true;
       return order;
     });
     const e = await req(r.P, "POST", "/api/v5/trade/batch-orders", chunk);

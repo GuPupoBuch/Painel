@@ -743,7 +743,7 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
           <input id="d-hedge-pct" type="text" inputmode="decimal" value="50" aria-label="Alvo do hedge">
           <span class="field-u">%</span>
         </label>
-        <div class="d-togs" style="margin-top:8px">
+        <div class="d-togs hidden" id="d-hedge-modes" style="margin-top:8px">
           <button type="button" class="d-tog on" id="d-mode-short">% vendido</button>
           <button type="button" class="d-tog" id="d-mode-net">% comprado</button>
         </div>
@@ -764,11 +764,11 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
             <input id="d-hedge-trigger" type="text" inputmode="decimal" autocomplete="off" placeholder="vazio = agora" aria-label="Gatilho do hedge a mercado">
             <span class="field-u">USD</span>
           </label>
-          <p class="d-note">Vazio: executa agora, a mercado. Com preço: vira um stop a mercado do hedge, que executa quando o preço chegar ali.</p>
+          <p class="d-note hidden">Vazio: executa agora, a mercado. Com preço: vira um stop a mercado do hedge, que executa quando o preço chegar ali.</p>
         </div>
-        <div id="d-hedge-table" class="d-size-rows"></div>
+        <div id="d-hedge-table" class="d-size-rows hidden"></div>
         <button type="button" id="d-hedge-go">Confirmar hedge</button>
-        <p class="d-note">Não mexe na long. Os stops ficam como estão e só saem se o short zerar. <span class="contas-txt">A ordem vai para as 4 contas.</span></p>
+        <p class="d-note hidden">Não mexe na long. Os stops ficam como estão e só saem se o short zerar. <span class="contas-txt">A ordem vai para as 4 contas.</span></p>
       </div>
       <div class="mode-row" id="d-mode-togs">
         <button type="button" class="mode-tog" id="d-post-tog">Post</button>
@@ -954,20 +954,20 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
         <p class="all-note" id="m-hedge-now">Posição atual: —</p>
         <label for="m-hedge-pct" id="m-hedge-label">Quanto % vendido</label>
         <input id="m-hedge-pct" type="text" inputmode="decimal" autocomplete="off" value="50">
-        <div class="otypes">
+        <div class="otypes hidden" id="m-hedge-modes">
           <button type="button" class="otype on" id="m-mode-short">% vendido</button>
           <button type="button" class="otype" id="m-mode-net">% comprado</button>
         </div>
-        <div id="m-hedge-table"></div>
+        <div id="m-hedge-table" class="hidden"></div>
         <div class="otypes" id="m-hedge-ord">
           <button type="button" class="otype on" id="m-hedge-mkt">Mercado</button>
           <button type="button" class="otype" id="m-hedge-lmt">Limite</button>
         </div>
         <div id="m-hedge-trg" class="hedge-trg">
           <label class="field" for="m-hedge-trigger"><span class="field-k">Gatilho (opcional)</span><input id="m-hedge-trigger" type="text" inputmode="decimal" autocomplete="off" placeholder="vazio = agora" aria-label="Gatilho do hedge a mercado"><span class="field-u">USD</span></label>
-          <p class="all-note">Vazio: executa agora. Com preço: vira um stop a mercado do hedge.</p>
+          <p class="all-note hidden">Vazio: executa agora. Com preço: vira um stop a mercado do hedge.</p>
         </div>
-        <p class="all-note">Não mexe na long. Stops só saem se o short zerar.</p>
+        <p class="all-note hidden">Não mexe na long. Stops só saem se o short zerar.</p>
       </div>
       <div id="m-stop-box">
         <label class="field" for="stop"><span class="field-k">Stop</span><input id="stop" type="text" inputmode="decimal" autocomplete="off" placeholder="63800" enterkeyhint="next"><span class="field-u">USD</span></label>
@@ -1707,7 +1707,8 @@ function addPreview(price, title, opt) {
 function hedgeScaleFinalPct(ladder) {
   const far = furthestPrice(ladder.legs.map((l) => ({ price: l.price })));
   const path = pathLegs(far);
-  const finalCt = Math.max(0, path.short + ladder.delta);
+  // Reduce + venda reduz a long: o short não muda
+  const finalCt = Math.max(0, path.short + (reducing && ladder.delta > 0 ? 0 : ladder.delta));
   const pct = walletPct(finalCt, ladder.valor);
   // % comprado (líquido) = 100% + long − short, na mesma carteira
   const comprado = ladder.valor > 0 ? 100 + (path.long - finalCt) * 100 / ladder.valor * 100 : null;
@@ -3626,7 +3627,7 @@ function copyField(from, to) {
 function sizeHint() {
   if (deskKind === "hedge" || deskKind === "hedge-scale") {
     return reducing
-      ? "Reduce ligado: essa % fecha o short de cada conta e aumenta a exposição."
+      ? "Reduce ligado: só reduz posição. Comprar reduz o short; vender reduz a long."
       : "Alvo de % da carteira vendida. Carteira = saldo BTC × mark. 1 ct = 100 USD.";
   }
   if (reducing && sizeMode === "pct") return "% da posição existente, em cada conta. LONG reduz a short. SHORT reduz a long.";
@@ -3695,7 +3696,7 @@ function paintKind() {
   paintQtyLabel();
   const hint = sizeHint();
   if ($("d-size-note")) { show($("d-size-note"), !hedge); $("d-size-note").textContent = hint; }
-  if ($("m-size-note")) $("m-size-note").textContent = hedge ? "Não mexe na long." : hint;
+  if ($("m-size-note")) { show($("m-size-note"), !hedge); $("m-size-note").textContent = hint; }
   if ($("d-reduce-which")) $("d-reduce-which").textContent = "";
   if ($("m-reduce-which")) $("m-reduce-which").textContent = "";
   for (const id of ["d-reduce-toggle", "m-reduce-toggle"]) {
@@ -3832,25 +3833,26 @@ function hedgeRows() {
     if (hedgePct > 1000) hedgePct = 1000;
     let alvo = Math.round((hedgePct / 100) * valor / 100 * 10 + 1e-9) / 10;
     let delta = Math.round((alvo - shortCt) * 10 + 1e-9) / 10;
-    if (hedgeNow && reducing) {
-      const closeCt = roundLot(shortCt * Math.min(100, Math.max(0, target)) / 100);
-      delta = -closeCt;
-      alvo = roundLot(shortCt + delta);
-      hedgePct = valor > 0 ? alvo * 100 / valor * 100 : 0;
+    // Reduce no hedge: só reduz posição. Comprar reduz o short; vender reduz a long (até o tamanho dela).
+    // O alvo continua sendo o % vendido final. Mesma regra da função (runHedge/runHedgeScale).
+    let legSide = "short";
+    if (hedgeNow && reducing && delta > 0) {
+      legSide = "long";
+      delta = roundLot(Math.min(delta, longCt));
     }
     const atual = valor > 0 ? shortUsd / valor * 100 : 0;
     const net = valor > 0 ? 100 + (longUsd - shortUsd) / valor * 100 : 0;
-    const action = Math.abs(delta) < 0.1 ? "no alvo" : delta > 0 ? "vender" : "reduzir";
+    const action = Math.abs(delta) < 0.1 ? "no alvo" : legSide === "long" ? "reduzir long" : delta > 0 ? "vender" : "reduzir";
     const atualAgora = valor > 0 ? shortNow * 100 / valor * 100 : 0;
     const longAgora = valor > 0 ? longNow * 100 / valor * 100 : 0;
     // % comprado (líquido = 100% + long − short) no ponto de partida e no alvo, para o modo "% comprado"
     const netAlvo = valor > 0 ? 100 + (longUsd - hedgePct / 100 * valor) / valor * 100 : 0;
-    return { name: a.name, atual, atualAgora, longAgora, afterStop, longAfterStop, alvo: hedgePct, net, netAlvo, delta, action, longUsd, shortUsd, valor };
+    return { name: a.name, atual, atualAgora, longAgora, afterStop, longAfterStop, alvo: hedgePct, net, netAlvo, delta, action, legSide, longUsd, shortUsd, valor };
   });
 }
 function hedgeMove(r) {
   if (Math.abs(r.delta) < 0.1) return "no alvo";
-  const verb = r.action === "reduzir" ? "recomprar" : "vender";
+  const verb = r.action === "reduzir" ? "recomprar" : r.action === "reduzir long" ? "vender da long" : "vender";
   return verb + " " + fmtCt(Math.abs(r.delta)) + " ct · " + fmtUsd(Math.abs(r.delta) * 100);
 }
 function paintHedgeTable() {
@@ -3878,8 +3880,7 @@ function paintHedgeTable() {
     const agora = valor > 0 ? rows.reduce((s, r) => s + (r.atualAgora || 0) * (r.valor || 0), 0) / valor : 0;
     // posição de agora (antes de qualquer stop), em % da carteira
     const longAg = valor > 0 ? rows.reduce((s, r) => s + (r.longAgora || 0) * (r.valor || 0), 0) / valor : 0;
-    const now = `Posição atual: ${fmtPct(longAg)} comprado · ${fmtPct(agora)} vendido`
-      + (afterStop || longAfterStop ? ". As ordens pendentes antes desse preço já mudam a posição: a conta parte do que sobra depois delas." : "");
+    const now = `Posição atual: ${fmtPct(longAg)} comprado · ${fmtPct(agora)} vendido`;
     if ($("d-hedge-now")) $("d-hedge-now").textContent = now;
     if ($("m-hedge-now")) $("m-hedge-now").textContent = now;
   }
@@ -3936,6 +3937,8 @@ function hedgeTotals() {
 function hedgeTrgTitle() {
   const t = hedgeTotals();
   if (Math.abs(t.delta) < 0.1) return "stop do hedge · já no alvo";
+  // Reduce + venda = reduz a long (o short não muda)
+  if (reducing && t.delta > 0) return `stop do hedge · reduzir long ${fmtCt(t.delta)} ct`;
   return `stop do hedge · ${t.delta > 0 ? "vender" : "recomprar"} ${fmtCt(Math.abs(t.delta))} ct · → ${fmtPct(t.alvo)} vendido`;
 }
 function openHedgeSheet() {
@@ -3947,7 +3950,7 @@ function openHedgeSheet() {
     const sell = plan.delta >= 0;
     const finTxt = hedgeFinalTxt(plan);
     const afterStop = hedgeRows().some((r) => r.afterStop);
-    $("scale-note").textContent = (sell ? "Vende short" : "Recompra short") + ` em ${plan.legs.filter((l) => l.ct >= 0.1).length} ordens, para ${contasTxt()}.`
+    $("scale-note").textContent = (sell ? (reducing ? "Reduz a long" : "Vende short") : "Recompra short") + ` em ${plan.legs.filter((l) => l.ct >= 0.1).length} ordens, para ${contasTxt()}.`
       + (afterStop ? " As ordens pendentes antes da escala já mudam o short: ela parte do que sobra depois delas." : "");
     // resumo como uma ordem só, no preço médio; abaixo, cada ordem só com preço e tamanho
     const head = `<li class="${sell ? "blocked" : "ok"}">Média ${fmtPx(plan.avg)} · ${fmtCt(Math.abs(plan.delta))} ct · ${fmtPct(Math.abs(plan.delta) * 100 / (plan.valor || 1) * 100)} da carteira · ${finTxt}</li>`;

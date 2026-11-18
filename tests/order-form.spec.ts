@@ -637,6 +637,10 @@ test("hedge a mercado: gatilho vazio executa agora; com gatilho vira stop a merc
   await expect(page.locator("#d-hedge-go")).toHaveText("Confirmar hedge agora");
   // clicar no gráfico preenche o gatilho
   await expect(page.locator("#chart-hint")).toContainText("gatilho");
+  // quadro limpo: só a posição atual, sem seletor vendido/comprado nem tabela
+  await expect(page.locator("#d-hedge-now")).toHaveText(/^Posição atual: .* comprado · .* vendido$/);
+  await expect(page.locator("#d-hedge-modes")).toBeHidden();
+  await expect(page.locator("#d-hedge-table")).toBeHidden();
   await page.fill("#d-hedge-pct", "50");
   await page.fill("#d-hedge-trigger", "63000");
   await expect(page.locator("#d-hedge-go")).toHaveText("Colocar stop do hedge em 63.000");

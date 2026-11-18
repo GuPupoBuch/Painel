@@ -1030,3 +1030,27 @@ Deno.test("hedge com gatilho parte das pendentes no caminho (stop + escala; long
   const b = (r2.accounts as any[])[0];
   if (Math.abs(b.delta_ct - -52) > 1e-9) throw new Error("long: " + JSON.stringify(b));
 });
+
+// Reduce no hedge: só reduz posição. Alvo abaixo do short → compra reduz o short; alvo acima → vende reduzindo a long.
+Deno.test("hedge com Reduce: compra reduz o short, venda reduz a long (nunca abre short)", async () => {
+  const { runHedge, setScope } = __test as any;
+  const scene = () => {
+    reset(); install();
+    balances = { OKX: 1 };
+    positions = { OKX: [leg("short", "100", "64000", "64100"), leg("long", "50", "63000", "64100")] };
+    algos = {};
+  };
+  setScope(["pupo"]);
+  // short 100 ct = 15,6% de 641 ct; alvo 10% = 64,1 ct → recompra 35,9 do short
+  scene();
+  const r = await runHedge(10, "short", "market", null, false, null, true);
+  const b = hit("/api/v5/trade/order", "OKX")[0]?.body as any;
+  if (r.aborted || !b || b.side !== "buy" || b.posSide !== "short" || !b.reduceOnly || b.sz !== "35.9") throw new Error("short: " + JSON.stringify(b) + " " + r.abort_msg);
+  // alvo 25% = 160,3 ct → precisaria vender 60,3; com Reduce vende a long (até 50 ct), reduce-only, sem abrir short
+  scene();
+  const r2 = await runHedge(25, "short", "market", null, false, null, true);
+  setScope(null);
+  const b2 = hit("/api/v5/trade/order", "OKX")[0]?.body as any;
+  if (r2.aborted || !b2 || b2.side !== "sell" || b2.posSide !== "long" || !b2.reduceOnly || b2.sz !== "50.0") throw new Error("long: " + JSON.stringify(b2) + " " + r2.abort_msg);
+  if (hit("/api/v5/trade/order", "OKX").some((c) => (c.body as any).posSide === "short" && (c.body as any).side === "sell")) throw new Error("abriu short com Reduce");
+});
