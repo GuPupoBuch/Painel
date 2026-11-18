@@ -17,13 +17,14 @@ test("mobile 390: reduce verde, 44px e stop a mercado", async ({ page }) => {
   expect(order.form).toBeLessThan(order.pos);
   await page.screenshot({ path: "/opt/cursor/artifacts/painel-mobile-390.png", fullPage: false });
   await page.selectOption("#m-kind", "trigger");
-  await page.click("#m-size-modes button[data-size='pct']");
-  await page.fill("#m-qty", "50");
+  // abrir posição: sem %, só USD ou Risco
+  await expect(page.locator("#m-size-modes button[data-size='pct']")).toBeHidden();
   await page.fill("#m-trigger", "63000");
-  await expect(page.locator("#m-qty-k")).toHaveText("% do saldo");
   await page.screenshot({ path: "/opt/cursor/artifacts/painel-mobile-390-off.png", fullPage: true });
   await page.click("#m-reduce-toggle");
   await expect(page.locator("#m-reduce-toggle")).toHaveAttribute("aria-pressed", "true");
+  await page.click("#m-size-modes button[data-size='pct']");
+  await page.fill("#m-qty", "50");
   await expect(page.locator("#m-qty-k")).toHaveText("% da perna");
   await expect(page.locator("#m-size-note")).toContainText("% da perna");
   const box = await page.locator("#m-reduce-toggle").boundingBox();

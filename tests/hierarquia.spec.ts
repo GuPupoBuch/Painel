@@ -47,7 +47,7 @@ test("grupos no desktop e a escala de hedge no gráfico", async ({ page }) => {
 
   await page.selectOption("#d-kind", "scale");
   await page.click("#d-size-modes [data-size=risco]");
-  await expect(page.locator("#d-size-even")).toHaveClass(/on/);
+  await expect(page.locator("#d-skew-size-v")).toHaveText("Igual");
   await page.fill("#d-from", "63000");
   await page.fill("#d-to", "64000");
   await page.locator("input#d-orders").fill("4");

@@ -751,3 +751,157 @@ Deno.test("trava de ambiente: detecção não autoriza; autorização sem detec�
     if (okxAllowedByEnv(envOf(vars), edge) !== want) throw new Error(`okxAllowedByEnv: ${why} deveria ser ${want}`);
   }
 });
+
+Deno.test("trava de ambiente: diagnóstico mostra a forma dos marcadores sem vazar valores", () => {
+  const { okxEnvDiagnostics } = __test;
+  const secretFlag = "true";
+  const base = "https://www.okx.com";
+  const vars = { ...HOSTED_ENV, OKX_LIVE_ENABLED: secretFlag, OKX_BASE: base };
+  const d = okxEnvDiagnostics(envOf(vars), true);
+  const txt = JSON.stringify(d);
+  for (const raw of [EXEC_ID, DEP_ID, "krzznjwvcrbuhlfwsdel", base, "okx.com"]) {
+    if (txt.includes(raw)) throw new Error(`diagnóstico vazou ${raw}`);
+  }
+  if (!(d.edgeRuntime && d.execId.uuidOk && d.deploymentId.refPrefixOk && d.deploymentId.formatOk && d.deploymentId.segments === 3 &&
+    d.liveFlag.exactTrue && d.okxBase.exactOrigin && d.hosted && d.allowed)) throw new Error("produção completa: " + txt);
+  const shape = (s: string) => s.replace(/[A-Za-z]/g, "a").replace(/[0-9]/g, "9");
+  if (d.execId.shape !== shape(EXEC_ID) || d.deploymentId.shape !== shape(DEP_ID)) {
+    throw new Error("shape: " + d.execId.shape + " / " + d.deploymentId.shape);
+  }
+
+  // cenários de bloqueio: o diagnóstico aponta o motivo
+  const semFlag = okxEnvDiagnostics(envOf(HOSTED_ENV), true);
+  if (semFlag.allowed || semFlag.liveFlag.present || !semFlag.hosted) throw new Error("sem flag: " + JSON.stringify(semFlag));
+  const flagErrada = okxEnvDiagnostics(envOf({ ...HOSTED_ENV, OKX_LIVE_ENABLED: " True " }), true);
+  if (flagErrada.allowed || flagErrada.liveFlag.exactTrue || !flagErrada.liveFlag.looseTrue) throw new Error("flag errada: " + JSON.stringify(flagErrada));
+  const depEstranho = okxEnvDiagnostics(envOf({ ...HOSTED_ENV, OKX_LIVE_ENABLED: "true", DENO_DEPLOYMENT_ID: "krzznjwvcrbuhlfwsdel_fn" }), true);
+  if (depEstranho.allowed || depEstranho.deploymentId.formatOk || !depEstranho.deploymentId.refPrefixOk || depEstranho.deploymentId.segments !== 2) {
+    throw new Error("deployment id fora do formato: " + JSON.stringify(depEstranho));
+  }
+  const local = okxEnvDiagnostics(envOf({ OKX_BASE: "http://127.0.0.1:8788" }), false);
+  if (!local.allowed || local.hosted || local.okxBase.exactOrigin || local.execId.present) throw new Error("mock local: " + JSON.stringify(local));
+  if (JSON.stringify(local).includes("8788")) throw new Error("diagnóstico vazou OKX_BASE local");
+});
+
+// Ordem de abertura além do stop atual da perna: o stop atual fecha a perna antes, então é posição nova.
+// O stop novo vai grudado na ordem e o stop atual não é movido. Vale para todo tipo de ordem.
+Deno.test("além do stop atual: posição nova, stop novo na ordem e stop atual intacto", async () => {
+  const setup = () => {
+    reset(); install();
+    balances = { OKX: 1, OKX2: 1, OKX3: 1, OKX4: 1 };
+    positions = { OKX: [leg("short", "1", "68000", "63000"), leg("long", "2", "60000", "63000")] };
+    algos = { OKX: [algo("short", "sl-short", "70000"), algo("long", "sl-long", "58000")] };
+  };
+  const untouched = (what: string) => {
+    if (hit("/api/v5/trade/amend-algos").length) throw new Error(what + ": moveu o stop atual");
+    if (hit("/api/v5/trade/cancel-algos").length) throw new Error(what + ": cancelou o stop atual");
+  };
+
+  // escala por USD, short 70.837→75.068 acima do stop 70.000, stop novo 76.000
+  setup();
+  const sc = await runScaleAmount("short", 70837.2, 75068.9, 10, false, false, false, "usd", 1000, 76000);
+  if (sc.aborted) throw new Error("escala: " + sc.abort_msg);
+  const rows = hit("/api/v5/trade/batch-orders", "OKX").flatMap((c) => c.body as any[]);
+  if (!rows.length || rows.some((o) => o.attachAlgoOrds?.[0]?.slTriggerPx !== "76000")) throw new Error("escala sem stop novo: " + JSON.stringify(rows[0]));
+  untouched("escala");
+
+  // escala por USD sem stop novo: entra sem stop e o stop atual fica
+  setup();
+  const bare = await runScaleAmount("short", 70837.2, 75068.9, 10, false, false, false, "usd", 1000, null);
+  if (bare.aborted) throw new Error("escala sem stop: " + bare.abort_msg);
+  untouched("escala sem stop");
+
+  // limite por risco (ordem única) acima do stop da short
+  setup();
+  const lim = await runOrder("short", 72000, 1, false, "limit", 71000);
+  if (lim.aborted) throw new Error("limite: " + lim.abort_msg);
+  const order = hit("/api/v5/trade/order", "OKX")[0].body as any;
+  if (order.attachAlgoOrds?.[0]?.slTriggerPx !== "72000") throw new Error("limite sem stop novo: " + JSON.stringify(order));
+  untouched("limite risco");
+
+  // limite por USD, long abaixo do stop da long
+  setup();
+  const sized = await runSized("long", "limit", 57000, false, "usd", 400, 56000);
+  if (sized.aborted) throw new Error("limite usd: " + sized.abort_msg);
+  const o2 = hit("/api/v5/trade/order", "OKX")[0].body as any;
+  if (o2.attachAlgoOrds?.[0]?.slTriggerPx !== "56000") throw new Error("limite usd sem stop novo: " + JSON.stringify(o2));
+  untouched("limite usd");
+
+  // stop a mercado (trigger) acima do stop da short
+  setup();
+  const tg = await runAlgo({
+    kind: "trigger", side: "short", reduce: false, dry: false, mode: "usd", amount: 400,
+    stop: 73000, contracts: null, triggerPx: 71000, triggerPxType: "last", maxChaseUnit: null, maxChase: null,
+  });
+  if (tg.aborted) throw new Error("trigger: " + tg.abort_msg);
+  const t = hit("/api/v5/trade/order-algo", "OKX").map((c) => c.body as any).find((b) => b.ordType === "trigger");
+  if (t?.attachAlgoOrds?.[0]?.slTriggerPx !== "73000") throw new Error("trigger sem stop novo: " + JSON.stringify(t));
+  untouched("trigger");
+
+  // controle: limite dentro do stop atual continua somando na perna e movendo o stop
+  setup();
+  const inside = await runOrder("short", 69000, 1, false, "limit", 66000);
+  if (inside.aborted) throw new Error("dentro: " + inside.abort_msg);
+  const amend = hit("/api/v5/trade/amend-algos", "OKX")[0]?.body as any;
+  if (!amend || amend.algoId !== "sl-short" || amend.newSlTriggerPx !== "69000") throw new Error("dentro do stop devia mover o stop da perna: " + JSON.stringify(amend));
+});
+
+// Ajustes da escala: número de −1 a 1 (0 = igual); true é o formato antigo e não muda.
+Deno.test("escala: distribuição e tamanho por número, sem quebrar o formato antigo", async () => {
+  const { scalePrices, scaleWeights, skewArg } = __test as any;
+  const near = (a: number, b: number) => Math.abs(a - b) < 1e-6;
+  // 0 e false = igual
+  const even = scalePrices(60000, 70000, 5, 0);
+  if (!near(even[2], 65000)) throw new Error("igual: " + even);
+  if (scaleWeights(even, 0).some((w: number) => w !== 1)) throw new Error("peso igual");
+  // antigo: true continua t² e pesos 1..n
+  const old = scalePrices(60000, 70000, 3, true);
+  if (!near(old[1], 62500)) throw new Error("antigo mudou: " + old);
+  if (scaleWeights(old, true).join() !== "1,2,3") throw new Error("peso antigo mudou");
+  // + agrupa em cima: a ordem do meio sobe; − agrupa embaixo; pontas ficam
+  const up = scalePrices(60000, 70000, 5, 0.8), down = scalePrices(60000, 70000, 5, -0.8);
+  if (!(up[2] > 65000 && down[2] < 65000)) throw new Error("agrupar: " + up + " | " + down);
+  if (!near(up[0], 60000) || !near(up[4], 70000)) throw new Error("pontas mudaram: " + up);
+  // de cima para baixo (de > até): a 1ª ordem segue sendo o "de", e + continua agrupando perto do preço mais alto
+  const rev = scalePrices(70000, 60000, 5, 0.8);
+  if (!near(rev[0], 70000) || !near(rev[4], 60000) || !(rev[2] > 65000)) throw new Error("invertida: " + rev);
+  // tamanho +: mais peso no preço mais alto, média sobe; −: média desce
+  const avg = (ps: number[], ws: number[]) => ws.reduce((s, w) => s + w, 0) / ws.reduce((s, w, i) => s + w / ps[i], 0);
+  const base = avg(even, scaleWeights(even, 0));
+  if (!(avg(even, scaleWeights(even, 0.6)) > base && avg(even, scaleWeights(even, -0.6)) < base)) throw new Error("média não mexeu");
+  // entrada: número, texto, fora da faixa, lixo
+  if (skewArg(0.4) !== 0.4 || skewArg("-0.5") !== -0.5 || skewArg(3) !== 1 || skewArg("x") !== false || skewArg(true) !== true) throw new Error("skewArg");
+});
+
+// Carteira selecionada: com `accounts`, a ordem só lê e só envia nas carteiras pedidas; sem, vai para todas.
+Deno.test("carteira selecionada: ordem só na carteira escolhida", async () => {
+  const { setScope } = __test as any;
+  const setup = () => {
+    reset(); install();
+    balances = { OKX: 1, OKX2: 1, OKX3: 1, OKX4: 1 };
+    positions = {};
+    algos = {};
+  };
+  const sentTo = (p: string) => [...new Set(hit(p).filter((c) => c.m === "POST").map((c) => c.P))].sort().join(",");
+
+  setup(); setScope(["pupo"]);
+  const one = await runSized("long", "limit", 63000, false, "usd", 400, null);
+  if (one.aborted) throw new Error(String(one.abort_msg));
+  if (sentTo("/api/v5/trade/order") !== "OKX") throw new Error("foi para: " + sentTo("/api/v5/trade/order"));
+  if ((one.accounts as any[]).length !== 1) throw new Error("listou outras carteiras");
+  // US$ 400 inteiros na pupo (sem dividir por 4)
+  if ((hit("/api/v5/trade/order")[0].body as any).sz !== "4.0") throw new Error("tamanho: " + JSON.stringify(hit("/api/v5/trade/order")[0].body));
+
+  setup(); setScope(["pai"]);
+  const sc = await runScaleAmount("long", 60000, 62000, 4, 0, 0, false, "usd", 400, null);
+  if (sc.aborted) throw new Error(String(sc.abort_msg));
+  if (sentTo("/api/v5/trade/batch-orders") !== "OKX2") throw new Error("escala foi para: " + sentTo("/api/v5/trade/batch-orders"));
+
+  setup(); setScope(null);
+  const all = await runSized("long", "limit", 63000, false, "usd", 400, null);
+  if (all.aborted) throw new Error(String(all.abort_msg));
+  if (sentTo("/api/v5/trade/order") !== "OKX,OKX2,OKX3,OKX4") throw new Error("todas: " + sentTo("/api/v5/trade/order"));
+
+  if (setScope(["fulano"]) !== "bad") throw new Error("carteira desconhecida passou");
+  setScope(null);
+});
