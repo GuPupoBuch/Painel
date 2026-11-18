@@ -317,6 +317,56 @@ function addsToLeg(legs: Leg[], cs: J[], side: Side, entries: number[]): boolean
   const s = legStopPx(cs, side);
   return !(entries.length > 0 && entries.every((p) => beyondLegStop(side, p, s)));
 }
+// ---------- caminho do preço ----------
+// Pernas (ct) de uma conta se o preço andar do mark até `atPrice` (sem incluir ordens exatamente em atPrice):
+// aplica as ordens pendentes na ordem em que o preço as encontra. Stop cf=1 (ou sem tamanho) fecha a perna;
+// reduce tira (sem passar de 0); abrir soma. O stop vinculado a uma ordem a limite só conta se essa ordem
+// estiver antes no caminho. Mesma regra do painel (pathLegs).
+type PathOrder = { price: number; leg: Side; ct: number; reduce: boolean; whole: boolean; parent?: string; id?: string };
+function pathOrders(cs: J[], limits: J[], triggers: J[]): PathOrder[] {
+  const out: PathOrder[] = [];
+  for (const x of cs) {
+    const px = parseFloat(x.slTriggerPx);
+    if (!(px > 0) || (x.posSide !== "long" && x.posSide !== "short")) continue;
+    const sz = parseFloat(x.sz || "0");
+    out.push({ price: px, leg: x.posSide, ct: sz > 0 ? sz : 0, reduce: true, whole: isCf1(x) || !(sz > 0) });
+  }
+  for (const o of limits) {
+    const px = parseFloat(o.px), sz = parseFloat(o.sz || "0");
+    if (!(px > 0) || !(sz > 0) || (o.posSide !== "long" && o.posSide !== "short")) continue;
+    const reduce = o.reduceOnly === true || o.reduceOnly === "true";
+    out.push({ price: px, leg: o.posSide, ct: sz, reduce, whole: false, id: String(o.ordId ?? "") });
+    const att = Array.isArray(o.attachAlgoOrds) ? o.attachAlgoOrds : [];
+    for (const a of att) {
+      const sl = parseFloat(a.slTriggerPx);
+      if (sl > 0) out.push({ price: sl, leg: o.posSide, ct: sz, reduce: true, whole: false, parent: String(o.ordId ?? "") });
+    }
+  }
+  for (const t of triggers) {
+    const px = parseFloat(t.triggerPx), sz = parseFloat(t.sz || "0");
+    if (!(px > 0) || !(sz > 0) || (t.posSide !== "long" && t.posSide !== "short")) continue;
+    out.push({ price: px, leg: t.posSide, ct: sz, reduce: t.reduceOnly === true || t.reduceOnly === "true", whole: false });
+  }
+  return out;
+}
+function legsAt(legs: Leg[], orders: PathOrder[], mark: number, atPrice: number): { long: number; short: number; touched: boolean } {
+  const st = { long: legs.find((l) => l.posSide === "long")?.pos ?? 0, short: legs.find((l) => l.posSide === "short")?.pos ?? 0 };
+  if (!(mark > 0) || !(atPrice > 0) || atPrice === mark) return { ...st, touched: false };
+  const up = atPrice > mark;
+  const on = (p: number) => (up ? p > mark && p < atPrice : p < mark && p > atPrice);
+  const list = orders.filter((o) => on(o.price)).sort((a, b) => (up ? a.price - b.price : b.price - a.price));
+  const filled = new Set<string>();
+  let touched = false;
+  for (const o of list) {
+    if (o.parent != null && !filled.has(o.parent)) continue;
+    if (o.whole) st[o.leg] = 0;
+    else if (o.reduce) st[o.leg] = roundLot(Math.max(0, st[o.leg] - o.ct));
+    else st[o.leg] = roundLot(st[o.leg] + o.ct);
+    if (o.id) filled.add(o.id);
+    touched = true;
+  }
+  return { ...st, touched };
+}
 function ctFromRisk(eq: number, entry: number, stop: number, riskPct: number): number {
   if (!(eq > 0) || !(entry > 0) || !(stop > 0) || !(riskPct > 0)) return 0;
   const den = Math.abs(100 * (1 / entry - 1 / stop));
@@ -1219,7 +1269,8 @@ function hedgeNumbers(eq: number, mark: number, longCt: number, shortCt: number,
 }
 
 // ordType "trigger": stop a mercado do hedge. `price` é o gatilho; quando o preço chegar lá, vende/recompra a mercado
-// o que falta para o alvo. Se o gatilho fica além do stop de uma perna, a conta parte do que sobra depois do stop.
+// o que falta para o alvo. O ponto de partida são as pernas quando o preço chegar no gatilho, depois de todas
+// as ordens pendentes no caminho (stops, limites, stops a mercado), nos dois lados.
 async function runHedge(targetPct: number, mode: "short" | "net", ordType: "market" | "limit" | "trigger", price: number | null, dry: boolean, only: string[] | null, reduce = false) {
   const out: J = { target_pct: targetPct, mode, ordType, price: ordType === "limit" ? price : null, triggerPx: ordType === "trigger" ? price : null, dry, aborted: false, abort_msg: null, accounts: [] };
   if (!(targetPct >= 0 && targetPct <= CAP)) return { ...out, aborted: true, abort_msg: "Alvo fora do intervalo." };
@@ -1239,9 +1290,11 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
     let shortCt = legs.find((l) => l.posSide === "short")?.pos ?? 0;
     let afterStop = false;
     if (ordType === "trigger") {
-      const cs = await conds(P);
-      if (shortCt > 0 && beyondLegStop("short", price!, legStopPx(cs, "short"))) { shortCt = 0; afterStop = true; }
-      if (longCt > 0 && beyondLegStop("long", price!, legStopPx(cs, "long"))) { longCt = 0; afterStop = true; }
+      // ponto de partida = as pernas quando o preço chegar no gatilho, depois de todas as pendentes no caminho
+      const [cs, lims, trgs] = await Promise.all([conds(P), pendingLimits(P), algosOf(P, "trigger")]);
+      const st = legsAt(legs, pathOrders(cs, lims, trgs), mark, price!);
+      afterStop = st.touched;
+      longCt = st.long; shortCt = st.short;
     }
     const h = hedgeNumbers(eq, mark, longCt, shortCt, targetPct, mode);
     let action: "vender" | "reduzir" | "nada" = "nada";
@@ -1685,15 +1738,15 @@ async function runHedgeScale(targetPct: number, mode: "short" | "net", from: num
   try { mark = await markPx(); } catch { return { ...out, aborted: true, abort_msg: "Mark indisponível." }; }
   out.mark = mark;
   const R = await Promise.all(accs().map(async ([P, name]) => {
-    const [eq, legs, cs] = await Promise.all([eq_of(P), legsOf(P), conds(P)]);
-    let longCt = legs.find((l) => l.posSide === "long")?.pos ?? 0;
-    let shortCt = legs.find((l) => l.posSide === "short")?.pos ?? 0;
-    // Escala inteira além do stop de uma perna: o stop fecha essa perna antes de o preço chegar nas ordens.
-    // O ponto de partida é o que sobra depois do stop (0), não a perna de agora.
-    const shortGone = shortCt > 0 && prices.every((p) => beyondLegStop("short", p, legStopPx(cs, "short")));
-    const longGone = longCt > 0 && prices.every((p) => beyondLegStop("long", p, legStopPx(cs, "long")));
-    if (shortGone) shortCt = 0;
-    if (longGone) longCt = 0;
+    const [eq, legs, cs, lims, trgs] = await Promise.all([eq_of(P), legsOf(P), conds(P), pendingLimits(P), algosOf(P, "trigger")]);
+    // Ponto de partida = as pernas quando o preço chegar na primeira ordem da escala, depois de todas as pendentes
+    // no caminho (um stop que fecha a perna, vendas e recompras já colocadas), nos dois lados.
+    const nearest = prices.reduce((b, p) => (Math.abs(p - mark) < Math.abs(b - mark) ? p : b), prices[0]);
+    const st = legsAt(legs, pathOrders(cs, lims, trgs), mark, nearest);
+    const shortNowCt = legs.find((l) => l.posSide === "short")?.pos ?? 0;
+    let longCt = st.long;
+    let shortCt = st.short;
+    const shortGone = st.touched && shortCt !== shortNowCt;
     const valor = eq * mark;
     let delta = 0;
     let alvo = valor > 0 ? shortCt * 100 / valor * 100 : 0;

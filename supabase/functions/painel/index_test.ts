@@ -993,3 +993,40 @@ Deno.test("hedge com gatilho vira stop a mercado; além do stop do short parte d
   const acc = (r2.accounts as any[])[0];
   if (!acc.after_stop || Math.abs(acc.delta_ct - acc.alvo_ct) > 1e-9) throw new Error(JSON.stringify(acc));
 });
+
+// Hedge com gatilho: o ponto de partida é o estado depois de TODAS as pendentes no caminho, nos dois lados.
+Deno.test("hedge com gatilho parte das pendentes no caminho (stop + escala; long no modo comprado)", async () => {
+  const { runHedge, setScope } = __test as any;
+  const scene = (pendingLimits: any[]) => {
+    reset(); calls = [];
+    setReq(async (P, m, p, body) => {
+      calls.push({ P, m, p, body });
+      if (p.startsWith("/api/v5/public/mark-price")) return { code: "0", data: [{ markPx: "64100" }] };
+      if (p.startsWith("/api/v5/account/balance")) return { code: "0", data: [{ details: [{ ccy: "BTC", eq: "0.245" }] }] };
+      if (p.startsWith("/api/v5/account/positions")) return { code: "0", data: P === "OKX" ? [leg("short", "169.8", "64912", "64100"), leg("long", "39.6", "63282", "64100")] : [] };
+      if (p.startsWith("/api/v5/trade/orders-algo-pending?ordType=conditional")) return { code: "0", data: P === "OKX" ? [algo("short", "sl-s", "65365"), algo("long", "sl-l", "61880")] : [] };
+      if (p.startsWith("/api/v5/trade/orders-algo-pending")) return { code: "0", data: [] };
+      if (p.startsWith("/api/v5/trade/orders-pending")) return { code: "0", data: P === "OKX" ? pendingLimits : [] };
+      if (p === "/api/v5/trade/order-algo") return { code: "0", data: [{ sCode: "0", algoId: "t1" }] };
+      return { code: "0", data: [] };
+    });
+  };
+  const scale = [66205.4, 66365.8, 66526.2, 66686.6, 66847, 67007.4, 67167.8, 67328.2].map((px, i) => ({ instId: "BTC-USD-SWAP", ordId: "s" + i, ordType: "limit", px: String(px), sz: "4.8", side: "sell", posSide: "short", reduceOnly: "false" }));
+  // valor = 0,245 × 64.100 = 15.704,5 → 1% = 1,57 ct
+  // short: o stop em 65.365 zera o short; a escala soma 8 × 4,8 = 38,4 ct (≈ 24,5%); alvo 10% = 15,7 ct → recompra 22,7
+  scene(scale); setScope(["pupo"]);
+  const r = await runHedge(10, "short", "trigger", 67600, false, null, false);
+  if (r.aborted) throw new Error(String(r.abort_msg));
+  const a = (r.accounts as any[])[0];
+  if (Math.abs(a.delta_ct - -22.7) > 1e-9 || a.action !== "reduzir" || !a.after_stop) throw new Error("short: " + JSON.stringify(a));
+  const t = calls.find((c) => c.p === "/api/v5/trade/order-algo")?.body as any;
+  if (!t || t.side !== "buy" || !t.reduceOnly || t.sz !== "22.7" || t.triggerPx !== "67600") throw new Error("ordem: " + JSON.stringify(t));
+  // long (modo % comprado, gatilho abaixo): o stop da long em 61.880 fecha a long antes do gatilho em 61.000
+  // alvo 25% comprado → short alvo = long(0) + 75% da carteira = 117,8 ct → recompra 52 (sem o caminho seriam 12,4)
+  scene([]);
+  const r2 = await runHedge(25, "net", "trigger", 61000, false, null, false);
+  setScope(null);
+  if (r2.aborted) throw new Error(String(r2.abort_msg));
+  const b = (r2.accounts as any[])[0];
+  if (Math.abs(b.delta_ct - -52) > 1e-9) throw new Error("long: " + JSON.stringify(b));
+});
