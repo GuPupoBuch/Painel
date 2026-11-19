@@ -1887,7 +1887,7 @@ function hedgeScaleFinalPct(ladder) {
 function hedgeFinalTxt(ladder) {
   const f = hedgeScaleFinalPct(ladder);
   if (hedgeLeg === "long") return `→ ${f.longPct == null ? "—" : fmtPct(f.longPct)} na long`;
-  if (hedgeMode !== "short" && !reducing) return `→ ${f.comprado == null ? "—" : fmtPct(f.comprado)} comprado`;
+  if (hedgeMode !== "short") return `→ ${f.comprado == null ? "—" : fmtPct(f.comprado)} comprado`;
   return `→ ${f.pct == null ? "—" : fmtPct(f.pct)} vendido`;
 }
 // Prévia de abertura (limite, stop a mercado, escala): o tamanho que vai ser aberto, em US$ e ct
@@ -4083,8 +4083,9 @@ function paintKind() {
   if ($("m-trigger-row")) show($("m-trigger-row"), deskKind === "trigger");
   if ($("d-chase-box")) show($("d-chase-box"), deskKind === "chase");
   if ($("m-chase-row")) show($("m-chase-row"), deskKind === "chase");
-  if ($("d-mode-togs")) show($("d-mode-togs"), true);
-  if ($("m-mode-togs")) show($("m-mode-togs"), true);
+  // Hedge não usa Post / Reduce / TP/SL: o alvo já diz se aumenta ou reduz
+  if ($("d-mode-togs")) show($("d-mode-togs"), !hedge);
+  if ($("m-mode-togs")) show($("m-mode-togs"), !hedge);
   if ($("d-pnl")) show($("d-pnl"), reducing && !hedge);
   if ($("m-pnl")) show($("m-pnl"), reducing && !hedge);
   if ($("d-reduce-toggle")) show($("d-reduce-toggle"), true);
@@ -4248,21 +4249,14 @@ function hedgeRows() {
     if (hedgePct > 1000) hedgePct = 1000;
     let alvo = Math.round((hedgePct / 100) * valor / 100 * 10 + 1e-9) / 10;
     let delta = Math.round((alvo - shortCt) * 10 + 1e-9) / 10;
-    // Reduce no hedge: só reduz posição. Comprar reduz o short; vender reduz a long (até o tamanho dela).
-    // O alvo continua sendo o % vendido final. Mesma regra da função (runHedge/runHedgeScale).
     // perna escolhida (mesma conta da função, campo leg). delta > 0 = vender, < 0 = comprar.
+    // Hedge não usa Reduce: alvo menor que a posição já reduz (reduce-only); maior aumenta.
     const legSide = hedgeNow ? hedgeLeg : "short";
     if (hedgeNow && legSide === "long") {
-      // long: o alvo é o tamanho da long em % da carteira; com Reduce, só vende da long
+      // long: o alvo é o tamanho da long em % da carteira
       const alvoL = roundLot((target / 100) * valor / 100);
       delta = roundLot(longCt - alvoL);
-      if (reducing) delta = Math.max(0, delta);
       hedgePct = valor > 0 ? (longCt - delta) * 100 / valor * 100 : 0;
-    } else if (hedgeNow && reducing) {
-      // short com Reduce: só recompra, até o alvo
-      const alvoR = roundLot((target / 100) * valor / 100);
-      delta = roundLot(Math.min(0, alvoR - shortCt));
-      hedgePct = valor > 0 ? (shortCt + delta) * 100 / valor * 100 : 0;
     }
     const atual = valor > 0 ? (legSide === "long" ? longUsd : shortUsd) / valor * 100 : 0;
     const net = valor > 0 ? 100 + (longUsd - shortUsd) / valor * 100 : 0;
@@ -4305,11 +4299,11 @@ function posMeterHtml(longPct, shortPct, alvo, alvoLeg) {
 function paintHedgeTable() {
   const rows = hedgeRows();
   const longLeg = hedgeLeg === "long";
-  const label = longLeg ? "Quanto % na long" : hedgeMode !== "short" && !reducing ? "Quanto % comprado" : "Quanto % vendido";
+  const label = longLeg ? "Quanto % na long" : hedgeMode !== "short" ? "Quanto % comprado" : "Quanto % vendido";
   if ($("d-hedge-k")) $("d-hedge-k").textContent = label;
   if ($("m-hedge-label")) $("m-hedge-label").textContent = label;
   // modo "% comprado": a linha fala em comprado (líquido); modo "% vendido" e Reduce: em vendido; long: na long
-  const comprado = !longLeg && hedgeMode !== "short" && !reducing;
+  const comprado = !longLeg && hedgeMode !== "short";
   const line = (r, tot) => {
     const note = r.afterStop || r.longAfterStop ? " depois das pendentes" : "";
     const from = comprado ? r.net : r.atual, to = comprado ? r.netAlvo : r.alvo;
@@ -4333,7 +4327,14 @@ function paintHedgeTable() {
     const longAg = valor > 0 ? rows.reduce((s, r) => s + (r.longAgora || 0) * (r.valor || 0), 0) / valor : 0;
     if ($("d-hedge-now")) {
       const meter = posMeterHtml(longAg, agora, alvo, hedgeLeg);
-      $("d-hedge-now").innerHTML = meter;
+      // só redesenha quando muda, e devolve o foco ao quadrinho (para as setas continuarem funcionando)
+      const box = $("d-hedge-now");
+      if (box.dataset.html !== meter) {
+        const hadFocus = box.contains(document.activeElement);
+        box.innerHTML = meter;
+        box.dataset.html = meter;
+        if (hadFocus) { const b = box.querySelector(".pm-line.sel .pm-pick"); if (b) b.focus(); }
+      }
       show($("d-hedge-now"), !!meter);
     }
     if ($("m-hedge-now")) $("m-hedge-now").textContent = `Posição atual: ${fmtPct(longAg)} comprado · ${fmtPct(agora)} vendido`;
@@ -4354,7 +4355,7 @@ function hedgeScalePlan() {
   const legCt = hedgeLeg === "long" ? rows.reduce((s, r) => s + ((r.longUsd || 0) / 100), 0) : shortCt;
   const delta = rows.reduce((s, r) => s + r.delta, 0);
   const atual = valor > 0 ? legCt * 100 / valor * 100 : 0;
-  const alvo = (hedgeLeg === "short" && hedgeMode === "short" && !reducing) || !(valor > 0)
+  const alvo = (hedgeLeg === "short" && hedgeMode === "short") || !(valor > 0)
     ? hedgePctValue()
     : rows.reduce((s, r) => s + ((r.alvo || 0) / 100) * (r.valor || 0), 0) / valor * 100;
   const cts = splitLots(Math.abs(delta), weights);
@@ -4447,7 +4448,6 @@ async function sendHedge() {
   $("scale-ok").disabled = true;
   try {
     const payload = { target_pct: hedgePctValue(), mode: hedgeMode, leg: hedgeLeg, ordType: sheetKind === "hedge-scale" ? "limit" : hedgeOrd };
-    if (reducing) payload.reduce = true;
     if (sheetKind === "hedge-scale") {
       const inp = scaleInputs();
       payload.from = inp.from; payload.to = inp.to; payload.n = inp.n;
