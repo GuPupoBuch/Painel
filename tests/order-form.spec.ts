@@ -23,8 +23,7 @@ async function login(page: Page) {
     await page.click("#login-btn");
   }
   await page.waitForFunction(() => document.documentElement.classList.contains("in-app"));
-  if (page.viewportSize()!.width >= 1024) await page.waitForSelector("#d-kind", { state: "visible" });
-  else await page.waitForSelector("#m-kind", { state: "visible" });
+  await page.waitForSelector("#d-kind", { state: "visible" });
   await expect(page.locator("body")).toContainText("pupo", { timeout: 15000 });
 }
 async function setKind(page: Page, kind: string) {
@@ -416,7 +415,6 @@ test("screenshots desktop e o arquivo guarda o reduce verde", async ({ page }) =
   await setReduce(page, true);
   await setSize(page, "pct", "50");
   await expect(page.locator("#d-qty-k")).toHaveText("% da posição");
-  await expect(page.locator("#d-size-note")).toContainText("% da posição");
   await expect(page.locator("#d-pnl")).toContainText("SHORT PNL (botão LONG)");
   await expect(page.locator("#d-pnl")).toContainText("2 ct");
   await expect(page.locator("#d-pnl")).toContainText("LONG PNL (botão SHORT)");
@@ -535,7 +533,7 @@ test("carteira selecionada: info e ordem só dela; Todas manda para as 4", async
     await expect(page.locator("#d-size-rows")).not.toContainText("tcheco");
     await expect(page.locator("#d-pos-body")).not.toContainText("tcheco");
   }
-  await expect(page.locator(isDesk ? "#d-size-note" : "#m-size-note")).toContainText("carteira pupo");
+  await expect(page.locator("#d-size-note")).toBeHidden();
   const wait = page.waitForResponse((r) => r.url().includes(":8000/order") && r.request().method() === "POST");
   await page.click(isDesk ? "#d-long" : "#send");
   const res = await wait;
@@ -638,7 +636,9 @@ test("hedge a mercado: gatilho vazio executa agora; com gatilho vira stop a merc
   // clicar no gráfico preenche o gatilho
   await expect(page.locator("#chart-hint")).toContainText("gatilho");
   // quadro limpo: só a posição atual, sem seletor vendido/comprado nem tabela
-  await expect(page.locator("#d-hedge-now")).toHaveText(/^Posição atual: .* comprado · .* vendido$/);
+  await expect(page.locator("#d-hedge-now .pm-hd")).toHaveText("Posição atual");
+  await expect(page.locator("#d-hedge-now .pm-row.short")).toHaveAttribute("aria-label", /^short: .*% da carteira, .*% comprado$/);
+  await expect(page.locator("#d-hedge-now .pm-row.long")).toHaveAttribute("aria-label", /^long: .*% da carteira, .*% livre$/);
   await expect(page.locator("#d-hedge-modes")).toBeHidden();
   await expect(page.locator("#d-hedge-table")).toBeHidden();
   await page.fill("#d-hedge-pct", "50");
@@ -659,6 +659,27 @@ test("hedge a mercado: gatilho vazio executa agora; com gatilho vira stop a merc
   // Limite esconde o gatilho
   await page.click("#d-hedge-lmt");
   await expect(page.locator("#d-hedge-trg")).toBeHidden();
+});
+
+test("hedge: medidor da posição mostra só as pernas abertas e some sem posição", async ({ page }) => {
+  const legs = async (body: Record<string, number>) => {
+    await fetch("http://127.0.0.1:8788/__legs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    await page.evaluate("loadPositions()");
+  };
+  await page.click("#d-groups [data-group=hedge]");
+  // 150 ct de short e 300 de long numa carteira de 1 BTC × 64.000: 23,4% e 46,9%
+  await legs({ long: 300, short: 150 });
+  const meter = page.locator("#d-hedge-now");
+  await expect(meter.locator(".pm-row.short .pm-v b")).toHaveText(/^2[34],\d%$/);
+  await expect(meter.locator(".pm-row.short .pm-free")).toHaveText(/^7[67],\d%comprado$/);
+  await expect(meter.locator(".pm-row.long .pm-v b")).toHaveText(/^4[67],\d%$/);
+  await expect(meter.locator(".pm-row.long .pm-free")).toHaveText(/^5[23],\d%livre$/);
+  await expect(meter.locator(".pm-row.short .pm-alvo")).toHaveCount(1);
+  await legs({ short: 0 });
+  await expect(meter.locator(".pm-row.short")).toHaveCount(0);
+  await expect(meter.locator(".pm-row.long")).toHaveCount(1);
+  await legs({ long: 0 });
+  await expect(meter).toBeHidden();
 });
 
 test("eixo de preços: só zoom (não pega ordem); duplo clique volta o zoom; botão Prévia liga/desliga", async ({ page }) => {

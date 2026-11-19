@@ -28,7 +28,7 @@ test("grupos no desktop e a escala de hedge no gráfico", async ({ page }) => {
   await page.screenshot({ path: "/opt/cursor/artifacts/hier-mercado-1440.png" });
 
   await page.click("#d-groups [data-group=hedge]");
-  await expect(page.locator("#d-hedge-now")).toContainText("Posição atual:");
+  await expect(page.locator("#d-hedge-now")).toContainText("Posição atual");
   await page.screenshot({ path: "/opt/cursor/artifacts/hier-hedge-1440.png" });
 
   await page.selectOption("#d-kind", "hedge-scale");
@@ -73,25 +73,25 @@ test.describe("grupos no celular", () => {
   test("limite, mercado, hedge e a escala", async ({ page }) => {
     await login(page);
     await page.waitForFunction(() => (window as unknown as { __painel: { ready: () => boolean } }).__painel.ready());
-    await page.click("#m-groups [data-group=limite]");
-    await expect(page.locator("#m-kind")).toHaveValue("limit");
+    await page.click("#d-groups [data-group=limite]");
+    await expect(page.locator("#d-kind")).toHaveValue("limit");
     await page.screenshot({ path: "/opt/cursor/artifacts/hier-limite-390.png" });
-    await page.click("#m-groups [data-group=mercado]");
-    await expect(page.locator("#m-kind")).toHaveValue("market");
+    await page.click("#d-groups [data-group=mercado]");
+    await expect(page.locator("#d-kind")).toHaveValue("market");
     await page.screenshot({ path: "/opt/cursor/artifacts/hier-mercado-390.png" });
-    await page.click("#m-groups [data-group=hedge]");
-    await expect(page.locator("#m-hedge-now")).toContainText("Posição atual:");
+    await page.click("#d-groups [data-group=hedge]");
+    await expect(page.locator("#d-hedge-now")).toContainText("Posição atual");
     await page.screenshot({ path: "/opt/cursor/artifacts/hier-hedge-390.png" });
-    await page.selectOption("#m-kind", "hedge-scale");
-    await page.fill("#m-hedge-pct", "40");
+    await page.selectOption("#d-kind", "hedge-scale");
+    await page.fill("#d-hedge-pct", "40");
     const band = await page.evaluate(() => {
       const h = document.querySelector("#chart")!.getBoundingClientRect().height;
       const p = (window as unknown as { __painel: { priceAt: (y: number) => number; fmt: (n: number) => string } }).__painel;
       return { lo: p.fmt(p.priceAt(Math.round(h * 0.78))), hi: p.fmt(p.priceAt(Math.round(h * 0.22))) };
     });
-    await page.fill("#m-from", band.lo);
-    await page.fill("#m-to", band.hi);
-    await page.fill("#m-orders", "4");
+    await page.fill("#d-from", band.lo);
+    await page.fill("#d-to", band.hi);
+    await page.locator("input#d-orders").fill("4");
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForFunction(() => {
       const api = (window as unknown as { __painel: { hedgeLadder: () => { legs: { price: number }[] }; yFor: (n: number) => number } }).__painel;
