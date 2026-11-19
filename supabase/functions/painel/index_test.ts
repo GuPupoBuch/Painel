@@ -1068,6 +1068,43 @@ Deno.test("hedge com Reduce: compra reduz o short, venda reduz a long (nunca abr
   if (hit("/api/v5/trade/order", "OKX").some((c) => (c.body as any).posSide === "short" && (c.body as any).side === "sell")) throw new Error("abriu short com Reduce");
 });
 
+// Perna long escolhida: o alvo é a long em % da carteira. Compra long (sem reduce-only) ou vende da long (reduce-only).
+Deno.test("hedge na perna long: compra ou vende a long até o alvo; o short não muda", async () => {
+  const { runHedge, runHedgeScale, setScope } = __test as any;
+  const scene = () => {
+    reset(); install();
+    balances = { OKX: 1 };
+    positions = { OKX: [leg("short", "100", "64000", "64100"), leg("long", "50", "63000", "64100")] };
+    algos = {};
+  };
+  setScope(["pupo"]);
+  // long 50 ct = 7,8% de 641 ct; alvo 20% = 128,2 ct → compra 78,2 na long
+  scene();
+  const r = await runHedge(20, "short", "market", null, false, null, false, "long");
+  let b = hit("/api/v5/trade/order", "OKX")[0]?.body as any;
+  if (r.aborted || !b || b.side !== "buy" || b.posSide !== "long" || b.reduceOnly || b.sz !== "78.2") throw new Error("comprar long: " + JSON.stringify(b) + " " + r.abort_msg);
+  if ((r.accounts as any[])[0].action !== "comprar long") throw new Error("ação: " + JSON.stringify(r.accounts));
+  // alvo 5% = 32,1 ct → vende 17,9 da long, reduce-only
+  scene();
+  await runHedge(5, "short", "market", null, false, null, false, "long");
+  b = hit("/api/v5/trade/order", "OKX")[0]?.body as any;
+  if (!b || b.side !== "sell" || b.posSide !== "long" || !b.reduceOnly || b.sz !== "17.9") throw new Error("vender long: " + JSON.stringify(b));
+  // Reduce na long com alvo acima: nada sai
+  scene();
+  const r2 = await runHedge(20, "short", "market", null, false, null, true, "long");
+  if (hit("/api/v5/trade/order").length || (r2.accounts as any[])[0].action !== "nada") throw new Error("reduce não pode comprar long: " + JSON.stringify(r2.accounts));
+  // a limite acima do preço com alvo que pede compra: barrado
+  scene();
+  const r3 = await runHedge(20, "short", "limit", 66000, false, null, false, "long");
+  if (hit("/api/v5/trade/order").length || !(r3.accounts as any[])[0].error) throw new Error("comprou acima do preço: " + JSON.stringify(r3.accounts));
+  // escala abaixo do preço comprando long: ordens buy na long, sem reduce-only
+  scene();
+  const r4 = await runHedgeScale(20, "short", 63000, 62000, 3, false, false, false, false, "long");
+  setScope(null);
+  const batch = (hit("/api/v5/trade/batch-orders", "OKX")[0]?.body as any[]) || [];
+  if (r4.aborted || !batch.length || batch.some((o) => o.side !== "buy" || o.posSide !== "long" || o.reduceOnly)) throw new Error("escala long: " + JSON.stringify(batch) + " " + r4.abort_msg);
+});
+
 // Hedge a limite: abaixo do preço só compra, acima só vende.
 Deno.test("hedge a limite respeita o lado do preço", async () => {
   const { runHedge, setScope } = __test as any;
