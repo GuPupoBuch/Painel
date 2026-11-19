@@ -728,3 +728,39 @@ test("eixo de preços: só zoom (não pega ordem); duplo clique volta o zoom; bo
   await page.click("#prev-tog");
   await expect.poll(() => page.evaluate("previewMeta.length")).toBeGreaterThan(0);
 });
+
+test("avisos: ordem posicionada mostra aviso sem som; execução mostra aviso com som", async ({ page }) => {
+  type N = { placed: number; fills: number; sounds: number; base: boolean };
+  const notify = () => page.evaluate(() => (window as unknown as { __painel: { notify: () => N } }).__painel.notify());
+  await expect.poll(async () => (await notify()).base).toBeTruthy();
+  // ordem colocada fora do painel (ex.: app da OKX) em duas contas
+  for (const key of ["key-pupo", "key-pai"]) {
+    await fetch("http://127.0.0.1:8788/api/v5/trade/order", {
+      method: "POST", headers: { "content-type": "application/json", "ok-access-key": key },
+      body: JSON.stringify({ instId: "BTC-USD-SWAP", ordType: "limit", side: "buy", posSide: "long", px: "62000", sz: "3" }),
+    });
+  }
+  await page.evaluate("loadPositions()");
+  const toast = page.locator("#toasts .toast").first();
+  await expect(toast).toContainText("Ordens posicionadas");
+  await expect(toast).toContainText("Limite");
+  await expect(toast).toContainText("compra");
+  await expect(toast).toContainText("62.000");
+  await expect(toast).toContainText("2 contas");
+  await expect(toast).toContainText("6 ct");
+  expect((await notify()).sounds).toBe(0);
+  // nada mudou: nenhum aviso novo
+  await page.evaluate("loadPositions()");
+  await expect(page.locator("#toasts .toast")).toHaveCount(1);
+  // a long cresce: execução, com som
+  await fetch("http://127.0.0.1:8788/__legs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ long: 5 }) });
+  await page.evaluate("loadPositions()");
+  const fill = page.locator("#toasts .toast.fill").first();
+  await expect(fill).toContainText("Ordens executadas");
+  await expect(fill).toContainText("Long aumentou");
+  await expect(fill).toContainText("+12 ct");
+  expect((await notify()).sounds).toBe(1);
+  // o ✕ fecha o aviso
+  await fill.locator(".toast-x").click();
+  await expect(page.locator("#toasts .toast.fill")).toHaveCount(0);
+});
