@@ -1238,12 +1238,13 @@ async function runAmend(kind: "limit" | "stop" | "trigger", prefix: string, id: 
     const posSide: Side = algo.posSide === "short" ? "short" : "long";
     const leg = legs.find((l) => l.posSide === posSide);
     const entry = leg && leg.avg > 0 ? leg.avg : mark;
+    // Só o lado do mark importa (senão dispara na hora). Passar da entrada é permitido: stop no lucro.
     const markOk = stopOnSide(posSide, newPx, mark);
-    const entryOk = stopOnSide(posSide, newPx, entry);
     out.posSide = posSide;
     out.mark = mark;
     out.entry = entry;
-    if (!markOk || !entryOk) return { ...out, aborted: true, abort_msg: "Stop ficaria do lado errado da entrada ou do mark." };
+    out.profit = !stopOnSide(posSide, newPx, entry);
+    if (!markOk) return { ...out, aborted: true, abort_msg: posSide === "short" ? "Stop do short precisa ficar acima do preço atual (mark)." : "Stop da long precisa ficar abaixo do preço atual (mark)." };
     if (dry) { out.raw = "DRY: nada enviado"; return out; }
     const e = await req(prefix, "POST", "/api/v5/trade/amend-algos", {
       instId: INST, algoId: id, newSlTriggerPx: pyG(newPx), newSlOrdPx: "-1", newSlTriggerPxType: "mark",
