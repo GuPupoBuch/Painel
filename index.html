@@ -633,6 +633,27 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
   html.in-app .pp-go{min-height:44px}
   html.in-app .pp-x{width:36px;height:36px}
 }
+/* ---------- avisos: ordens posicionadas e executadas (canto superior direito) ---------- */
+.toasts{position:fixed;top:calc(12px + env(safe-area-inset-top));right:12px;z-index:60;display:flex;flex-direction:column;gap:8px;width:min(320px,calc(100vw - 24px));pointer-events:none}
+.toast{
+  pointer-events:auto;position:relative;padding:10px 32px 10px 12px;
+  background:#101418;border:1px solid var(--line2);border-left:3px solid var(--accent);border-radius:calc(var(--r) + 2px);
+  box-shadow:0 12px 32px rgba(0,0,0,.55);color:var(--text);
+  transition:opacity .18s var(--ease-out),transform .18s var(--ease-out);
+}
+@starting-style{.toast{opacity:0;transform:translateX(12px)}}
+.toast.out{opacity:0;transform:translateX(12px)}
+.toast.fill{border-left-color:var(--green)}
+.toast-h{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.toast.fill .toast-h{color:var(--green)}
+.toast-l{display:flex;flex-wrap:wrap;justify-content:space-between;gap:0 8px;padding:2px 0;font-size:12px;line-height:1.35;min-width:0}
+.toast-l b{font-weight:600;white-space:nowrap}
+.toast-l span{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.toast-l .buy{color:var(--green)} .toast-l .sell{color:var(--red)}
+.toast-x{position:absolute;top:6px;right:6px;width:22px;height:22px;padding:0;background:transparent;border:0;color:var(--muted);font-size:15px;line-height:1}
+.toast-x:hover{color:var(--text)}
+@media (max-width:1023px){.toasts{left:12px;right:12px;width:auto}}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
 @media (prefers-reduced-motion:reduce){
   .pos-pop,.pos-act svg{transition:none}
   button,.mode-row .mode-tog::before{transition:none}
@@ -1154,6 +1175,7 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
   </div>
 </div>
 
+<div id="toasts" class="toasts" aria-live="polite" aria-atomic="false"></div>
 <div id="pos-pop" class="pos-pop hidden" role="dialog" aria-labelledby="pp-title">
   <div class="pp-hd"><span id="pp-title">Reduzir posição</span><button type="button" id="pp-close" class="pp-x" aria-label="Fechar">×</button></div>
   <div class="pp-k"><span>Reduzir</span><b id="pp-size">—</b></div>
@@ -2534,6 +2556,7 @@ async function api(path, opts = {}) {
   return { res, data };
 }
 function setLogin(need) {
+  if (need) notifyBase = null;
   show($("login-view"), need); show($("app-view"), !need);
   document.body.classList.toggle("in-app", !need);
   document.documentElement.classList.toggle("in-app", !need);
@@ -2634,6 +2657,134 @@ function renderAllPos() {
   renderDesk();
   syncAdjLeg();
 }
+// ---------- avisos de ordens ----------
+// A cada leitura de /positions compara com a anterior (todas as contas, sem olhar o filtro):
+//  - ordem pendente que não existia antes  -> aviso "posicionada" (sem som)
+//  - perna que mudou de tamanho            -> aviso "executada" + som
+// A primeira leitura só guarda a base. Conta com erro na leitura fica fora da comparação.
+let notifyBase = null;
+const notifyStats = { placed: 0, fills: 0, sounds: 0 };
+function orderKey(o) {
+  return [o.account, o.kind, o.ordId || o.algoId || (o.parentOrdId ? o.parentOrdId + ":sl" : "") || snapPx(o.price)].join("|");
+}
+function notifySnapshot(list) {
+  const orders = new Map(), legs = new Map(), ok = new Set();
+  for (const a of list || []) {
+    if (!a || a.error) continue;
+    ok.add(a.name);
+    for (const o of accountOrders(a)) orders.set(orderKey(o), o);
+    for (const side of ["long", "short"]) {
+      const l = (Array.isArray(a.legs) ? a.legs : []).find((x) => x.posSide === side);
+      legs.set(a.name + "|" + side, l ? Number(l.ct ?? l.pos) || 0 : 0);
+    }
+  }
+  return { orders, legs, ok };
+}
+function checkNotify(list) {
+  const snap = notifySnapshot(list);
+  const base = notifyBase;
+  notifyBase = snap;
+  if (!base) return;
+  const both = (acc) => base.ok.has(acc) && snap.ok.has(acc);
+  const placed = [];
+  for (const [k, o] of snap.orders) if (!base.orders.has(k) && both(o.account)) placed.push(o);
+  const fills = [];
+  for (const [k, ct] of snap.legs) {
+    const [acc, side] = k.split("|");
+    if (!both(acc)) continue;
+    const d = Math.round((ct - (base.legs.get(k) || 0)) * 10) / 10;
+    if (Math.abs(d) >= 0.1) fills.push({ account: acc, side, delta: d, ct });
+  }
+  if (fills.length) { notifyStats.fills++; playFillSound(); showToast("fill", fills.length === 1 ? "Ordem executada" : "Ordens executadas", fillLines(fills)); }
+  if (placed.length) { notifyStats.placed++; showToast("placed", placed.length === 1 ? "Ordem posicionada" : "Ordens posicionadas", placedLines(placed)); }
+}
+const sideTxt = (o) => {
+  const sd = o.side === "buy" || o.side === "long" ? "buy" : o.side === "sell" || o.side === "short" ? "sell" : null;
+  return sd ? `<em class="${sd}" style="font-style:normal">${sd === "buy" ? "compra" : "venda"}</em>` : "";
+};
+const accTxt = (names) => names.length === 1 ? esc(names[0]) : names.length === 4 ? "4 contas" : names.length + " contas";
+// agrupa por tipo e lado; muitos preços no mesmo grupo (escala) viram uma faixa
+function placedLines(list) {
+  const groups = new Map();
+  for (const o of list) {
+    const k = o.kind + "|" + (o.side || "") + "|" + (o.reduceOnly ? "r" : "");
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(o);
+  }
+  const lines = [];
+  for (const arr of groups.values()) {
+    const o = arr[0];
+    const prices = [...new Set(arr.map((x) => snapPx(x.price)).filter((p) => p > 0))].sort((a, b) => a - b);
+    const accs = [...new Set(arr.map((x) => x.account))];
+    const ct = arr.reduce((t, x) => t + (Number(x.sz) || 0), 0);
+    const what = `${esc(kindLabel(o.kind))} ${sideTxt(o)}${o.reduceOnly ? " · reduce" : ""}`;
+    const where = !prices.length ? "book" : prices.length === 1 ? fmtPx(prices[0]) : prices.length <= 3 ? prices.map(fmtPx).join(" · ") : `${prices.length} ordens ${fmtPx(prices[0])}–${fmtPx(prices[prices.length - 1])}`;
+    lines.push(`<div class="toast-l"><b>${what}</b><span>${where}</span></div><div class="toast-l"><span>${accTxt(accs)}</span><span>${ct >= 0.1 ? fmtCt(ct) + " ct" : ""}</span></div>`);
+  }
+  return lines.slice(0, 5).join("") + (lines.length > 5 ? `<div class="toast-l"><span>+${lines.length - 5} grupos</span></div>` : "");
+}
+// agrupa por perna e sentido (aumentou / reduziu)
+function fillLines(list) {
+  const groups = new Map();
+  for (const f of list) {
+    const k = f.side + "|" + (f.delta > 0 ? "+" : "-");
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(f);
+  }
+  const out = [];
+  for (const arr of groups.values()) {
+    const f = arr[0];
+    const tot = Math.round(arr.reduce((t, x) => t + x.delta, 0) * 10) / 10;
+    const verb = f.delta > 0 ? "aumentou" : arr.every((x) => x.ct < 0.1) ? "fechou" : "reduziu";
+    const cls = f.side === "long" ? "buy" : "sell";
+    out.push(`<div class="toast-l"><b><em class="${cls}" style="font-style:normal">${f.side === "long" ? "Long" : "Short"}</em> ${verb}</b><span>${tot > 0 ? "+" : "−"}${fmtCt(Math.abs(tot))} ct · ${fmtUsd(Math.abs(tot) * 100)}</span></div><div class="toast-l"><span>${accTxt(arr.map((x) => x.account))}</span></div>`);
+  }
+  return out.join("");
+}
+function showToast(type, title, html) {
+  const box = $("toasts");
+  if (!box) return;
+  const el = document.createElement("div");
+  el.className = "toast " + (type === "fill" ? "fill" : "placed");
+  el.setAttribute("role", "status");
+  el.innerHTML = `<div class="toast-h">${esc(title)}</div>${html}<button type="button" class="toast-x" aria-label="Fechar aviso">×</button>`;
+  let timer = null;
+  const close = () => { clearTimeout(timer); el.classList.add("out"); setTimeout(() => el.remove(), 200); };
+  const arm = () => { clearTimeout(timer); timer = setTimeout(close, type === "fill" ? 8000 : 6000); };
+  el.querySelector(".toast-x").onclick = close;
+  el.addEventListener("pointerenter", () => clearTimeout(timer));
+  el.addEventListener("pointerleave", arm);
+  box.prepend(el);
+  while (box.children.length > 4) box.lastElementChild.remove();
+  arm();
+}
+// som de execução: dois toques curtos gerados no navegador (sem arquivo)
+let audioCtx = null;
+function unlockAudio() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+  } catch (e) { audioCtx = null; }
+}
+document.addEventListener("pointerdown", unlockAudio, { passive: true });
+document.addEventListener("keydown", unlockAudio);
+function playFillSound() {
+  notifyStats.sounds++;
+  try {
+    unlockAudio();
+    if (!audioCtx) return;
+    const t0 = audioCtx.currentTime + 0.01;
+    [[880, 0], [1320, 0.12]].forEach(([f, dt]) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = "sine"; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t0 + dt);
+      g.gain.exponentialRampToValueAtTime(0.25, t0 + dt + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.22);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(t0 + dt); o.stop(t0 + dt + 0.25);
+    });
+  } catch (e) { /* sem áudio */ }
+}
 async function loadPositions() {
   try {
     const { res, data } = await api("/positions");
@@ -2644,6 +2795,7 @@ async function loadPositions() {
     }
     if (data.mark && lastPx == null) setPx(data.mark);
     lastAccounts = data.accounts; renderAllPos();
+    checkNotify(lastAccounts);
     redrawChartLines();
   } catch (e) {
     const msg = '<div class="acct-empty blocked">Não consegui falar com o servidor.</div>'; renderHeadPnl(null);
@@ -4721,6 +4873,7 @@ window.__painel = {
   fmt(p) { return fmtTick(p); },
   scalePlan() { return typeof scalePlan === "function" ? scalePlan() : null; },
   hedgeLadder() { return typeof hedgeScalePlan === "function" ? hedgeScalePlan() : null; },
+  notify() { return { ...notifyStats, base: !!notifyBase }; },
 };
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -4728,7 +4881,11 @@ window.addEventListener("DOMContentLoaded", () => {
   initDesk();
   startStreams();
   if (localStorage.getItem(TK)) { setLogin(false); loadPositions(); } else setLogin(true);
-  setInterval(() => { if (document.visibilityState === "visible" && localStorage.getItem(TK)) loadPositions(); }, 30000);
+  // lê a OKX a cada 10 s também com a aba em segundo plano, para o som de execução tocar fora da aba
+  // (o navegador pode espaçar isso para ~1 min depois de uns minutos escondida)
+  setInterval(() => { if (localStorage.getItem(TK)) loadPositions(); }, 10000);
+  // voltou para a aba: lê na hora (o aviso mostra o que mudou enquanto estava fora)
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && localStorage.getItem(TK)) loadPositions(); });
 });
 </script>
 </body>
