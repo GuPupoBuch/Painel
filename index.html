@@ -306,6 +306,24 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   html.in-app #desk-side{grid-area:side;min-width:0;min-height:0;display:flex;flex-direction:column;gap:4px}
 }
 /* quadro de ordem, posições e ordens: os mesmos no PC e no celular */
+  /* Ajustar posição: escolher a posição é uma seleção (contorno); a ordem é o botão de enviar (cheio) */
+  .pos-pick{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+  .pos-pick button{
+    display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:48px;padding:6px 10px;
+    background:transparent;border:1px solid var(--line);border-radius:var(--r);color:var(--muted);text-align:left;
+  }
+  .pos-pick .go-k{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .pos-pick .go-sub{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .pos-pick button.long .go-k{color:var(--green)} .pos-pick button.short .go-k{color:var(--red)}
+  .pos-pick button.long[aria-checked="true"]{border-color:var(--green);background:rgba(0,226,154,.08);box-shadow:inset 3px 0 0 var(--green)}
+  .pos-pick button.short[aria-checked="true"]{border-color:var(--red);background:rgba(229,66,92,.08);box-shadow:inset 3px 0 0 var(--red)}
+  .pos-pick button[aria-checked="true"] .go-sub{color:var(--text)}
+  .pos-pick button:disabled{opacity:.35;cursor:not-allowed}
+  .adj-go{display:grid;grid-template-columns:auto 1fr;gap:4px;margin-top:8px}
+  #d-adj-preview{padding:0 12px;background:transparent;color:var(--text);border:1px solid var(--line)}
+  #d-adj-send{border:0;color:#fff;background:var(--red);text-transform:none;font-size:12px;letter-spacing:.02em;padding:0 8px}
+  #d-adj-send.buy{background:var(--green);color:#04140c}
+  #d-adj-send:disabled{opacity:.4;cursor:not-allowed}
   /* posição atual no hedge: uma barra por perna aberta, 0–100% da carteira; o marcador anda e leva a % em cima */
   .pos-meter{margin:10px 0 6px;display:grid;gap:12px}
   .pm-hd{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
@@ -399,12 +417,11 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   .d-sides{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:0}
   .d-sides button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:52px;border:0;border-radius:2px;font-size:13px;font-weight:600;letter-spacing:.08em;line-height:1.1}
   .d-sides button:hover{filter:brightness(1.06)}
-  #d-long,#d-adj-long{background:#00e29a;color:#04140c}
-  #d-short,#d-adj-short{background:#e5425c;color:#fff}
-  #d-long .go-sub,#d-adj-long .go-sub{color:#04140c}
-  #d-short .go-sub,#d-adj-short .go-sub{color:#fff}
-  #d-adj-long.on,#d-adj-short.on{outline:2px solid #fff;outline-offset:1px}
-  #d-adj-long:disabled,#d-adj-short:disabled,#d-long:disabled,#d-short:disabled{opacity:.35;cursor:not-allowed}
+  #d-long{background:#00e29a;color:#04140c}
+  #d-short{background:#e5425c;color:#fff}
+  #d-long .go-sub{color:#04140c}
+  #d-short .go-sub{color:#fff}
+  #d-long:disabled,#d-short:disabled{opacity:.35;cursor:not-allowed}
   .d-sides button:disabled:hover{filter:none}
   .go-k{font-size:13px;font-weight:600;letter-spacing:.08em}
   .go-sub{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:0}
@@ -419,7 +436,8 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   .d-up{color:#00e29a}.d-dn{color:#e5425c}
   .d-empty{color:#7d8792;font-size:12px;padding:6px 0}
   #d-hedge-go{width:100%;margin-top:8px;min-height:44px;border:0;border-radius:2px;background:#e5425c;color:#fff;font-weight:600;letter-spacing:.06em}
-  #d-adj-preview,#d-adj-send{border-radius:2px;min-height:44px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  #d-adj-preview,#d-adj-send{border-radius:2px;min-height:44px;font-weight:700}
+  #d-adj-preview{font-size:11px;letter-spacing:.06em;text-transform:uppercase}
 .field{position:relative;display:block;margin:8px 0 0;background:var(--surface);border:1px solid var(--line);min-height:52px;padding:18px 40px 6px 8px}
 .field .field-k{position:absolute;top:4px;left:8px;margin:0;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .field input{width:100%;height:24px;min-height:0;padding:0;border:0;background:transparent;border-radius:0;font-size:16px}
@@ -855,12 +873,12 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
       <p class="d-note" id="d-size-note">O tamanho sai do risco e da distância até o stop, em cada conta. A ordem vai para as 4 contas.</p>
     </div>
     <div id="d-reduce" class="hidden">
-      <div class="d-sides" id="d-adj-sides" role="group" aria-label="LONG reduz a short. SHORT reduz a long.">
-        <button type="button" id="d-adj-long" data-btn="long" aria-pressed="false" disabled><span class="go-k">LONG</span><span class="go-sub">—</span></button>
-        <button type="button" id="d-adj-short" data-btn="short" aria-pressed="false" disabled><span class="go-k">SHORT</span><span class="go-sub">—</span></button>
+      <div class="d-k" id="d-adj-pos-k">Posição a reduzir</div>
+      <div class="pos-pick" id="d-adj-sides" role="radiogroup" aria-labelledby="d-adj-pos-k">
+        <button type="button" class="long" id="d-adj-long" data-btn="short" role="radio" aria-checked="false" aria-pressed="false" disabled><span class="go-k">Long</span><span class="go-sub">—</span></button>
+        <button type="button" class="short" id="d-adj-short" data-btn="long" role="radio" aria-checked="false" aria-pressed="false" disabled><span class="go-k">Short</span><span class="go-sub">—</span></button>
       </div>
       <p class="d-note" id="d-adj-leg-note"></p>
-      <div id="d-adj-pnl" class="pnl-line"></div>
       <div class="d-k" id="d-adj-pct-k">% da posição</div>
       <div class="d-togs" id="d-pcts">
         <button type="button" class="d-tog" data-pct="25">25%</button>
@@ -887,11 +905,11 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
           <button type="button" id="d-adj-best">Best</button>
         </div>
       </div>
-      <div class="d-sides">
-        <button type="button" id="d-adj-preview" style="background:transparent;color:#d7dde3;border:1px solid #1f2428">Ver prévia</button>
-        <button type="button" id="d-adj-send" style="background:#e5425c;color:#fff;border:0">Reduzir</button>
+      <div id="d-adj-pnl" class="pnl-line"></div>
+      <div class="adj-go">
+        <button type="button" id="d-adj-preview">Ver prévia</button>
+        <button type="button" id="d-adj-send" class="sell">Reduzir</button>
       </div>
-      <p class="d-note">LONG compra e reduz a short. SHORT vende e reduz a long.</p>
     </div>
     <div id="d-tpsl" class="hidden">
       <div class="d-k">Stop da entrada</div>
@@ -2735,6 +2753,7 @@ function updateAdjLabel() {
   } else {
     $("adj-send").textContent = `REDUZIR ${pctLabel} A MERCADO`;
   }
+  if (typeof paintAdjSend === "function") paintAdjSend();
 }
 $("pcts").onclick = (ev) => {
   const b = ev.target.closest(".pct"); if (!b) return;
@@ -2770,7 +2789,7 @@ function adjLineColor() {
   return adjButton === "short" ? "#e5425c" : "#00e29a";
 }
 function adjLineTitle(price) {
-  const who = adjButton === "long" ? "LONG reduz short" : "SHORT reduz long";
+  const who = adjButton === "long" ? "compra do short" : "venda da long";
   const prev = adjButton ? adjustClosePreview() : null;
   const pnl = prev && prev.totalCt >= 0.1 && prev.exit > 0 ? " " + fmtPnlTitle(prev.btc, prev.usd) : "";
   return who + " " + fmtPx(price) + pnl;
@@ -2833,6 +2852,7 @@ function paintAdjButton(id, btn, enabled, sub) {
   el.disabled = !enabled;
   el.classList.toggle("on", adjButton === btn);
   el.setAttribute("aria-pressed", adjButton === btn ? "true" : "false");
+  if (el.getAttribute("role") === "radio") el.setAttribute("aria-checked", adjButton === btn ? "true" : "false");
   const node = el.querySelector(".go-sub");
   if (node) node.textContent = enabled ? sub : "—";
 }
@@ -2843,14 +2863,40 @@ function paintAdjLeg() {
     : !adjButton
       ? "Escolha LONG ou SHORT. O percentual é % da posição."
       : (adjButton === "long" ? "LONG reduz a short." : "SHORT reduz a long.") + " O percentual é % da posição.";
-  for (const id of ["d-adj-leg-note", "m-adj-leg-note"]) if ($(id)) $(id).textContent = note;
-  paintAdjButton("d-adj-long", "long", sides.has("short"), adjSub("short"));
+  if ($("m-adj-leg-note")) $("m-adj-leg-note").textContent = note;
+  if ($("d-adj-leg-note")) {
+    const dn = !sides.size ? "Nenhuma posição aberta." : sides.size > 1 && !adjButton ? "Escolha a posição." : "";
+    $("d-adj-leg-note").textContent = dn;
+    show($("d-adj-leg-note"), !!dn);
+  }
+  // no quadro: cada botão é a posição (Long = vender da long; Short = comprar do short)
+  paintAdjButton("d-adj-long", "short", sides.has("long"), posSub("long"));
+  paintAdjButton("d-adj-short", "long", sides.has("short"), posSub("short"));
   paintAdjButton("m-adj-long", "long", sides.has("short"), adjSub("short"));
-  paintAdjButton("d-adj-short", "short", sides.has("long"), adjSub("long"));
   paintAdjButton("m-adj-short", "short", sides.has("long"), adjSub("long"));
+  paintAdjSend();
   const prev = adjButton ? adjustClosePreview() : null;
   const text = !prev ? "" : !(prev.totalCt >= 0.1) ? "Tamanho abaixo de 0,1 ct." : `${prev.label} (botão ${prev.buttonName}) · ${fmtCt(prev.totalCt)} ct` + (prev.exit > 0 ? ` · ${prev.btc >= 0 ? "+" : ""}${fmtBtcPnl(prev.btc)} BTC (~${fmtUsdPnl(prev.usd)})` : "");
-  for (const id of ["d-adj-pnl", "adj-pnl"]) if ($(id)) $(id).textContent = text;
+  if ($("adj-pnl")) $("adj-pnl").textContent = text;
+  // no quadro: só o resultado da redução, sem falar de botão
+  const dtext = !prev ? "" : !(prev.totalCt >= 0.1) ? "Tamanho abaixo de 0,1 ct." : `${fmtCt(prev.totalCt)} ct` + (prev.exit > 0 ? ` · PnL ${prev.btc >= 0 ? "+" : ""}${fmtBtcPnl(prev.btc)} BTC (~${fmtUsdPnl(prev.usd)})` : "");
+  if ($("d-adj-pnl")) $("d-adj-pnl").textContent = dtext;
+}
+// tamanho de cada posição (todas as contas na tela): "66,3 ct · US$ 6.630"
+function posSub(leg) {
+  let ct = 0;
+  for (const a of visibleAccounts(lastAccounts)) { const f = legOn(a, leg); if (f) ct += Number(f.ct) || 0; }
+  return ct >= 0.1 ? `${fmtCt(ct)} ct · ${fmtUsd(ct * 100)}` : "—";
+}
+// botão de enviar do quadro: a ordem por extenso e na cor dela (venda vermelha, compra verde)
+function paintAdjSend() {
+  const el = $("d-adj-send");
+  if (!el || adjSending) return;
+  const pct = adjPct != null && adjPct > 0 ? `${Number(adjPct).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%` : "—";
+  const how = adjOrdType === "limit" ? "a limite" : "a mercado";
+  if (adjLeg === "long") { el.textContent = `Vender ${pct} da long ${how}`; el.classList.add("sell"); el.classList.remove("buy"); }
+  else if (adjLeg === "short") { el.textContent = `Comprar ${pct} do short ${how}`; el.classList.add("buy"); el.classList.remove("sell"); }
+  else { el.textContent = "Escolha a posição"; el.classList.remove("buy"); el.classList.add("sell"); }
 }
 function adjSub(leg) {
   const prev = adjustClosePreview(leg);
@@ -2885,12 +2931,14 @@ function adjPayload(dry) {
 }
 function adjValidate() {
   const sides = openLegs();
-  if (sides.size > 1 && !adjLeg) return "Escolha LONG ou SHORT.";
+  if (sides.size > 1 && !adjLeg) return "Escolha a posição a reduzir: Long ou Short.";
   if (!sides.size) return "Nenhuma perna aberta.";
   if (adjPct == null || adjPct < 1 || adjPct > 100) return "Percentual inválido: use um valor de 1 a 100.";
   if (adjOrdType === "limit") {
     const pr = parseNum($("adj-price").value);
     if (pr == null || pr <= 0) return "Preenche um preço limite válido.";
+    if (lastPx > 0 && adjLeg === "long" && pr < lastPx) return "Venda a limite: o preço precisa estar acima do preço atual.";
+    if (lastPx > 0 && adjLeg === "short" && pr > lastPx) return "Compra a limite: o preço precisa estar abaixo do preço atual.";
   }
   return null;
 }
@@ -4605,8 +4653,6 @@ function initDesk() {
     const el = $(id);
     if (!el) continue;
     const pick = () => { if (!el.disabled) setAdjButton(el.dataset.btn); };
-    el.addEventListener("pointerenter", pick);
-    el.addEventListener("focus", pick);
     el.addEventListener("click", pick);
   }
   $("d-pcts").onclick = (ev) => {

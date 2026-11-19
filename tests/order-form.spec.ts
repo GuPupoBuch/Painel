@@ -356,48 +356,62 @@ test("reduce fica ligado na sessão", async ({ page }) => {
   await expect(page.locator(id)).toHaveClass(/on/);
 });
 
-test("ajustar: LONG reduz a short e SHORT reduz a long", async ({ page }) => {
-  // sem a aba Ordem/Ajuste: o painel de ajuste abre pelo Tipo "Ajustar posição %"
+test("ajustar: escolhe a posição (Long ou Short) e o botão diz a ordem", async ({ page }) => {
+  // o painel de ajuste abre pelo Tipo "Ajustar posição %"
   await page.click("#d-groups [data-group=mercado]");
   await page.selectOption("#d-kind", "market-adjust");
-  await expect(page.locator("#d-adj-leg")).toHaveCount(0);
+  await expect(page.locator("#d-adj-pos-k")).toHaveText("Posição a reduzir");
   await expect(page.locator("#d-adj-pct-k")).toHaveText("% da posição");
-  await expect(page.locator("#d-adj-leg-note")).toHaveText("Escolha LONG ou SHORT. O percentual é % da posição.");
-  await expect(page.locator("#d-adj-long")).toBeEnabled();
-  await expect(page.locator("#d-adj-short")).toBeEnabled();
-  await expect(page.locator("#d-adj-long")).toHaveAttribute("aria-pressed", "false");
-  await expect(page.locator("#d-adj-short")).toHaveAttribute("aria-pressed", "false");
-  await expect(page.locator("#d-adj-long .go-sub")).toHaveText(/^2 @ /);
-  await expect(page.locator("#d-adj-short .go-sub")).toHaveText(/^4 @ /);
+  // cada botão é a posição, com o tamanho dela (4 contas × 2 ct de long e × 1 ct de short)
+  await expect(page.locator("#d-adj-long .go-k")).toHaveText("Long");
+  await expect(page.locator("#d-adj-long .go-sub")).toHaveText(/^8 ct · US\$\s800$/);
+  await expect(page.locator("#d-adj-short .go-sub")).toHaveText(/^4 ct · US\$\s400$/);
+  await expect(page.locator("#d-adj-long")).toHaveAttribute("aria-checked", "false");
+  await expect(page.locator("#d-adj-short")).toHaveAttribute("aria-checked", "false");
+  await expect(page.locator("#d-adj-leg-note")).toHaveText("Escolha a posição.");
+  await expect(page.locator("#d-adj-send")).toHaveText("Escolha a posição");
   await page.click("#d-adj-preview");
-  await expect(page.locator("#adj-banner-err")).toHaveText("Escolha LONG ou SHORT.");
+  await expect(page.locator("#adj-banner-err")).toHaveText("Escolha a posição a reduzir: Long ou Short.");
   expect(await okxPosts("/api/v5/trade/order")).toHaveLength(0);
+  // passar o mouse não escolhe
+  await page.hover("#d-adj-long");
+  await expect(page.locator("#d-adj-long")).toHaveAttribute("aria-checked", "false");
 
-  await page.hover("#d-adj-short");
-  await expect(page.locator("#d-adj-short")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("#d-adj-pnl")).toContainText("LONG PNL (botão SHORT)");
-  await expect(page.locator("#d-adj-pnl")).toContainText("4 ct");
-  await page.locator("#desk-order .d-body").evaluate((el) => { el.scrollTop = 0; });
-  await page.screenshot({ path: "/opt/cursor/artifacts/painel-desktop-1440-ajustar.png", fullPage: false });
+  // Long: vende da long
+  await page.click("#d-adj-long");
+  await expect(page.locator("#d-adj-long")).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator("#d-adj-leg-note")).toBeHidden();
+  await expect(page.locator("#d-adj-send")).toHaveText("Vender 50% da long a mercado");
+  await expect(page.locator("#d-adj-send")).toHaveClass(/sell/);
+  await expect(page.locator("#d-adj-pnl")).toContainText("4 ct · PnL");
   await page.click("#d-adj-preview");
   await expect(page.locator("#d-adj-send")).toBeEnabled();
   const sent = page.waitForResponse((r) => r.url().includes(":8000/adjust") && r.request().postData()?.includes('"dry":false'));
   await page.click("#d-adj-send");
   expect((await sent).ok()).toBeTruthy();
   let orders = await okxPosts("/api/v5/trade/order");
-  every(orders, (b) => b.posSide === "long" && b.side === "sell" && b.reduceOnly === true && b.ordType === "market" && b.sz === "1.0", "SHORT reduz a long");
+  every(orders, (b) => b.posSide === "long" && b.side === "sell" && b.reduceOnly === true && b.ordType === "market" && b.sz === "1.0", "vender da long");
 
+  // Short: compra do short
   await resetMock();
-  await page.hover("#d-adj-long");
-  await expect(page.locator("#d-adj-long")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("#d-adj-pnl")).toContainText("SHORT PNL (botão LONG)");
-  await expect(page.locator("#d-adj-pnl")).toContainText("2 ct");
+  await page.click("#d-adj-short");
+  await expect(page.locator("#d-adj-short")).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator("#d-adj-send")).toHaveText("Comprar 50% do short a mercado");
+  await expect(page.locator("#d-adj-send")).toHaveClass(/buy/);
+  await expect(page.locator("#d-adj-pnl")).toContainText("2 ct · PnL");
   await page.click("#d-adj-preview");
-  const sentLong = page.waitForResponse((r) => r.url().includes(":8000/adjust") && r.request().postData()?.includes('"dry":false'));
+  const sentShort = page.waitForResponse((r) => r.url().includes(":8000/adjust") && r.request().postData()?.includes('"dry":false'));
   await page.click("#d-adj-send");
-  expect((await sentLong).ok()).toBeTruthy();
+  expect((await sentShort).ok()).toBeTruthy();
   orders = await okxPosts("/api/v5/trade/order");
-  every(orders, (b) => b.posSide === "short" && b.side === "buy" && b.reduceOnly === true && b.sz === "0.5", "LONG reduz a short");
+  every(orders, (b) => b.posSide === "short" && b.side === "buy" && b.reduceOnly === true && b.sz === "0.5", "comprar do short");
+
+  // limite segue o lado: comprar o short acima do preço atual é recusado
+  await page.click("#d-adj-limit");
+  await expect(page.locator("#d-adj-send")).toHaveText("Comprar 50% do short a limite");
+  await page.fill("#d-adj-price", "65000");
+  await page.click("#d-adj-preview");
+  await expect(page.locator("#adj-banner-err")).toHaveText("Compra a limite: o preço precisa estar abaixo do preço atual.");
 });
 
 test("screenshots desktop e o arquivo guarda o reduce verde", async ({ page }) => {
