@@ -650,7 +650,7 @@ test("hedge a mercado: gatilho vazio executa agora; com gatilho vira stop a merc
   // clicar no gráfico preenche o gatilho
   await expect(page.locator("#chart-hint")).toContainText("gatilho");
   // quadro limpo: só a posição atual, sem seletor vendido/comprado nem tabela
-  await expect(page.locator("#d-hedge-now .pm-hd")).toHaveText("Posição atual");
+  await expect(page.locator("#d-hedge-now .pm-hd")).toHaveText(/^Posição atual\s*ajustar: short$/);
   await expect(page.locator("#d-hedge-now .pm-row.short")).toHaveAttribute("aria-label", /^short: .*% da carteira, .*% comprado$/);
   await expect(page.locator("#d-hedge-now .pm-row.long")).toHaveAttribute("aria-label", /^long: .*% da carteira, .*% livre$/);
   await expect(page.locator("#d-hedge-modes")).toBeHidden();
@@ -675,7 +675,7 @@ test("hedge a mercado: gatilho vazio executa agora; com gatilho vira stop a merc
   await expect(page.locator("#d-hedge-trg")).toBeHidden();
 });
 
-test("hedge: medidor da posição mostra só as pernas abertas e some sem posição", async ({ page }) => {
+test("hedge: quadrinho ao lado da barra escolhe a perna; perna fechada só mostra o nome", async ({ page }) => {
   const legs = async (body: Record<string, number>) => {
     await fetch("http://127.0.0.1:8788/__legs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     await page.evaluate("loadPositions()");
@@ -688,12 +688,37 @@ test("hedge: medidor da posição mostra só as pernas abertas e some sem posiç
   await expect(meter.locator(".pm-row.short .pm-free")).toHaveText(/^7[67],\d%comprado$/);
   await expect(meter.locator(".pm-row.long .pm-v b")).toHaveText(/^4[67],\d%$/);
   await expect(meter.locator(".pm-row.long .pm-free")).toHaveText(/^5[23],\d%livre$/);
+  // começa no short
+  await expect(meter.locator(".pm-line.short .pm-pick")).toHaveAttribute("aria-checked", "true");
+  await expect(meter.locator(".pm-line.long .pm-pick")).toHaveAttribute("aria-checked", "false");
   await expect(meter.locator(".pm-row.short .pm-alvo")).toHaveCount(1);
-  await legs({ short: 0 });
-  await expect(meter.locator(".pm-row.short")).toHaveCount(0);
-  await expect(meter.locator(".pm-row.long")).toHaveCount(1);
-  await legs({ long: 0 });
-  await expect(meter).toBeHidden();
+  await expect(page.locator("#d-hedge-k")).toHaveText("Quanto % vendido");
+  // escolhe a long: rótulo, risco do alvo e a tabela mudam para a long
+  await meter.locator(".pm-line.long .pm-pick").click();
+  await expect(meter.locator(".pm-line.long .pm-pick")).toHaveAttribute("aria-checked", "true");
+  await expect(meter.locator(".pm-row.long .pm-alvo")).toHaveCount(1);
+  await expect(meter.locator(".pm-row.short .pm-alvo")).toHaveCount(0);
+  await expect(page.locator("#d-hedge-k")).toHaveText("Quanto % na long");
+  await page.fill("#d-hedge-pct", "60");
+  await expect(page.locator("#d-hedge-table")).toContainText("na long · comprar long");
+  await page.fill("#d-hedge-pct", "25");
+  await expect(page.locator("#d-hedge-table")).toContainText("na long · vender da long");
+  // confirmar manda leg: long
+  await page.click("#d-hedge-go");
+  await expect(page.locator("#scale-note")).toContainText("perna long");
+  const sent = page.waitForRequest((r) => r.url().includes(":8000/hedge") && r.method() === "POST");
+  await page.click("#scale-ok");
+  expect(JSON.parse((await sent).postData() || "{}").leg).toBe("long");
+  // perna fechada: só o nome e o quadrinho, sem barra
+  await legs({ long: 300, short: 0 });
+  await expect(meter.locator(".pm-row.short .pm-track")).toHaveCount(0);
+  await expect(meter.locator(".pm-row.short .pm-free")).toHaveText("sem posição");
+  await expect(meter.locator(".pm-row.long .pm-track")).toHaveCount(1);
+  // volta para o short pelo teclado
+  await meter.locator(".pm-line.long .pm-pick").focus();
+  await page.keyboard.press("ArrowUp");
+  await expect(meter.locator(".pm-line.short .pm-pick")).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator("#d-hedge-k")).toHaveText("Quanto % vendido");
 });
 
 test("eixo de preços: só zoom (não pega ordem); duplo clique volta o zoom; botão Prévia liga/desliga", async ({ page }) => {

@@ -1282,8 +1282,10 @@ function hedgeNumbers(eq: number, mark: number, longCt: number, shortCt: number,
 // ordType "trigger": stop a mercado do hedge. `price` é o gatilho; quando o preço chegar lá, vende/recompra a mercado
 // o que falta para o alvo. O ponto de partida são as pernas quando o preço chegar no gatilho, depois de todas
 // as ordens pendentes no caminho (stops, limites, stops a mercado), nos dois lados.
-async function runHedge(targetPct: number, mode: "short" | "net", ordType: "market" | "limit" | "trigger", price: number | null, dry: boolean, only: string[] | null, reduce = false) {
-  const out: J = { target_pct: targetPct, mode, ordType, price: ordType === "limit" ? price : null, triggerPx: ordType === "trigger" ? price : null, dry, aborted: false, abort_msg: null, accounts: [] };
+// leg: a perna escolhida no painel. "long": o alvo é o tamanho da long em % da carteira (compra ou vende a long).
+// "short" ou vazio: o alvo é o short (como sempre). Com Reduce, só reduz a perna escolhida.
+async function runHedge(targetPct: number, mode: "short" | "net", ordType: "market" | "limit" | "trigger", price: number | null, dry: boolean, only: string[] | null, reduce = false, leg: Side | null = null) {
+  const out: J = { target_pct: targetPct, mode, leg, ordType, price: ordType === "limit" ? price : null, triggerPx: ordType === "trigger" ? price : null, dry, aborted: false, abort_msg: null, accounts: [] };
   if (!(targetPct >= 0 && targetPct <= CAP)) return { ...out, aborted: true, abort_msg: "Alvo fora do intervalo." };
   if (ordType === "limit" && !(price != null && price > 0)) return { ...out, aborted: true, abort_msg: "Preço inválido." };
   if (ordType === "trigger" && !(price != null && price > 0)) return { ...out, aborted: true, abort_msg: "Preço de gatilho inválido." };
@@ -1308,7 +1310,7 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
       longCt = st.long; shortCt = st.short;
     }
     const h = hedgeNumbers(eq, mark, longCt, shortCt, targetPct, mode);
-    let action: "vender" | "reduzir" | "reduzir long" | "nada" = "nada";
+    let action: "vender" | "reduzir" | "reduzir long" | "comprar long" | "nada" = "nada";
     let err: string | null = null;
     let hedgePct = h.hedgePct;
     let alvoCt = h.alvoCt;
@@ -1316,7 +1318,21 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
     // Reduce no hedge: só reduz posição, e o alvo é o % final da perna reduzida.
     // Comprar reduz o short até o alvo em % vendido; vender reduz a long até o alvo em % comprado.
     let legSide: Side = "short";
-    if (reduce) {
+    if (leg) {
+      // perna escolhida: delta > 0 = vender, < 0 = comprar
+      const alvo = roundLot((targetPct / 100) * h.valor / CT_VAL);
+      legSide = leg;
+      if (leg === "long") {
+        delta = roundLot(longCt - alvo);
+        if (reduce) delta = Math.max(0, delta);
+        hedgePct = h.valor > 0 ? (longCt - delta) * CT_VAL / h.valor * 100 : 0;
+        alvoCt = shortCt;
+      } else if (reduce) {
+        delta = roundLot(Math.min(0, alvo - shortCt));
+        alvoCt = roundLot(shortCt + delta);
+        hedgePct = h.valor > 0 ? alvoCt * CT_VAL / h.valor * 100 : 0;
+      }
+    } else if (reduce) {
       const pside = ordType === "market" || !(price! > 0) ? null : price! > mark ? "sell" : "buy";
       const leg = reduceLegFor(longCt, shortCt, pside);
       const alvo = roundLot((targetPct / 100) * h.valor / CT_VAL);
@@ -1328,7 +1344,7 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
     if (err) { /* já explicado */ }
     else if (!(eq > 0)) err = "saldo zerado";
     else if (Math.abs(delta) < 0.1) action = "nada";
-    else if (legSide === "long") action = "reduzir long";
+    else if (legSide === "long") action = delta > 0 ? "reduzir long" : "comprar long";
     else if (delta > 0) action = "vender";
     else action = "reduzir";
     // hedge a limite: acima do preço atual só vende, abaixo só compra
@@ -1337,7 +1353,9 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
       if (selling && price! < mark) err = "abaixo do preço é compra: o alvo pede venda";
       if (!selling && price! > mark) err = "acima do preço é venda: o alvo pede recompra";
     }
-    return { P, name, eq, longCt, shortCt, ...h, hedgePct, alvoCt, delta, action, err, afterStop, legSide };
+    // na long, "atual" é o tamanho da long em % da carteira
+    const atual = legSide === "long" ? (h.valor > 0 ? longCt * CT_VAL / h.valor * 100 : 0) : h.atual;
+    return { P, name, eq, longCt, shortCt, ...h, atual, hedgePct, alvoCt, delta, action, err, afterStop, legSide };
   }));
   out.accounts = R.map((r) => ({
     prefix: r.P, name: r.name, eq: r.eq, valor_usd: r.valor, long_usd: r.longUsd, short_usd: r.shortUsd,
@@ -1378,7 +1396,7 @@ async function runHedge(targetPct: number, mode: "short" | "net", ordType: "mark
     let hedgePct = r.atual;
     try {
       const legs = await legsOf(r.P);
-      const sc = legs.find((l) => l.posSide === "short")?.pos ?? 0;
+      const sc = legs.find((l) => l.posSide === r.legSide)?.pos ?? 0;
       const valor = r.eq * mark;
       hedgePct = valor > 0 ? (sc * CT_VAL) / valor * 100 : 0;
     } catch { /* leitura depois do envio */ }
@@ -1753,8 +1771,8 @@ function cors(req: Request): Record<string, string> {
 }
 const num = (x: unknown) => { const n = parseFloat(String(x ?? "").replace(",", ".")); return Number.isFinite(n) ? n : null; };
 
-async function runHedgeScale(targetPct: number, mode: "short" | "net", from: number, to: number, n: number, priceSkew: Skew, sizeSkew: Skew, dry: boolean, reduce: boolean) {
-  const out: J = { scale: true, target_pct: targetPct, mode, from, to, n, reduce, dry, aborted: false, abort_msg: null, accounts: [] };
+async function runHedgeScale(targetPct: number, mode: "short" | "net", from: number, to: number, n: number, priceSkew: Skew, sizeSkew: Skew, dry: boolean, reduce: boolean, leg: Side | null = null) {
+  const out: J = { scale: true, target_pct: targetPct, mode, leg, from, to, n, reduce, dry, aborted: false, abort_msg: null, accounts: [] };
   if (!(n >= 2 && n <= 50)) return { ...out, aborted: true, abort_msg: "A escala precisa de 2 a 50 ordens." };
   if (!(from > 0) || !(to > 0) || from === to) return { ...out, aborted: true, abort_msg: "ABORT preço inválido" };
   const prices = scalePrices(from, to, n, priceSkew).map(pxTick);
@@ -1781,7 +1799,18 @@ async function runHedgeScale(targetPct: number, mode: "short" | "net", from: num
     alvo = hn.hedgePct;
     // Reduce: comprar reduz o short até o alvo (% vendido); vender reduz a long até o alvo (% comprado)
     let legSide: Side = "short";
-    if (reduce) {
+    if (leg === "long") {
+      // perna long escolhida: o alvo é a long em % da carteira; delta > 0 vende da long, < 0 compra long
+      const alvoCt = roundLot((targetPct / 100) * valor / CT_VAL);
+      legSide = "long";
+      delta = roundLot(longCt - alvoCt);
+      if (reduce) delta = Math.max(0, delta);
+      alvo = valor > 0 ? (longCt - delta) * 100 / valor * 100 : 0;
+    } else if (leg === "short" && reduce) {
+      const alvoCt = roundLot((targetPct / 100) * valor / CT_VAL);
+      delta = roundLot(Math.min(0, alvoCt - shortCt));
+      alvo = valor > 0 ? (shortCt + delta) * 100 / valor * 100 : 0;
+    } else if (!leg && reduce) {
       const pside = prices.every((p) => p > mark) ? "sell" : prices.every((p) => p < mark) ? "buy" : null;
       const leg = reduceLegFor(longCt, shortCt, pside);
       const alvoCt = roundLot((targetPct / 100) * valor / CT_VAL);
@@ -1790,7 +1819,7 @@ async function runHedgeScale(targetPct: number, mode: "short" | "net", from: num
       else delta = 0;
     }
     const sell = delta > 0;
-    const atual = valor > 0 ? shortCt * 100 / valor * 100 : 0;
+    const atual = valor > 0 ? (leg === "long" ? longCt : shortCt) * 100 / valor * 100 : 0;
     const parts = splitLots(Math.abs(delta), weights).map((ct, i) => ({ price: prices[i], ct })).filter((p) => p.ct >= 0.1);
     const totalCt = parts.reduce((s, p) => s + p.ct, 0);
     let walked = 0;
@@ -1803,7 +1832,7 @@ async function runHedgeScale(targetPct: number, mode: "short" | "net", from: num
     // venda a limite fica acima do preço atual; recompra (reduce) fica abaixo
     let err: string | null = !(eq > 0) ? "saldo zerado" : null;
     if (!err && cum.length && sell && cum.some((p) => p.price < mark)) err = "para vender, a escala precisa ficar acima do preço atual";
-    if (!err && cum.length && !sell && cum.some((p) => p.price > mark)) err = "para recomprar, a escala precisa ficar abaixo do preço atual";
+    if (!err && cum.length && !sell && cum.some((p) => p.price > mark)) err = (legSide === "long" ? "para comprar" : "para recomprar") + ", a escala precisa ficar abaixo do preço atual";
     return { P, name, eq, atual, alvo, delta, parts: cum, sell, err, shortGone, legSide };
   }));
   out.accounts = R.map((r) => ({
@@ -1828,7 +1857,8 @@ async function runHedgeScale(targetPct: number, mode: "short" | "net", from: num
         instId: INST, tdMode: "cross", side: r.sell ? "sell" : "buy", posSide: r.legSide,
         ordType: "limit", sz: szStr(l.ct), px: pxStr(l.price),
       };
-      if (!r.sell || r.legSide === "long") order.reduceOnly = true;
+      // reduce-only quando a ordem diminui a perna: compra no short, venda na long
+      if ((r.legSide === "short" && !r.sell) || (r.legSide === "long" && r.sell)) order.reduceOnly = true;
       return order;
     });
     const e = await req(r.P, "POST", "/api/v5/trade/batch-orders", chunk);
@@ -2067,6 +2097,9 @@ const handler = async (req: Request): Promise<Response> => {
       const only: string[] | null = null;
       const dry = body.dry === true;
       const reduce = body.reduce === true;
+      const rawLeg = String(body.leg ?? "").trim().toLowerCase();
+      if (rawLeg && rawLeg !== "long" && rawLeg !== "short") return json(400, { ok: false, error: "Perna inválida: use long ou short." });
+      const leg: Side | null = rawLeg ? rawLeg as Side : null;
       const from = num(body.from), to = num(body.to), nScale = num(body.n);
       const scaling = from != null && to != null && nScale != null;
       let price: number | null = null;
@@ -2082,12 +2115,12 @@ const handler = async (req: Request): Promise<Response> => {
       orderBusy = true; scope = sc;
       try {
         if (from != null && to != null && nScale != null) {
-          const r = await runHedgeScale(target, mode as "short" | "net", from, to, Math.round(nScale), skewArg(body.priceSkew), skewArg(body.sizeSkew), dry, reduce);
-          console.log(JSON.stringify({ ev: "hedge-scale", ip, target, reduce, n: nScale, dry, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
+          const r = await runHedgeScale(target, mode as "short" | "net", from, to, Math.round(nScale), skewArg(body.priceSkew), skewArg(body.sizeSkew), dry, reduce, leg);
+          console.log(JSON.stringify({ ev: "hedge-scale", ip, target, leg, reduce, n: nScale, dry, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
           return json(200, { ok: !r.aborted, ...r });
         }
-        const r = await runHedge(target, mode as "short" | "net", ordType as "market" | "limit" | "trigger", price, dry, only, reduce);
-        console.log(JSON.stringify({ ev: "hedge", ip, target, mode, reduce, dry, ordType, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
+        const r = await runHedge(target, mode as "short" | "net", ordType as "market" | "limit" | "trigger", price, dry, only, reduce, leg);
+        console.log(JSON.stringify({ ev: "hedge", ip, target, mode, leg, reduce, dry, ordType, aborted: r.aborted, abort: r.abort_msg, acc: accBrief(r.accounts) }));
         return json(200, { ok: !r.aborted, ...r });
       } finally { orderBusy = false; scope = null; }
     }
