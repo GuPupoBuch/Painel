@@ -23,7 +23,7 @@ function legs(account) {
     if (!(parseFloat(pos) > 0)) continue;
     rows.push({
       instId: "BTC-USD-SWAP", posSide, pos,
-      avgPx: posSide === "long" ? "60000" : "68000", markPx: "64000", upl: "0.001",
+      avgPx: posSide === "long" ? "60000" : "68000", markPx: "64000", upl: "0.001", realizedPnl: posSide === "long" ? "0.0005" : "-0.0002",
     });
   }
   return rows;

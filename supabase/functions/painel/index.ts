@@ -216,7 +216,7 @@ function pricesOutside(prices: number[], band: { buy: number; sell: number } | n
   return `Preço fora do limite da OKX (${rule}). Fora: ${show}. Nada foi enviado.`;
 }
 type Side = "long" | "short";
-type Leg = { posSide: Side; pos: number; avg: number; mark: number; upl: number };
+type Leg = { posSide: Side; pos: number; avg: number; mark: number; upl: number; realized: number };
 const floor01 = (x: number) => Math.trunc(x / 0.1 + 1e-9) / 10;
 function roundLot(ct: number): number {
   return Math.round(ct * 10 + 1e-9) / 10;
@@ -416,6 +416,8 @@ async function legsOf(P: string): Promise<Leg[]> {
     avg: parseFloat(x.avgPx || "0"),
     mark: parseFloat(x.markPx || "0"),
     upl: parseFloat(x.upl || "0"),
+    // PnL já realizado desta posição (em BTC no contrato inverso), como a OKX devolve
+    realized: parseFloat(x.realizedPnl || "0") || 0,
   }));
 }
 async function pendingLimits(P: string): Promise<J[]> {
@@ -442,7 +444,7 @@ async function fetchPositions() {
       const expo = eq > 0 && mk > 0 ? Math.abs(net) * 100 / (eq * mk) * 100 : 0;
       const stops = cs.map((x) => parseFloat(x.slTriggerPx)).filter((v) => v > 0);
       const legRows = legs.map((l) => ({
-        posSide: l.posSide, ct: l.pos, usd: l.pos * 100, avg: l.avg, upl: l.upl,
+        posSide: l.posSide, ct: l.pos, usd: l.pos * 100, avg: l.avg, upl: l.upl, realized: l.realized,
         stops: algosFor(cs, l.posSide).map((x) => ({
           algoId: x.algoId ?? null, slTriggerPx: parseFloat(x.slTriggerPx), closeFraction: x.closeFraction ?? null,
         })).filter((s) => s.slTriggerPx > 0),

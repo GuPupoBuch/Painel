@@ -170,7 +170,7 @@ input:-webkit-autofill{-webkit-text-fill-color:var(--text);caret-color:var(--tex
 
 .sides,.otypes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
 .side,.otype,.pct{background:transparent;border:1px solid var(--line);border-radius:2px;color:var(--muted);min-height:44px}
-.side{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:13px;font-weight:800;letter-spacing:.08em}
+.side{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:13px;font-weight:600;letter-spacing:.08em}
 .side.long{color:var(--green)}
 .side.short{color:var(--red)}
 .side.long.on{background:var(--green);border-color:var(--green);color:#04140c}
@@ -187,7 +187,7 @@ input:-webkit-autofill{-webkit-text-fill-color:var(--text);caret-color:var(--tex
 
 .send{
   width:100%;min-height:48px;padding:8px 10px;border:0;border-radius:2px;
-  background:var(--green);color:#04140c;font-size:14px;font-weight:800;letter-spacing:.06em;line-height:1.15;
+  background:var(--green);color:#04140c;font-size:14px;font-weight:600;letter-spacing:.06em;line-height:1.15;
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
 }
 .send .go-sub{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:0;color:#04140c}
@@ -304,6 +304,22 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   html.in-app #chart{height:100%;min-height:0;border:0;border-radius:0;background:#0c0e10}
   html.in-app #desk-order{grid-area:order;min-width:0;min-height:0}
   html.in-app #desk-side{grid-area:side;min-width:0;min-height:0;display:flex;flex-direction:column;gap:4px}
+}
+/* quadro de ordem, posições e ordens: os mesmos no PC e no celular */
+  /* posição atual no hedge: uma barra por perna aberta, 0–100% da carteira; o marcador anda e leva a % em cima */
+  .pos-meter{margin:10px 0 6px;display:grid;gap:12px}
+  .pm-hd{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .pm-row{display:grid;gap:5px}
+  .pm-row.short{color:var(--red)} .pm-row.long{color:var(--green)}
+  .pm-vals{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .pm-vals span{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+  .pm-vals b{margin-right:4px;font-family:var(--mono);font-size:14px;font-weight:600;letter-spacing:0;font-variant-numeric:tabular-nums}
+  .pm-v b{color:currentColor} .pm-v{color:inherit!important}
+  .pm-free b{color:var(--text)}
+  .pm-track{position:relative;height:8px;background:var(--track);border:1px solid var(--line);border-radius:4px}
+  .pm-track i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:currentColor;opacity:.3;transition:width .2s var(--ease-out)}
+  .pm-track b{position:absolute;top:-5px;bottom:-5px;width:3px;margin-left:-1.5px;border-radius:2px;background:currentColor;transition:left .2s var(--ease-out)}
+  .pm-alvo{position:absolute;top:-6px;bottom:-6px;width:0;border-left:1px dashed var(--text);opacity:.75}
   #desk-order,#d-balances,#d-positions,#d-ord-panel{
     background:#0c0e10;border:1px solid #1f2428;min-width:0;min-height:0;
     display:flex;flex-direction:column;
@@ -381,7 +397,7 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   .d-avg{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;color:#d7dde3}
   .d-dock{flex:0 0 auto;padding:8px;border-top:1px solid #1f2428;background:#0c0e10}
   .d-sides{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:0}
-  .d-sides button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:52px;border:0;border-radius:2px;font-size:13px;font-weight:800;letter-spacing:.08em;line-height:1.1}
+  .d-sides button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:52px;border:0;border-radius:2px;font-size:13px;font-weight:600;letter-spacing:.08em;line-height:1.1}
   .d-sides button:hover{filter:brightness(1.06)}
   #d-long,#d-adj-long{background:#00e29a;color:#04140c}
   #d-short,#d-adj-short{background:#e5425c;color:#fff}
@@ -390,7 +406,7 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   #d-adj-long.on,#d-adj-short.on{outline:2px solid #fff;outline-offset:1px}
   #d-adj-long:disabled,#d-adj-short:disabled,#d-long:disabled,#d-short:disabled{opacity:.35;cursor:not-allowed}
   .d-sides button:disabled:hover{filter:none}
-  .go-k{font-size:13px;font-weight:800;letter-spacing:.08em}
+  .go-k{font-size:13px;font-weight:600;letter-spacing:.08em}
   .go-sub{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:0}
   .d-note{margin:8px 0 0;font-size:11px;line-height:1.35;color:#7d8792}
   .d-saldo{display:flex;justify-content:space-between;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid #1f2428;font-size:12px;font-family:var(--mono);font-variant-numeric:tabular-nums}
@@ -402,9 +418,8 @@ button.refresh{min-height:44px;padding:0 12px;background:transparent;color:var(-
   .d-table tbody tr:hover td{background:#14181c}
   .d-up{color:#00e29a}.d-dn{color:#e5425c}
   .d-empty{color:#7d8792;font-size:12px;padding:6px 0}
-  #d-hedge-go{width:100%;margin-top:8px;min-height:44px;border:0;border-radius:2px;background:#e5425c;color:#fff;font-weight:800;letter-spacing:.06em}
+  #d-hedge-go{width:100%;margin-top:8px;min-height:44px;border:0;border-radius:2px;background:#e5425c;color:#fff;font-weight:600;letter-spacing:.06em}
   #d-adj-preview,#d-adj-send{border-radius:2px;min-height:44px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
-}
 .field{position:relative;display:block;margin:8px 0 0;background:var(--surface);border:1px solid var(--line);min-height:52px;padding:18px 40px 6px 8px}
 .field .field-k{position:absolute;top:4px;left:8px;margin:0;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .field input{width:100%;height:24px;min-height:0;padding:0;border:0;background:transparent;border-radius:0;font-size:16px}
@@ -553,9 +568,53 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
 .pos-pop .d-togs .d-tog{min-height:28px;font-size:11px}
 .pos-pop .field{margin:0}
 .pos-pop .d-note{margin:0}
-.pp-go{min-height:40px;border:0;border-radius:var(--r);font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:var(--red)}
+.pp-go{min-height:40px;border:0;border-radius:var(--r);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:var(--red)}
 .pp-go.buy{background:var(--green);color:#04140c}
 .pp-go:disabled{opacity:.4;cursor:not-allowed}
+/* ---------- celular: o mesmo quadro do PC, em coluna, com controles de toque mais baixos ---------- */
+@media (max-width:1023px){
+  html.in-app #app-view{display:none!important}
+  html.in-app .desk{display:block}
+  html.in-app #desk-order{margin-top:8px}
+  html.in-app #desk-side{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+  html.in-app .d-body{overflow:visible;padding:10px}
+  html.in-app #d-bal-body,html.in-app #d-pos-body,html.in-app #d-ord-body{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  html.in-app .d-hd{height:32px}
+  html.in-app .d-hd select{height:28px;font-size:12px}
+  html.in-app .d-dock{
+    position:fixed;left:0;right:0;bottom:0;z-index:25;
+    padding:8px 12px calc(8px + env(safe-area-inset-bottom));
+    background:var(--bg);border-top:1px solid var(--line);
+  }
+  html.in-app body{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
+  html.in-app .d-sides button{min-height:46px}
+  html.in-app #desk-order .d-top select,html.in-app #desk-order select.kind{height:38px;font-size:14px}
+  html.in-app #desk-order .unit-row button,html.in-app #desk-order .d-togs .d-tog{min-height:34px;font-size:11px}
+  html.in-app #desk-order .mode-row .mode-tog{min-height:36px;font-size:11px}
+  html.in-app #desk-order input:not([type=range]){height:40px;font-size:16px}
+  html.in-app #desk-order .field input{height:22px;font-size:16px}
+  html.in-app .field{min-height:44px;padding:15px 34px 4px 8px}
+  html.in-app .d-row button{min-height:44px;min-width:40px}
+  html.in-app .d-k{margin:10px 0 4px}
+  html.in-app .d-k button{min-height:32px;padding:0 4px}
+  html.in-app #d-hedge-go,html.in-app #d-adj-preview,html.in-app #d-adj-send{min-height:42px}
+  html.in-app .d-range{height:28px}
+  html.in-app .skew-r{height:30px}
+  html.in-app #chart{height:46vh;min-height:280px}
+  html.in-app .d-table{font-size:11px}
+  html.in-app .d-table th{padding-right:6px}
+  html.in-app .d-table td{padding:8px 6px 8px 0}
+  html.in-app .d-table td:last-child,html.in-app .d-table th:last-child{padding-right:0}
+  html.in-app .pos-act{min-width:30px;min-height:32px;padding:0}
+  html.in-app .cancel-algo{min-height:34px}
+  html.in-app .pos-pop{
+    left:8px!important;right:8px;top:auto!important;bottom:calc(8px + env(safe-area-inset-bottom));
+    width:auto;transform-origin:bottom center;
+  }
+  html.in-app .pos-pop .d-togs .d-tog{min-height:34px}
+  html.in-app .pp-go{min-height:44px}
+  html.in-app .pp-x{width:36px;height:36px}
+}
 @media (prefers-reduced-motion:reduce){
   .pos-pop,.pos-act svg{transition:none}
   button,.mode-row .mode-tog::before{transition:none}
@@ -663,7 +722,7 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
         <span class="field-u" id="d-qty-u">USD</span>
       </label>
       <div id="d-risk-box">
-        <div class="d-k"><span>Risco</span><button type="button" id="d-max">Máx. 5%</button></div>
+        <div class="d-k"><span></span><button type="button" id="d-max">Máx. 5%</button></div>
         <label class="field">
           <span class="field-k">Risco</span>
           <input id="d-risk" type="text" inputmode="decimal" value="1" aria-label="Risco %">
@@ -718,7 +777,7 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
           <button type="button" data-chase="pct" class="on">%</button>
           <button type="button" data-chase="usd">USD</button>
         </div>
-        <p class="d-note">O chase sai no melhor bid/ask e acompanha o book. A distância máxima cancela se o preço andar demais. Vazio = sem máximo.</p>
+        <p class="d-note">Cancela se o preço andar mais que isso. Vazio = sem máximo.</p>
       </div>
       <div id="d-scale" class="hidden">
         <div class="d-k">Preços da escala</div>
@@ -742,7 +801,7 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
         <div class="d-avg">Média <b id="d-avg">—</b></div>
       </div>
       <div id="d-hedge" class="hidden">
-        <p class="d-note" id="d-hedge-now">Posição atual: —</p>
+        <div class="pos-meter hidden" id="d-hedge-now" role="group" aria-label="Posição atual"></div>
         <div class="d-k" id="d-hedge-k">Quanto % vendido</div>
         <div class="d-togs" id="d-hedge-quick">
           <button type="button" class="d-tog" data-h="0">0</button>
@@ -777,12 +836,10 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
             <input id="d-hedge-trigger" type="text" inputmode="decimal" autocomplete="off" placeholder="vazio = agora" aria-label="Gatilho do hedge a mercado">
             <span class="field-u">USD</span>
           </label>
-          <p class="d-note hidden">Vazio: executa agora, a mercado. Com preço: vira um stop a mercado do hedge, que executa quando o preço chegar ali.</p>
         </div>
         <div id="d-hedge-table" class="d-size-rows hidden"></div>
         <p class="err hidden" id="d-hedge-msg"></p>
         <button type="button" id="d-hedge-go">Confirmar hedge</button>
-        <p class="d-note hidden">Não mexe na long. Os stops ficam como estão e só saem se o short zerar. <span class="contas-txt">A ordem vai para as 4 contas.</span></p>
       </div>
       <div class="mode-row" id="d-mode-togs">
         <button type="button" class="mode-tog" id="d-post-tog">Post</button>
@@ -834,12 +891,12 @@ select.kind,.d-top select,.d-hd select,#desk-order select.kind,#desk-order selec
         <button type="button" id="d-adj-preview" style="background:transparent;color:#d7dde3;border:1px solid #1f2428">Ver prévia</button>
         <button type="button" id="d-adj-send" style="background:#e5425c;color:#fff;border:0">Reduzir</button>
       </div>
-      <p class="d-note">25, 50, 75, 100 ou um % personalizado da perna. LONG compra e reduz a short. SHORT vende e reduz a long.</p>
+      <p class="d-note">LONG compra e reduz a short. SHORT vende e reduz a long.</p>
     </div>
     <div id="d-tpsl" class="hidden">
       <div class="d-k">Stop da entrada</div>
       <input id="d-stop-2" type="text" inputmode="decimal" placeholder="63800" aria-label="Stop da entrada">
-      <p class="d-note">Este stop entra junto com a ordem nova. Para mover um stop, um limite ou um stop a mercado que já está aberto, arraste a linha no gráfico.</p>
+      <p class="d-note">Entra junto com a ordem nova. Ordem já aberta: arraste a linha no gráfico.</p>
       <div id="d-stop-list" class="d-size-rows"></div>
     </div>
     <div id="d-msg" class="err hidden"></div>
@@ -1178,7 +1235,9 @@ function fmtTick(n) {
   const abs = Math.abs(tenths);
   return Math.floor(abs / 10) + "." + (abs % 10);
 }
-function isDesk() { return window.matchMedia("(min-width: 1024px)").matches; }
+// o quadro do PC é o mesmo no celular (só muda o arranjo no CSS)
+function isDesk() { return true; }
+function isTouch() { return !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches); }
 let lastCandles = [];
 let deskKind = "market", deskTab = "post", scaleOpen = false;
 // Ajustes da escala, de −100 a +100 (0 = igual). Mesma conta do backend (scalePrices / scaleWeights).
@@ -2325,7 +2384,7 @@ function updateChartHint() {
   if (!el) return;
   const role = clickTarget();
   if (!role) { show(el, false); el.textContent = ""; delete el.dataset.target; return; }
-  el.textContent = (isDesk() ? "Clique" : "Toque") + " no gráfico: " + hintName(role);
+  el.textContent = (isTouch() ? "Toque" : "Clique") + " no gráfico: " + hintName(role);
   el.dataset.target = role;
   show(el, true);
 }
@@ -3492,18 +3551,22 @@ function renderDesk() {
       const notion = Number(leg.usd) || (Number(leg.ct) || 0) * 100;
       const cls = p == null ? "" : p >= 0 ? "d-up" : "d-dn";
       const pnl = p == null ? "—" : (p >= 0 ? "+" : "−") + fmtUsd(Math.abs(p));
+      // PnL já realizado da perna (a OKX manda em BTC): em US$ pelo preço atual, com o BTC no título
+      const rb = Number(leg.realized);
+      const rUsd = Number.isFinite(rb) && rb !== 0 && mark ? rb * mark : null;
+      const real = rUsd == null ? "—" : `<span class="${rUsd >= 0 ? "d-up" : "d-dn"}" title="${(rb >= 0 ? "+" : "−") + fmtBtc(Math.abs(rb))} BTC">${(rUsd >= 0 ? "+" : "−") + fmtUsd(Math.abs(rUsd))}</span>`;
       const ps = leg.posSide || (a.net > 0 ? "long" : "short");
       const open = pp && pp.acc === a.name && pp.side === ps;
       const act = `<button type="button" class="pos-act" data-pp-acc="${esc(a.name)}" data-pp-side="${esc(ps)}" aria-expanded="${open ? "true" : "false"}" aria-label="Ajustar ${esc(a.name)} ${esc(ps)}"><svg width="10" height="6" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
-      posRows.push(`<tr><td>BTC-USD-SWAP</td><td>${esc(a.name)} <span class="${ps === "short" ? "d-dn" : "d-up"}">${esc(ps)}</span></td><td class="r">${fmtPx(leg.avg)}</td><td class="r">${fmtUsd(notion)}</td><td class="r ${cls}">${pnl}</td><td class="r">${act}</td></tr>`);
+      posRows.push(`<tr><td>${esc(a.name)} <span class="${ps === "short" ? "d-dn" : "d-up"}">${esc(ps)}</span></td><td class="r">${fmtPx(leg.avg)}</td><td class="r">${fmtUsd(notion)}</td><td class="r ${cls}">${pnl}</td><td class="r">${real}</td><td class="r">${act}</td></tr>`);
     }
   }
-  $("d-pos-body").innerHTML = posRows.length ? `<table class="d-table"><thead><tr><th>Símbolo</th><th>Conta</th><th class="r">Entrada</th><th class="r">Tamanho</th><th class="r">Resultado</th><th></th></tr></thead><tbody>${posRows.join("")}</tbody></table>` : '<div class="d-empty">Sem posição.</div>';
+  $("d-pos-body").innerHTML = posRows.length ? `<table class="d-table"><thead><tr><th>Conta</th><th class="r">Entrada</th><th class="r">Tamanho</th><th class="r">Aberto</th><th class="r">Realizado</th><th></th></tr></thead><tbody>${posRows.join("")}</tbody></table>` : '<div class="d-empty">Sem posição.</div>';
   if (pp) placePop();
   const orders = [];
   for (const a of list) for (const o of accountOrders(a)) orders.push(o);
   const cancel = (o) => o.kind === "chase" && o.algoId ? `<button type="button" class="cancel-algo" data-cancel-algo="${esc(o.algoId)}" data-account="${esc(o.prefix)}">Cancelar</button>` : "";
-  $("d-ord-body").innerHTML = orders.length ? `<table class="d-table"><thead><tr><th>Símbolo</th><th>Tipo</th><th>Conta</th><th class="r">Preço</th><th class="r">Tam.</th><th></th></tr></thead><tbody>${orders.map((o) => `<tr><td>BTC-USD-SWAP</td><td>${kindLabel(o.kind)}</td><td>${esc(o.account)}</td><td class="r">${o.price > 0 ? fmtPx(o.price) : "book"}</td><td class="r">${o.sz ? fmtCt(o.sz) + " ct" : "—"}</td><td>${cancel(o)}</td></tr>`).join("")}</tbody></table>` : '<div class="d-empty">Nenhuma ordem aberta.</div>';
+  $("d-ord-body").innerHTML = orders.length ? `<table class="d-table"><thead><tr><th>Tipo</th><th>Conta</th><th class="r">Preço</th><th class="r">Tam.</th><th></th></tr></thead><tbody>${orders.map((o) => `<tr><td>${kindLabel(o.kind)}</td><td>${esc(o.account)}</td><td class="r">${o.price > 0 ? fmtPx(o.price) : "book"}</td><td class="r">${o.sz ? fmtCt(o.sz) + " ct" : "—"}</td><td>${cancel(o)}</td></tr>`).join("")}</tbody></table>` : '<div class="d-empty">Nenhuma ordem aberta.</div>';
   if ($("m-ord-body")) {
     const live = [];
     for (const a of visibleAccounts(lastAccounts)) for (const o of accountOrders(a)) live.push(o);
@@ -3623,9 +3686,8 @@ function paintPop() {
   document.querySelectorAll("#pp-pcts .d-tog").forEach((b) => b.classList.toggle("on", Number(b.dataset.ppPct) === pp.pct));
   document.querySelectorAll("#pp-types .d-tog").forEach((b) => b.classList.toggle("on", b.dataset.ppType === pp.type));
   show($("pp-price-box"), pp.type === "limit");
-  $("pp-note").textContent = pp.type === "market" ? "Executa na hora, a mercado."
-    : pp.type === "chase" ? "Fica no melhor preço do book e acompanha até executar."
-    : (sell ? "Ordem de venda no preço escolhido, acima do preço atual." : "Ordem de compra no preço escolhido, abaixo do preço atual.");
+  $("pp-note").textContent = pp.type === "limit" ? (sell ? "Venda: preço acima do atual." : "Compra: preço abaixo do atual.") : "";
+  show($("pp-note"), pp.type === "limit");
   const pnl = c.leg && c.ct >= 0.1 && c.exit > 0 ? pnlBtc(c.ct, c.leg.avg, c.exit, pp.side) : null;
   $("pp-pnl").innerHTML = pnl == null || pp.type === "chase" && !(lastPx > 0) ? "" :
     `<span class="${pnl >= 0 ? "pnl-up" : "pnl-dn"}">PnL ${pp.type === "chase" ? "≈ " : ""}${fmtPnlTitle(pnl, pnl * c.exit)}</span>`;
@@ -3812,7 +3874,8 @@ function paintKind() {
   for (const id of ["d-hedge-trg", "m-hedge-trg"]) if ($(id)) show($(id), deskKind === "hedge" && hedgeOrd === "market");
   paintQtyLabel();
   const hint = sizeHint();
-  if ($("d-size-note")) { show($("d-size-note"), !hedge); $("d-size-note").textContent = hint; }
+  // texto do tamanho fica fora da tela (o rótulo do campo e os botões já dizem)
+  if ($("d-size-note")) { show($("d-size-note"), false); $("d-size-note").textContent = hint; }
   if ($("m-size-note")) { show($("m-size-note"), !hedge); $("m-size-note").textContent = hint; }
   if ($("d-reduce-which")) $("d-reduce-which").textContent = "";
   if ($("m-reduce-which")) $("m-reduce-which").textContent = "";
@@ -3987,6 +4050,22 @@ function hedgeMove(r) {
   const verb = r.action === "reduzir" ? "recomprar" : r.action === "reduzir long" ? "vender da long" : "vender";
   return verb + " " + fmtCt(Math.abs(r.delta)) + " ct · " + fmtUsd(Math.abs(r.delta) * 100);
 }
+// Medidor da posição atual: short e long em % da carteira (0–100%). O marcador anda até a % e leva o número em cima.
+// Perna sem posição aberta não aparece; sem nenhuma, o medidor some. O risco tracejado é o alvo, na perna que o hedge mexe.
+function posMeterHtml(longPct, shortPct, alvo, alvoLeg) {
+  const pos = (v) => Math.max(0, Math.min(100, Number(v) || 0));
+  const open = (v) => (Number(v) || 0) >= 0.005;
+  // a carteira é BTC: o que não está em short está comprado; na long, o que não está na posição está livre
+  const row = (leg, name, v, restName) => {
+    const p = pos(v), rest = Math.max(0, 100 - (Number(v) || 0));
+    const tick = leg === alvoLeg && Number.isFinite(alvo) ? `<u class="pm-alvo" style="left:${pos(alvo)}%" title="alvo ${esc(fmtPct(alvo))}"></u>` : "";
+    return `<div class="pm-row ${leg}" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${(Number(v) || 0).toFixed(1)}" aria-label="${name}: ${esc(fmtPct(v))} da carteira, ${esc(fmtPct(rest))} ${restName}">`
+      + `<div class="pm-vals"><span class="pm-v"><b>${esc(fmtPct(v))}</b>${name}</span><span class="pm-free"><b>${esc(fmtPct(rest))}</b>${restName}</span></div>`
+      + `<div class="pm-track"><i style="width:${p}%"></i><b style="left:${p}%"></b>${tick}</div></div>`;
+  };
+  const rows = (open(shortPct) ? row("short", "short", shortPct, "comprado") : "") + (open(longPct) ? row("long", "long", longPct, "livre") : "");
+  return rows ? '<div class="pm-hd">Posição atual</div>' + rows : "";
+}
 function paintHedgeTable() {
   const rows = hedgeRows();
   const longLeg = reducing && rows.length > 0 && rows.every((r) => r.legSide === "long");
@@ -4015,9 +4094,12 @@ function paintHedgeTable() {
     const agora = valor > 0 ? rows.reduce((s, r) => s + (r.atualAgora || 0) * (r.valor || 0), 0) / valor : 0;
     // posição de agora (antes de qualquer stop), em % da carteira
     const longAg = valor > 0 ? rows.reduce((s, r) => s + (r.longAgora || 0) * (r.valor || 0), 0) / valor : 0;
-    const now = `Posição atual: ${fmtPct(longAg)} comprado · ${fmtPct(agora)} vendido`;
-    if ($("d-hedge-now")) $("d-hedge-now").textContent = now;
-    if ($("m-hedge-now")) $("m-hedge-now").textContent = now;
+    if ($("d-hedge-now")) {
+      const meter = posMeterHtml(longAg, agora, alvo, longLeg ? "long" : "short");
+      $("d-hedge-now").innerHTML = meter;
+      show($("d-hedge-now"), !!meter);
+    }
+    if ($("m-hedge-now")) $("m-hedge-now").textContent = `Posição atual: ${fmtPct(longAg)} comprado · ${fmtPct(agora)} vendido`;
   }
   const empty = '<div class="d-empty">Sem contas.</div>';
   if ($("d-hedge-table")) $("d-hedge-table").innerHTML = html || empty;

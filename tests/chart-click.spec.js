@@ -272,20 +272,20 @@ test("toque no celular preenche o limite; pan e pinça não preenchem", async ({
   const page = await context.newPage();
   await installMocks(page);
   await boot(page);
-  await expect(page.locator("#chart-hint")).toHaveText("Toque no gráfico: stop");
-  await page.locator("#m-kind").selectOption("limit");
+  // no celular o quadro é o mesmo do PC: começa em limite
+  await page.locator("#d-kind").selectOption("limit");
   await expect(page.locator("#chart-hint")).toHaveText("Toque no gráfico: preço");
   await revealChart(page);
   const spot = await pickSpot(page);
   await page.touchscreen.tap(spot.x, spot.y);
-  await expect(page.locator("#price")).toHaveValue(spot.fmt);
-  const kept = await page.locator("#price").inputValue();
+  await expect(page.locator("#d-price")).toHaveValue(spot.fmt);
+  const kept = await page.locator("#d-price").inputValue();
   const pan = await pickSpot(page, [kept]);
   await page.mouse.move(pan.x, pan.y);
   await page.mouse.down();
   await page.mouse.move(pan.x + 90, pan.y, { steps: 6 });
   await page.mouse.up();
-  await expect(page.locator("#price")).toHaveValue(kept);
+  await expect(page.locator("#d-price")).toHaveValue(kept);
   const box = await page.locator("#chart").boundingBox();
   await page.evaluate(({ x, y }) => {
     const el = document.getElementById("chart");
@@ -298,7 +298,7 @@ test("toque no celular preenche o limite; pan e pinça não preenchem", async ({
     fire("pointerup", 7, x, y);
     fire("pointerup", 8, x + 28, y + 10);
   }, { x: box.x + box.width * 0.5, y: box.y + box.height * 0.45 });
-  await expect(page.locator("#price")).toHaveValue(kept);
+  await expect(page.locator("#d-price")).toHaveValue(kept);
   fs.mkdirSync(ART, { recursive: true });
   await page.screenshot({ path: path.join(ART, "painel-mobile-390.png"), fullPage: true });
   await context.close();
