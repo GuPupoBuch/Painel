@@ -201,18 +201,26 @@ test("escala com e sem reduce, hedge esconde o toggle", async ({ page }) => {
     for (const b of chunk as unknown as Body[]) expect(b.reduceOnly === true && b.posSide === "long" && b.side === "sell").toBeTruthy();
   }
 
+  // Hedge não tem Post / Reduce / TP/SL; o Reduce ligado antes não afeta o hedge
   await setKind(page, "hedge");
-  await expect(page.locator(wide ? "#d-reduce-toggle" : "#m-reduce-toggle")).toBeVisible();
-  await setReduce(page, false);
+  await expect(page.locator("#d-mode-togs")).toBeHidden();
+  await expect(page.locator("#d-reduce-toggle")).toBeHidden();
+  await expect(page.locator("#d-tpsl-tog")).toBeHidden();
   await resetMock();
   if (wide) await page.click("#d-hedge-go");
   else await page.click("#send");
   await page.waitForSelector("#scale-sheet:not(.hidden)");
+  const hedgeReq = page.waitForRequest((r) => r.url().includes(":8000/hedge") && r.method() === "POST");
   const hedge = page.waitForResponse((r) => r.url().includes(":8000/hedge"));
   await page.click("#scale-ok");
   expect((await hedge).ok()).toBeTruthy();
+  expect(JSON.parse((await hedgeReq).postData() || "{}").reduce).toBeUndefined();
   const orders = await okxPosts("/api/v5/trade/order");
   every(orders, (b) => b.posSide === "short" && b.side === "sell" && !b.reduceOnly, "hedge vende short");
+  // saindo do Hedge, os botões voltam (e o Reduce continua como estava)
+  await page.click("#d-groups [data-group=limite]");
+  await expect(page.locator("#d-reduce-toggle")).toBeVisible();
+  await expect(page.locator("#d-reduce-toggle")).toHaveAttribute("aria-pressed", "true");
 });
 
 test("escala long sem perna manda o stop anexado", async ({ page }) => {
