@@ -161,6 +161,18 @@ Deno.test("altera limite e stop; stop do lado errado não sai", async () => {
   if (ok.aborted) throw new Error(String(ok.abort_msg));
   const moved = hit("/api/v5/trade/amend-algos")[0].body as any;
   if (moved.algoId !== "sl-long" || moved.newSlTriggerPx !== "63000") throw new Error(JSON.stringify(moved));
+  // stop no lucro: acima da entrada (64.000) e abaixo do mark (64.100) sai
+  const profit = await runAmend("stop", "OKX", "sl-long", 64050, false);
+  if (profit.aborted || !profit.profit) throw new Error("stop no lucro da long barrado: " + profit.abort_msg);
+  // short: stop no lucro abaixo da entrada e acima do mark sai; abaixo do mark não
+  positions = { OKX: [leg("short", "1", "65000", "64100")] };
+  algos = { OKX: [algo("short", "sl-short", "66000")] };
+  const sp = await runAmend("stop", "OKX", "sl-short", 64500, false);
+  if (sp.aborted || !sp.profit) throw new Error("stop no lucro do short barrado: " + sp.abort_msg);
+  const sb = await runAmend("stop", "OKX", "sl-short", 63000, false);
+  if (!sb.aborted || !String(sb.abort_msg).includes("acima do preço atual")) throw new Error("stop do short abaixo do mark saiu");
+  positions = { OKX: [leg("long", "1", "64000", "64100")] };
+  algos = { OKX: [algo("long", "sl-long", "62000")] };
   const dry = await runAmend("stop", "OKX", "sl-long", 62500, true);
   if (dry.aborted || posts().some((c) => c.p === "/api/v5/trade/amend-algos" && (c.body as any).newSlTriggerPx === "62500")) throw new Error("dry enviou o stop");
 });
